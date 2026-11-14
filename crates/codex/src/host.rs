@@ -646,7 +646,6 @@ fn parse(payload: &Value) -> Result<Value, Rejected> {
                 && filename.is_some_and(|name| name != "." && name != ".." && !has_control(name) && !name.contains(['/', '\\']))
         }
         "automation" => return Err(Rejected { id: Some(id), diagnostic: Some(AUTOMATION_SCHEMA_DIAGNOSTIC) }),
-        "start-task-conversation" => false,
         _ => false,
     };
     if accepted { Ok(request) } else { Err(rejected(Some(&id))) }

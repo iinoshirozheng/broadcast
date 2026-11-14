@@ -95,7 +95,10 @@ so packaging infrastructure is edited only once.
         `crates/server/examples/codex.rs` runs both against a fake Codex page in a cloned
         headless Chrome, over the reuse-port and pipe paths. The one-shot refresh,
         screenshot and daemon modes go at cutover.
-  - [ ] 5b — task conversations; 5c — automation and quota policies
+  - [x] 5b — task conversations: not ported. The userscript starts threads through Codex's
+        `navigate-to-route` prefill and nothing sends `start-task-conversation` any more, so
+        the host rejects it like any unknown action; the JS handler goes at cutover.
+  - [ ] 5c — automation and quota policies
   - [ ] 5d — the desktop embeds server and launcher, writes `launcher-runtime.json`,
         Windows launch paths, stops bundling Node
 - [x] Phase 6 — the `broadcast` binary carries every `cli/broadcast.mjs` command with the
