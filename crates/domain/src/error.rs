@@ -1,21 +1,23 @@
+use std::borrow::Cow;
+
 use serde_json::Value;
 
 /// An error reported to API clients as `{ error: { code, message, details? } }`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApiError {
     pub status: u16,
-    pub code: &'static str,
+    pub code: Cow<'static, str>,
     pub message: String,
-    pub details: Option<Value>,
+    pub details: Option<Box<Value>>,
 }
 
 impl ApiError {
-    pub fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
-        Self { status, code, message: message.into(), details: None }
+    pub fn new(status: u16, code: impl Into<Cow<'static, str>>, message: impl Into<String>) -> Self {
+        Self { status, code: code.into(), message: message.into(), details: None }
     }
 
     pub fn with_details(mut self, details: Value) -> Self {
-        self.details = Some(details);
+        self.details = Some(Box::new(details));
         self
     }
 

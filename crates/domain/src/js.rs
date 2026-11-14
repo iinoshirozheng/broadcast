@@ -96,3 +96,14 @@ pub fn object_keys(object: &Map<String, Value>) -> Vec<&str> {
         .chain(object.keys().map(String::as_str).filter(|key| index(key).is_none()))
         .collect()
 }
+
+/// JavaScript truthiness of a JSON value.
+pub fn truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
+        Value::String(text) => !text.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}

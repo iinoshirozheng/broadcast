@@ -72,8 +72,9 @@ so packaging infrastructure is edited only once.
         device workspaces, development contexts, host runtime, trusted-origin and
         launcher modes (`test/server.test.mjs` and `test/project-readme.test.mjs` run
         against the binary through `test/helpers/native-server.mjs`)
-  - [ ] client storage, Codex thread progress, cloud session and project mappings
-  - [ ] cloud companion: config, proxy, `/api/events` WebSocket bridge
+  - [x] client storage, Codex thread progress, cloud session and project mappings
+  - [x] cloud companion: config, proxy, `/api/events` WebSocket bridge (the native
+        harness serves `remoteFetch` stubs from a loopback upstream)
   - [ ] Jira configuration and sync
   - [ ] local AI chat
 - [ ] Phase 4 — `agents` (runners, process tree)

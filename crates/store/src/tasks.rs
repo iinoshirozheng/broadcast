@@ -65,6 +65,16 @@ impl Store {
         get_task(&self.connection(), id)
     }
 
+    /// `hasAiChatThreadProjectConflict`: an AI conversation started from this issue belongs to another project.
+    pub fn has_ai_chat_project_conflict(&self, issue: &str, project_id: &str) -> Result<bool> {
+        Ok(self.connection().query_row(
+            "SELECT EXISTS (SELECT 1 FROM ai_chat_threads
+               WHERE (origin_issue_id = ?1 OR origin_issue_identifier = ?1) AND origin_project_id != ?2)",
+            params![issue, project_id],
+            |row| row.get(0),
+        )?)
+    }
+
     /// `getTaskSource`: `None` when the task does not exist.
     pub fn get_task_source(&self, id: &str) -> Result<Option<&'static str>> {
         let source: Option<Option<String>> = self

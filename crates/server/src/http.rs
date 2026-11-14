@@ -205,7 +205,7 @@ fn is_media_type(value: &str) -> bool {
 pub fn api_error(error: &ApiError) -> Response {
     let mut payload = json!({ "code": error.code, "message": error.message });
     if let Some(details) = &error.details {
-        payload["details"] = details.clone();
+        payload["details"] = Value::clone(details);
     }
     json(error.status, &json!({ "error": payload }))
 }

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
+use broadcast_domain::js;
 use regex::Regex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -127,7 +128,7 @@ fn plan_statuses(name: Option<&str>, input: &str) -> Vec<Value> {
         Some("update_plan") => serde_json::from_str::<Value>(input)
             .ok()
             .and_then(|input| input.get("plan")?.as_array().cloned())
-            .map(|plan| plan.iter().map(|item| item["status"].clone()).filter(truthy).collect())
+            .map(|plan| plan.iter().map(|item| item["status"].clone()).filter(js::truthy).collect())
             .unwrap_or_default(),
         Some("exec") => input
             .rfind("tools.update_plan(")
@@ -137,19 +138,9 @@ fn plan_statuses(name: Option<&str>, input: &str) -> Vec<Value> {
     }
 }
 
-fn truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(value) => *value,
-        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(_) | Value::Object(_) => true,
-    }
-}
-
 /// A requested thread id without its `local:` or `cloud:` prefix.
 pub fn strip_thread_prefix(value: &str) -> &str {
-    let value = broadcast_domain::js::trim(value);
+    let value = js::trim(value);
     ["local:", "cloud:"]
         .iter()
         .find_map(|prefix| value.get(..prefix.len()).filter(|head| head.eq_ignore_ascii_case(prefix)).map(|_| &value[prefix.len()..]))

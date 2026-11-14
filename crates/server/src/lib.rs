@@ -30,6 +30,7 @@ pub(crate) struct App {
     events: EventHub,
     host: host::Host,
     cloud: cloud::config::ConfigStore,
+    cloud_proxy: cloud::proxy::Proxy,
     client_storage: client_storage::ClientStorage,
     codex_sessions: codex::progress::Sessions,
     config: Config,
@@ -60,6 +61,7 @@ impl Server {
             events: EventHub::new(),
             host: host::Host::default(),
             cloud: cloud::config::ConfigStore::new(data.join("cloud-companion.json")),
+            cloud_proxy: cloud::proxy::Proxy::new()?,
             client_storage: client_storage::ClientStorage::new(data.join("client-storage.json")),
             codex_sessions: codex::progress::Sessions::new(&config.codex_home),
             config,
@@ -68,10 +70,12 @@ impl Server {
     }
 
     /// Serves until `shutdown` resolves, then ends open event streams so graceful shutdown can finish.
-    /// The trust gate wraps the router because it rewrites launcher-prefixed paths before routing.
+    /// The trust gate wraps the router because it rewrites launcher-prefixed paths before routing;
+    /// inside it, cloud mode diverts business APIs to the cloud board.
     pub async fn serve(self, listener: TcpListener, shutdown: impl Future<Output = ()> + Send + 'static) -> std::io::Result<()> {
         let app = self.app;
-        let service = middleware::from_fn_with_state(Arc::clone(&app), trust::guard).layer(routes::router(Arc::clone(&app)));
+        let routes = middleware::from_fn_with_state(Arc::clone(&app), cloud::proxy::route).layer(routes::router(Arc::clone(&app)));
+        let service = middleware::from_fn_with_state(Arc::clone(&app), trust::guard).layer(routes);
         axum::serve(listener, ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service))
             .with_graceful_shutdown(async move {
                 shutdown.await;
