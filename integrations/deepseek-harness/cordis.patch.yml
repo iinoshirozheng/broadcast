@@ -1,0 +1,3 @@
+- insert:
+    - id: broadcast
+      name: dsh-broadcast

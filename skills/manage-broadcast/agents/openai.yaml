@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Broadcast"
+  short_description: "Manage projects and issues with broadcast CLI"
+  default_prompt: "Manage the referenced broadcast issue with broadcast and keep its status synchronized."

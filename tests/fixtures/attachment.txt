@@ -1,0 +1,1 @@
+Broadcast E2E attachment fixture
