@@ -9,6 +9,7 @@ mod events;
 mod files;
 mod host;
 mod http;
+mod jira;
 mod routes;
 mod static_files;
 mod trust;
@@ -32,6 +33,7 @@ pub(crate) struct App {
     cloud: cloud::config::ConfigStore,
     cloud_proxy: cloud::proxy::Proxy,
     client_storage: client_storage::ClientStorage,
+    jira: jira::Jira,
     codex_sessions: codex::progress::Sessions,
     config: Config,
 }
@@ -63,6 +65,7 @@ impl Server {
             cloud: cloud::config::ConfigStore::new(data.join("cloud-companion.json")),
             cloud_proxy: cloud::proxy::Proxy::new()?,
             client_storage: client_storage::ClientStorage::new(data.join("client-storage.json")),
+            jira: jira::Jira::new(data.join("jira-connection.json"))?,
             codex_sessions: codex::progress::Sessions::new(&config.codex_home),
             config,
         };

@@ -81,6 +81,19 @@ pub fn decode_uri_component(value: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
+/// `encodeURIComponent`: everything but `A-Z a-z 0-9 - _ . ! ~ * ' ( )` as percent-encoded UTF-8.
+pub fn encode_uri_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 /// `Object.keys` order: array-index keys ascending, then the rest in insertion order.
 pub fn object_keys(object: &Map<String, Value>) -> Vec<&str> {
     let index = |key: &str| -> Option<u32> {

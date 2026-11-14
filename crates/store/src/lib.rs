@@ -5,6 +5,7 @@
 
 mod attachments;
 mod comments;
+mod jira;
 mod projects;
 mod readme;
 mod relations;
@@ -19,6 +20,7 @@ use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 
 pub use attachments::NewAttachment;
+pub use jira::{JiraActor, JiraTask};
 pub use tasks::DeletedTask;
 
 const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!("../../../db/migrations/0001_initial.sql"))];
@@ -47,7 +49,7 @@ impl Store {
 }
 
 /// `new Date().toISOString()`.
-fn now() -> String {
+pub fn now() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 

@@ -4,6 +4,7 @@ mod attachments;
 mod client_storage;
 mod comments;
 mod device;
+mod jira;
 mod local;
 mod projects;
 mod readme;
@@ -54,6 +55,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/local/codex-thread-progress", any(local::codex_thread_progress))
         .route("/api/local/cloud-session", any(local::cloud_session))
         .route("/api/local/project-mappings/{id}", any(local::project_mapping))
+        .route("/api/local/jira-connection", any(jira::connection))
+        .route("/api/local/jira-connection/sync", any(jira::sync))
         .fallback(fallback)
         .with_state(app)
 }

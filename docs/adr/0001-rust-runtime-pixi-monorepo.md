@@ -75,7 +75,7 @@ so packaging infrastructure is edited only once.
   - [x] client storage, Codex thread progress, cloud session and project mappings
   - [x] cloud companion: config, proxy, `/api/events` WebSocket bridge (the native
         harness serves `remoteFetch` stubs from a loopback upstream)
-  - [ ] Jira configuration and sync
+  - [x] Jira configuration, sync and task write-through (verified against a fake Jira server: identical requests and saved config)
   - [ ] local AI chat
 - [ ] Phase 4 — `agents` (runners, process tree)
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node

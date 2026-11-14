@@ -130,6 +130,14 @@ pub async fn read_body(request: Request, limit: usize, too_large: &str) -> Resul
     to_bytes(request.into_body(), limit).await.map_err(|_| error().into())
 }
 
+/// `assertEmptyRequestBody`: `route` (e.g. `POST /api/...`) takes no body.
+pub async fn assert_empty_body(request: Request, route: &str) -> Result<()> {
+    if read_body(request, JSON_BODY_LIMIT, "Request body cannot exceed 1 MiB").await?.is_empty() {
+        return Ok(());
+    }
+    Err(ApiError::new(400, "INVALID_BODY", format!("{route} does not accept a request body")).into())
+}
+
 /// `readJson`: `application/json`, at most 1 MiB, non-empty, valid JSON.
 pub async fn read_json(request: Request) -> Result<Value> {
     read_json_limit(request, JSON_BODY_LIMIT, "Request body cannot exceed 1 MiB").await
