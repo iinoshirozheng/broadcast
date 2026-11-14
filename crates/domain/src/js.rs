@@ -45,6 +45,31 @@ pub fn safe_integer(value: Option<&Value>) -> Option<i64> {
         .then_some(float as i64)
 }
 
+/// `Number(string)`: NaN when the text is not a numeric literal.
+pub fn string_to_number(value: &str) -> f64 {
+    let text = trim(value);
+    if text.is_empty() {
+        return 0.0;
+    }
+    for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
+        if let Some(digits) = text.get(..2).filter(|head| head.eq_ignore_ascii_case(prefix)).and(text.get(2..)).filter(|digits| !digits.is_empty()) {
+            return digits.chars().try_fold(0.0, |total, c| Some(total * f64::from(radix) + f64::from(c.to_digit(radix)?))).unwrap_or(f64::NAN);
+        }
+    }
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if unsigned == "Infinity" {
+        return if text.starts_with('-') { f64::NEG_INFINITY } else { f64::INFINITY };
+    }
+    let literal = unsigned.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+        && unsigned.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
+    if literal { text.parse().unwrap_or(f64::NAN) } else { f64::NAN }
+}
+
+/// `Number.isSafeInteger`.
+pub fn is_safe_integer(value: f64) -> bool {
+    value.is_finite() && value.trunc() == value && value.abs() <= MAX_SAFE_INTEGER as f64
+}
+
 /// A JavaScript number as JSON: integral values print without a fraction.
 pub fn number(value: f64) -> Value {
     if value.trunc() == value && value.abs() <= MAX_SAFE_INTEGER as f64 {

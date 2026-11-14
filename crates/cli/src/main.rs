@@ -1,78 +1,66 @@
-use std::path::PathBuf;
-use std::time::Duration;
+//! `broadcast`: read and write the board from a terminal or an agent. Results print as one JSON
+//! line on stdout; failures print `{schemaVersion, error}` on stderr with a non-zero exit code.
 
-use broadcast_agents::claude;
-use clap::{Parser, Subcommand};
-use url::Url;
+mod args;
+mod client;
+mod commands;
+mod error;
+mod runner;
+mod secret;
+mod target;
 
-#[derive(Parser)]
-#[command(name = "broadcast", version)]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
+use serde_json::{Map, Value};
+
+use crate::error::{CliError, Result, usage};
+
+pub const SCHEMA_VERSION: i32 = 2;
+
+enum Outcome {
+    Result(Map<String, Value>),
+    Help(&'static str),
+    /// A runner stopped by a shutdown signal.
+    Interrupted,
 }
 
-#[derive(Subcommand)]
-enum Command {
-    /// Run an agent that works issues on the board.
-    #[command(subcommand)]
-    Runner(Runner),
-}
-
-#[derive(Subcommand)]
-enum Runner {
-    /// Work issues delegated to Claude Agent or mentioning @claude with `claude -p`.
-    Claude {
-        #[arg(long, env = "BROADCAST_URL", default_value = "http://127.0.0.1:47823")]
-        url: Url,
-        /// Working directory for `claude` (default: the current directory).
-        #[arg(long)]
-        cwd: Option<PathBuf>,
-        #[arg(long, default_value = "acceptEdits")]
-        permission_mode: String,
-        /// Seconds between board polls.
-        #[arg(long, default_value = "5", value_parser = seconds)]
-        interval: Duration,
-    },
-}
-
-fn seconds(value: &str) -> Result<Duration, String> {
-    let seconds: f64 = value.parse().map_err(|_| format!("'{value}' is not a number"))?;
-    Duration::try_from_secs_f64(seconds).map_err(|error| error.to_string())
-}
-
-fn main() -> anyhow::Result<()> {
-    let Command::Runner(Runner::Claude { url, cwd, permission_mode, interval }) = Cli::parse().command;
-    let cwd = match cwd {
-        Some(cwd) => cwd,
-        None => std::env::current_dir()?,
+fn main() {
+    let argv: Vec<String> = std::env::args_os().skip(1).map(|arg| arg.to_string_lossy().into_owned()).collect();
+    let outcome = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError::new(error.to_string(), "INTERNAL_ERROR", 1))
+        .and_then(|runtime| runtime.block_on(run(&argv)));
+    let code = match outcome {
+        Ok(Outcome::Result(mut result)) => {
+            result.insert("schemaVersion".into(), SCHEMA_VERSION.into());
+            println!("{}", Value::Object(result));
+            0
+        }
+        Ok(Outcome::Help(help)) => {
+            println!("{help}");
+            0
+        }
+        Ok(Outcome::Interrupted) => 130,
+        Err(error) => {
+            eprintln!("{}", error.to_json());
+            error.exit_code()
+        }
     };
-    let options = claude::Options { url, cwd, permission_mode, interval };
-    // The runner future (and with it a running `claude`) is dropped once the select ends.
-    tokio::runtime::Runtime::new()?.block_on(async {
-        tokio::select! {
-            result = claude::run(options) => result,
-            () = shutdown_signal() => Ok(()),
-        }
-    })?;
-    std::process::exit(130)
+    std::process::exit(code)
 }
 
-#[cfg(unix)]
-async fn shutdown_signal() {
-    use tokio::signal::unix::{SignalKind, signal};
-    match signal(SignalKind::terminate()) {
-        Ok(mut terminate) => tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = terminate.recv() => {}
-        },
-        Err(_) => {
-            let _ = tokio::signal::ctrl_c().await;
-        }
+async fn run(argv: &[String]) -> Result<Outcome> {
+    let parsed = args::parse(argv)?;
+    let command = parsed.command();
+    if parsed.flag("help") {
+        return match args::help(&command) {
+            Some(help) if parsed.operands.is_empty() && parsed.options.len() == 1 => Ok(Outcome::Help(help)),
+            _ => Err(usage("Help is available for broadcast, broadcast issue, and broadcast comment list")),
+        };
     }
-}
-
-#[cfg(not(unix))]
-async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    let allowed = args::allowed_options(&command).ok_or_else(|| usage(args::UNKNOWN_COMMAND))?;
+    parsed.validate_options(&allowed)?;
+    if command == "runner claude" {
+        return runner::claude(&parsed).await.map(|()| Outcome::Interrupted);
+    }
+    commands::execute(&parsed, &command).await.map(Outcome::Result)
 }

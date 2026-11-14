@@ -87,7 +87,12 @@ so packaging infrastructure is edited only once.
       `runner/claude-runner.mjs` on one scenario run against the native server). The
       process-group signalling stays in the server, its only user.
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
-- [ ] Phase 6 — Rust CLI replaces `cli/broadcast.mjs` and `runner/claude-runner.mjs`
+- [x] Phase 6 — the `broadcast` binary carries every `cli/broadcast.mjs` command with the
+      same JSON results, error codes, messages, exit codes and help text (120 argument
+      cases run through both CLIs against two native servers print the same output;
+      only Node's and Rust's wording of underlying io/transport `details` differs).
+      Endpoint discovery, the WSL `curl.exe` transport and the hidden shared-key
+      prompt (crossterm) are ported; the JS files go at cutover.
 - [ ] Phase 7 — cloud on workers-rs (spike: Durable Object WebSocket hibernation first)
 - [ ] Cutover — `apps/*` moves, pnpm workspace, `packages/api-types`, biome, CI on
       setup-pixi with path-aware lanes, delete obsolete JS, scripts,

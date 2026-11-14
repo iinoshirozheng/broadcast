@@ -6,7 +6,6 @@ use broadcast_domain::js;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tokio::sync::Mutex;
-use url::Url;
 
 use crate::files;
 
@@ -67,24 +66,9 @@ impl CloudConfig {
 
 /// `normalizeCloudUrl`: an HTTPS origin, or loopback HTTP for development.
 pub fn normalize_url(value: Option<&Value>) -> Result<String, ConfigError> {
-    let url = value
-        .and_then(Value::as_str)
-        .and_then(|value| Url::parse(value).ok())
-        .ok_or_else(|| ConfigError::new("INVALID_CLOUD_URL", "Cloud broadcast URL must be a valid URL"))?;
-    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-    let scheme_ok = url.scheme() == "https" || (url.scheme() == "http" && loopback);
-    let exact = url.username().is_empty()
-        && url.password().is_none()
-        && url.path() == "/"
-        && url.query().is_none_or(str::is_empty)
-        && url.fragment().is_none_or(str::is_empty);
-    if !scheme_ok || !exact {
-        return Err(ConfigError::new(
-            "INVALID_CLOUD_URL",
-            "Cloud broadcast URL must be an HTTPS origin (loopback HTTP is allowed for development)",
-        ));
-    }
-    Ok(url.origin().ascii_serialization())
+    let invalid = |message: &str| ConfigError::new("INVALID_CLOUD_URL", message);
+    let value = value.and_then(Value::as_str).ok_or_else(|| invalid("Cloud broadcast URL must be a valid URL"))?;
+    broadcast_domain::cloud::origin(value).map_err(invalid)
 }
 
 fn credentials(actor_name: Option<&Value>, shared_key: Option<&Value>) -> Result<(String, String), ConfigError> {
