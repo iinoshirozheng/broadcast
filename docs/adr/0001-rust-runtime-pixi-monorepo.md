@@ -44,7 +44,7 @@ crates/
   config/         data directory, env, ports
   store/          rusqlite store + migrations
   server/         axum HTTP/SSE/WebSocket API, static web serving
-  agents/         Claude/pi/agy/grok runners, process tree
+  agents/         agent runners (Claude)
   codex/          Codex executable discovery, CDP injector (inject script via include_str!)
   cli/            `broadcast` CLI (clap), includes `broadcast runner <agent>`
 packages/
@@ -82,7 +82,10 @@ so packaging infrastructure is edited only once.
         `test/ai-chat-runner.test.mjs` run against the binary); the server prints
         LAN addresses when bound to `0.0.0.0`. The inherited `BROADCAST_LISTEN_FD`
         is not ported: the desktop embeds the server in Phase 5.
-- [ ] Phase 4 — `agents` (runners, process tree)
+- [x] Phase 4 — `agents`: the Claude runner, run as `broadcast runner claude` from the new
+      `cli` crate (same `claude` calls, comments, moves and log lines as
+      `runner/claude-runner.mjs` on one scenario run against the native server). The
+      process-group signalling stays in the server, its only user.
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
 - [ ] Phase 6 — Rust CLI replaces `cli/broadcast.mjs` and `runner/claude-runner.mjs`
 - [ ] Phase 7 — cloud on workers-rs (spike: Durable Object WebSocket hibernation first)
