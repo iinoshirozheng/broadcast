@@ -1,0 +1,29 @@
+[package]
+name = "broadcast-codex"
+description = "Codex desktop discovery, process management and the Broadcast CDP injector"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures-util.workspace = true
+hmac.workspace = true
+regex.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+rusqlite = { workspace = true, features = ["backup"] }
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+command-fds = { version = "0.3", features = ["tokio"] }
+nix.workspace = true
+
+[lints]
+workspace = true

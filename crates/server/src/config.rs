@@ -49,7 +49,7 @@ impl Config {
             static_dir: path("BROADCAST_STATIC_DIR", "dist/web")?,
             skill_path: path("BROADCAST_SKILL_PATH", "skills/manage-broadcast/SKILL.md")?,
             codex_home,
-            codex_executable: crate::codex::executable(variable("CODEX_EXECUTABLE").as_deref()),
+            codex_executable: broadcast_codex::executable(variable("CODEX_EXECUTABLE").as_deref(), None),
             host: host(variable("BROADCAST_HOST").as_deref().unwrap_or("0.0.0.0"))?,
             port: port(variable("BROADCAST_PORT").as_deref().unwrap_or("47823"))?,
             trusted_origins: trusted_origins(variable(TRUSTED_ORIGINS_ENV).as_deref())?,

@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
-use tokio::process::Command;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(4);
 
@@ -16,54 +15,6 @@ pub fn state_path(codex_home: &Path) -> PathBuf {
 
 pub fn processes_path(codex_home: &Path) -> PathBuf {
     codex_home.join("process_manager").join("chat_processes.json")
-}
-
-fn executable_file(candidate: PathBuf) -> Option<String> {
-    let metadata = std::fs::metadata(&candidate).ok()?;
-    #[cfg(unix)]
-    let runnable = {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-    };
-    #[cfg(not(unix))]
-    let runnable = metadata.is_file();
-    runnable.then(|| candidate.to_string_lossy().into_owned())
-}
-
-/// `resolveCodexExecutable`: `CODEX_EXECUTABLE`, the CLI on `PATH`, then the macOS app bundles.
-pub fn executable(explicit: Option<&str>) -> String {
-    if let Some(explicit) = explicit.map(str::trim).filter(|value| !value.is_empty()) {
-        return explicit.to_owned();
-    }
-    let name = if cfg!(windows) { "codex.exe" } else { "codex" };
-    let on_path = std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .filter(|directory| !directory.as_os_str().is_empty())
-        .find_map(|directory| executable_file(directory.join(name)));
-    if let Some(found) = on_path {
-        return found;
-    }
-    if cfg!(target_os = "macos") {
-        let home = std::env::home_dir().unwrap_or_default();
-        for directory in [PathBuf::from("/Applications"), home.join("Applications")] {
-            for app in ["ChatGPT.app", "Codex.app"] {
-                if let Some(found) = executable_file(directory.join(app).join("Contents/Resources/codex")) {
-                    return found;
-                }
-            }
-        }
-    }
-    "codex".to_owned()
-}
-
-/// A command whose environment drops the launcher's `BROADCAST_*` variables.
-pub fn command(program: &str) -> Command {
-    let mut command = Command::new(program);
-    command.env_clear().envs(std::env::vars_os().filter(|(name, _)| {
-        !name.to_str().is_some_and(|name| name.starts_with("BROADCAST_"))
-    }));
-    command
 }
 
 async fn read_json(path: &Path) -> Option<Value> {
@@ -138,7 +89,7 @@ pub async fn resolve_workspace(
 }
 
 async fn git(args: &[&str]) -> Option<String> {
-    let mut command = command("git");
+    let mut command = broadcast_codex::command("git");
     command.args(args).kill_on_drop(true);
     let output = tokio::time::timeout(GIT_TIMEOUT, command.output()).await.ok()?.ok()?;
     if !output.status.success() {

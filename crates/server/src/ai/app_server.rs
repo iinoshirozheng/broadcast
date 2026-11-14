@@ -183,7 +183,7 @@ impl LocalAppServer {
         if let Some(connection) = current.as_ref().filter(|c| !c.terminated.load(Ordering::SeqCst)) {
             return Ok(Arc::clone(connection));
         }
-        let mut command = crate::codex::command(&self.executable);
+        let mut command = broadcast_codex::command(&self.executable);
         command
             .args(["app-server", "--stdio"])
             .stdin(std::process::Stdio::piped())
@@ -307,15 +307,25 @@ pub fn exit_label(status: &std::process::ExitStatus) -> String {
     status.code().map_or_else(|| "null".to_owned(), |code| code.to_string())
 }
 
-/// `CodexHostAppServer`: a remote host's app-server, reached through the desktop host bridge.
-/// The bridge belongs to the desktop launcher; a server started without one reports it unavailable.
+/// `CodexHostAppServer`: a remote host's app-server, reached through the desktop launcher's host
+/// bridge. A server started without a launcher reports the bridge unavailable.
 pub struct HostAppServer {
     pub host_id: String,
+    pub requests: mpsc::UnboundedSender<broadcast_codex::HostRequest>,
 }
 
 impl HostAppServer {
-    pub async fn request(&self, _method: &str, _params: Value) -> anyhow::Result<Value> {
-        bail!("Codex host bridge is unavailable")
+    pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+        let (reply, response) = oneshot::channel();
+        let request = broadcast_codex::HostRequest { host_id: self.host_id.clone(), method: method.to_owned(), params, reply };
+        if self.requests.send(request).is_err() {
+            bail!("Codex host bridge is unavailable");
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, response).await {
+            Err(_) => bail!("Codex host request '{method}' timed out"),
+            Ok(Err(_)) => bail!("Codex host bridge closed"),
+            Ok(Ok(result)) => result.map_err(|error| anyhow::anyhow!("Codex host rejected '{method}': {error:#}")),
+        }
     }
 }
 

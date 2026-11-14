@@ -339,7 +339,7 @@ pub struct TurnProcess {
 /// `spawnCodexTurn`: starts the owner and hands it the prompt.
 pub async fn spawn_turn(executable: &str, args: &[String], prompt: &str) -> std::io::Result<TurnProcess> {
     let owner = std::env::current_exe()?;
-    let mut command = crate::codex::command(&owner.to_string_lossy());
+    let mut command = broadcast_codex::command(&owner);
     command
         .arg(TURN_OWNER_ARG)
         .arg(executable)

@@ -14,6 +14,7 @@ publish = false
 [workspace.dependencies]
 broadcast-domain = { path = "crates/domain" }
 broadcast-agents = { path = "crates/agents" }
+broadcast-codex = { path = "crates/codex" }
 broadcast-store = { path = "crates/store" }
 
 anyhow = "1"

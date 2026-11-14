@@ -15,7 +15,6 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 
 use super::app_server::{self, AppServer};
 use super::exec::{self, Line};
-use crate::codex;
 
 const CATALOG_TIMEOUT: Duration = Duration::from_secs(10);
 const CATALOG_MAX_BUFFER: usize = 2 * 1024 * 1024;
@@ -245,7 +244,7 @@ pub fn is_missing_cli(error: &anyhow::Error) -> bool {
 /// `discoverAiCatalog`: `codex debug models` and a one-off app-server skill listing.
 pub async fn discover(executable: &str, workspace: &str) -> anyhow::Result<Catalog> {
     let models = async {
-        let mut command = codex::command(executable);
+        let mut command = broadcast_codex::command(executable);
         command
             .args(["debug", "models"])
             .current_dir(workspace)
@@ -282,7 +281,7 @@ pub async fn discover_app_server(server: &AppServer, workspace: &str) -> anyhow:
 
 /// `listSkills`: a short-lived `codex app-server --stdio` in the workspace that lists its skills.
 async fn list_skills_once(executable: &str, workspace: &str) -> anyhow::Result<Vec<Value>> {
-    let mut command = codex::command(executable);
+    let mut command = broadcast_codex::command(executable);
     command
         .args(["app-server", "--stdio"])
         .current_dir(workspace)

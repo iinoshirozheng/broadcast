@@ -182,6 +182,7 @@ pub struct AiChat {
     executable: String,
     local: Runtime,
     local_server: Arc<LocalAppServer>,
+    host_requests: mpsc::UnboundedSender<broadcast_codex::HostRequest>,
     remote: Mutex<HashMap<String, Runtime>>,
     active: Mutex<HashMap<String, Arc<Active>>>,
     listeners: broadcast::Sender<StreamMessage>,
@@ -389,15 +390,19 @@ fn exit_failure(status: &ExitStatus) -> Option<String> {
 }
 
 impl AiChat {
-    /// The service and the receiver for its app-server notifications, which [`AiChat::consume`] drains.
-    pub fn new(executable: String, codex_home: PathBuf) -> (Self, mpsc::UnboundedReceiver<Notification>) {
-        let (notifications, receiver) = mpsc::unbounded_channel();
+    /// The service; its app-server notifications go to `notifications`, which [`AiChat::consume`]
+    /// drains, and remote hosts' requests to the launcher's host bridge.
+    pub fn new(
+        executable: String,
+        codex_home: PathBuf,
+        notifications: app_server::Notifications,
+        host_requests: mpsc::UnboundedSender<broadcast_codex::HostRequest>,
+    ) -> Self {
         let local_server = Arc::new(LocalAppServer::new(executable.clone(), notifications));
         let server = AppServer::Local(Arc::clone(&local_server));
         let local = Runtime { composer: Arc::new(ComposerCatalog::new(server.clone(), Some(codex_home))), server };
         let (listeners, _) = broadcast::channel(1024);
-        let chat = Self { executable, local, local_server, remote: Mutex::default(), active: Mutex::default(), listeners };
-        (chat, receiver)
+        Self { executable, local, local_server, host_requests, remote: Mutex::default(), active: Mutex::default(), listeners }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<StreamMessage> {
@@ -419,7 +424,7 @@ impl AiChat {
         lock(&self.remote)
             .entry(target.codex_host_id.clone())
             .or_insert_with(|| {
-                let server = AppServer::Host(Arc::new(HostAppServer { host_id: target.codex_host_id.clone() }));
+                let server = AppServer::Host(Arc::new(HostAppServer { host_id: target.codex_host_id.clone(), requests: self.host_requests.clone() }));
                 Runtime { composer: Arc::new(ComposerCatalog::new(server.clone(), None)), server }
             })
             .clone()

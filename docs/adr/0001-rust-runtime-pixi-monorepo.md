@@ -87,6 +87,17 @@ so packaging infrastructure is edited only once.
       `runner/claude-runner.mjs` on one scenario run against the native server). The
       process-group signalling stays in the server, its only user.
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
+  - [x] 5a — the kept-alive launcher (`--launch --watch`): one browser-level CDP
+        connection over `--remote-debugging-port` or `--remote-debugging-pipe`, userscript
+        injection and reload handling, the host bridge (binding requests, frame loading,
+        app-server requests both ways), update recovery and cleanup. The server takes
+        app-server requests for remote hosts through `Server::host_bridge`.
+        `crates/server/examples/codex.rs` runs both against a fake Codex page in a cloned
+        headless Chrome, over the reuse-port and pipe paths. The one-shot refresh,
+        screenshot and daemon modes go at cutover.
+  - [ ] 5b — task conversations; 5c — automation and quota policies
+  - [ ] 5d — the desktop embeds server and launcher, writes `launcher-runtime.json`,
+        Windows launch paths, stops bundling Node
 - [x] Phase 6 — the `broadcast` binary carries every `cli/broadcast.mjs` command with the
       same JSON results, error codes, messages, exit codes and help text (120 argument
       cases run through both CLIs against two native servers print the same output;
