@@ -120,3 +120,11 @@ pub fn truthy(value: &Value) -> bool {
         Value::Array(_) | Value::Object(_) => true,
     }
 }
+
+/// `String.prototype.localeCompare` under the root collation, approximated: letters compare
+/// case-insensitively first, then lowercase sorts before uppercase.
+pub fn locale_compare(left: &str, right: &str) -> std::cmp::Ordering {
+    left.to_lowercase()
+        .cmp(&right.to_lowercase())
+        .then_with(|| left.chars().map(char::is_uppercase).cmp(right.chars().map(char::is_uppercase)))
+}

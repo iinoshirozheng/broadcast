@@ -20,6 +20,7 @@ export async function startNativeServer(binary, directory, options, listenOption
     version: "BROADCAST_VERSION",
     skillPath: "BROADCAST_SKILL_PATH",
     staticDirectory: "BROADCAST_STATIC_DIR",
+    codexExecutable: "CODEX_EXECUTABLE",
   };
   for (const [option, variable] of Object.entries(variables)) {
     if (options[option] !== undefined) env[variable] = options[option];
@@ -63,6 +64,28 @@ export async function startNativeServer(binary, directory, options, listenOption
       get database() {
         database ??= new DatabaseSync(path.join(directory, "broadcast.sqlite"));
         return database;
+      },
+      // Seeds a thread row the way the in-process database API does.
+      createAiChatThread(input) {
+        const timestamp = new Date().toISOString();
+        this.database.prepare(`
+          INSERT INTO ai_chat_threads (
+            id, title, status, origin_project_id, origin_project_name, origin_workspace_path,
+            model, reasoning_effort, sandbox, created_at, updated_at
+          ) VALUES (?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          input.id,
+          input.title,
+          input.origin.projectId,
+          input.origin.projectName,
+          input.origin.workspacePath,
+          input.model,
+          input.reasoningEffort,
+          input.sandbox,
+          timestamp,
+          timestamp,
+        );
+        return { id: input.id };
       },
     },
   };

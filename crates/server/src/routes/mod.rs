@@ -1,5 +1,6 @@
 //! Route table. Handlers match methods themselves so the 405 body and `allow` header match the JS API.
 
+mod ai;
 mod attachments;
 mod client_storage;
 mod comments;
@@ -57,6 +58,17 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/local/project-mappings/{id}", any(local::project_mapping))
         .route("/api/local/jira-connection", any(jira::connection))
         .route("/api/local/jira-connection/sync", any(jira::sync))
+        .route("/api/local/ai/catalog", any(ai::catalog))
+        .route("/api/local/ai/composer/candidates", any(ai::candidates))
+        .route("/api/local/ai/composer/rebind", any(ai::rebind))
+        .route("/api/local/ai/threads", any(ai::threads))
+        .route("/api/local/ai/threads/{id}", any(ai::thread))
+        .route("/api/local/ai/threads/{id}/summary", any(ai::thread_summary))
+        .route("/api/local/ai/threads/{id}/events", any(ai::thread_events))
+        .route("/api/local/ai/threads/{id}/turns", any(ai::thread_turns))
+        .route("/api/local/ai/threads/{id}/compact", any(ai::thread_compact))
+        .route("/api/local/ai/runs/{id}/interrupt", any(ai::interrupt))
+        .route("/api/local/projects/{id}/summary", any(ai::project_summary))
         .fallback(fallback)
         .with_state(app)
 }

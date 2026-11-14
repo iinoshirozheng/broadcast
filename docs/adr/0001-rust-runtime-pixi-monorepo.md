@@ -67,7 +67,7 @@ so packaging infrastructure is edited only once.
 - [x] Phase 3 — `server` vertical slice: `/health`, projects, tasks, events (SSE),
       LAN trust guard; serves web dist; parity against `test/server.test.mjs` with
       `BROADCAST_SERVER_BIN=target/debug/broadcast-server`
-- [ ] Phase 3b — remaining routes
+- [x] Phase 3b — remaining routes
   - [x] comments, attachments, relations, activities, tree, labels, readme, meta,
         device workspaces, development contexts, host runtime, trusted-origin and
         launcher modes (`test/server.test.mjs` and `test/project-readme.test.mjs` run
@@ -76,7 +76,12 @@ so packaging infrastructure is edited only once.
   - [x] cloud companion: config, proxy, `/api/events` WebSocket bridge (the native
         harness serves `remoteFetch` stubs from a loopback upstream)
   - [x] Jira configuration, sync and task write-through (verified against a fake Jira server: identical requests and saved config)
-  - [ ] local AI chat
+  - [x] local AI chat: catalog, threads, turns over `codex exec` / app-server, SSE
+        events, composer candidates and rebind, daily project summaries
+        (`test/ai-chat-server.test.mjs` and the rebind case of
+        `test/ai-chat-runner.test.mjs` run against the binary); the server prints
+        LAN addresses when bound to `0.0.0.0`. The inherited `BROADCAST_LISTEN_FD`
+        is not ported: the desktop embeds the server in Phase 5.
 - [ ] Phase 4 — `agents` (runners, process tree)
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
 - [ ] Phase 6 — Rust CLI replaces `cli/broadcast.mjs` and `runner/claude-runner.mjs`

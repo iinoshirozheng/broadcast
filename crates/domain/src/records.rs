@@ -374,3 +374,81 @@ pub fn comment_conversation_title(body: Option<&str>) -> String {
     let compact = first.split(js::is_whitespace).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ");
     if js::len(&compact) > 80 { format!("{}…", js::prefix(&compact, 77)) } else { compact }
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatRun {
+    pub id: String,
+    pub thread_id: String,
+    pub status: String,
+    pub exit_code: Option<i64>,
+    pub error: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+}
+
+/// Where a conversation runs: the board project, its workspace and, for a Codex
+/// project on another host, that host's identity.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatOrigin {
+    pub project_id: String,
+    pub project_name: String,
+    pub workspace_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_project_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub codex_host_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_identifier: Option<String>,
+}
+
+impl AiChatOrigin {
+    pub fn remote(&self) -> bool {
+        self.codex_project_kind.as_deref() == Some("remote")
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatTodo {
+    pub completed: usize,
+    pub total: usize,
+    pub event_id: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatThread {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub origin: AiChatOrigin,
+    pub codex_thread_id: Option<String>,
+    pub model: String,
+    pub reasoning_effort: String,
+    pub sandbox: String,
+    pub current_run: Option<AiChatRun>,
+    pub latest_todo: Option<AiChatTodo>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatEvent {
+    pub id: String,
+    pub thread_id: String,
+    pub run_id: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub role: String,
+    pub content: String,
+    pub data: Option<Value>,
+    pub created_at: String,
+}

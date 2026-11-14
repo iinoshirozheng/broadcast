@@ -8,7 +8,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Map, Value};
 use tokio::sync::broadcast;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
 use tokio_stream::wrappers::BroadcastStream;
 
 /// `None` ends every stream on shutdown.
@@ -58,13 +58,17 @@ impl EventHub {
             .take_while(Option::is_some)
             .filter_map(|message| message)
             .map(|(kind, data)| Event::default().event(kind).data(data));
-        let stream = tokio_stream::once(Event::default().comment("connected")).chain(changes).map(Ok::<_, Infallible>);
-        let keep_alive = KeepAlive::new().interval(Duration::from_secs(20)).text("keep-alive");
-        let mut response = Sse::new(stream).keep_alive(keep_alive).into_response();
-        let headers = response.headers_mut();
-        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream; charset=utf-8"));
-        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-transform"));
-        headers.insert(HeaderName::from_static("x-accel-buffering"), HeaderValue::from_static("no"));
-        response
+        sse(tokio_stream::once(Event::default().comment("connected")).chain(changes))
     }
+}
+
+/// An event stream with a 20 s keep-alive comment and the JS server's headers.
+pub fn sse(events: impl Stream<Item = Event> + Send + 'static) -> Response {
+    let keep_alive = KeepAlive::new().interval(Duration::from_secs(20)).text("keep-alive");
+    let mut response = Sse::new(events.map(Ok::<_, Infallible>)).keep_alive(keep_alive).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream; charset=utf-8"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-transform"));
+    headers.insert(HeaderName::from_static("x-accel-buffering"), HeaderValue::from_static("no"));
+    response
 }

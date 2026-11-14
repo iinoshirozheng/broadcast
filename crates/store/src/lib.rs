@@ -3,6 +3,7 @@
 //! One connection behind a mutex: SQLite serializes writers anyway, and every
 //! mutation runs in a `BEGIN IMMEDIATE` transaction.
 
+mod ai_chat;
 mod attachments;
 mod comments;
 mod jira;
@@ -19,6 +20,7 @@ use broadcast_domain::Result;
 use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 
+pub use ai_chat::{AiChatRunOutcome, AiChatThreadChanges, NewAiChatEvent, NewAiChatThread};
 pub use attachments::NewAttachment;
 pub use jira::{JiraActor, JiraTask};
 pub use tasks::DeletedTask;
@@ -40,6 +42,7 @@ impl Store {
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
         )?;
         MIGRATIONS.to_latest(&mut connection)?;
+        ai_chat::interrupt_abandoned_runs(&mut connection)?;
         Ok(Self { connection: Mutex::new(connection) })
     }
 

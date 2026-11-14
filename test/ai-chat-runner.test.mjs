@@ -17,6 +17,7 @@ import {
   parseComposerReferenceUri,
 } from "../shared/composer-reference.mjs";
 import { createBroadcastServer } from "../server/index.mjs";
+import { startNativeServer } from "./helpers/native-server.mjs";
 import { normalizeCodexEvent } from "../server/ai-chat-process.mjs";
 
 async function waitFor(predicate, timeout = 4_000) {
@@ -382,14 +383,18 @@ process.stdin.on("data", (chunk) => {
 });
 `);
   await chmod(executable, 0o755);
-  const app = createBroadcastServer({
-    dataDirectory: path.join(directory, "data"),
+  const dataDirectory = path.join(directory, "data");
+  const options = {
     codexExecutable: executable,
     codexStatePath: path.join(directory, "missing-codex-state.json"),
-  });
+  };
+  const native = process.env.BROADCAST_SERVER_BIN
+    ? await startNativeServer(process.env.BROADCAST_SERVER_BIN, dataDirectory, options, { host: "127.0.0.1" })
+    : null;
+  const app = native?.app ?? createBroadcastServer({ dataDirectory, ...options });
   try {
-    const address = await app.listen({ host: "127.0.0.1", port: 0 });
-    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const port = native?.port ?? (await app.listen({ host: "127.0.0.1", port: 0 })).port;
+    const baseUrl = `http://127.0.0.1:${port}`;
     const persistence = composerReferencePersistence("skill", "real-skill", "Real Skill");
     const slashCandidatesResponse = await fetch(
       `${baseUrl}/api/local/ai/composer/candidates?projectId=local&trigger=%2F&query=&surface=issue-description`,

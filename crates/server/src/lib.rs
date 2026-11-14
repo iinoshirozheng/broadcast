@@ -1,6 +1,7 @@
 //! HTTP API and web host for the Broadcast board, ported from `server/app.mjs`.
 
 mod actor;
+mod ai;
 mod client_storage;
 mod cloud;
 mod codex;
@@ -23,6 +24,7 @@ use broadcast_store::Store;
 use tokio::net::TcpListener;
 use tower::Layer;
 
+pub use ai::exec::{TURN_OWNER_ARG, turn_owner};
 pub use config::Config;
 use events::EventHub;
 
@@ -35,6 +37,8 @@ pub(crate) struct App {
     client_storage: client_storage::ClientStorage,
     jira: jira::Jira,
     codex_sessions: codex::progress::Sessions,
+    ai: ai::AiChat,
+    summary: ai::summary::ProjectSummaries,
     config: Config,
 }
 
@@ -52,12 +56,15 @@ impl App {
 
 pub struct Server {
     app: Arc<App>,
+    notifications: tokio::sync::mpsc::UnboundedReceiver<ai::app_server::Notification>,
 }
 
 impl Server {
     pub fn open(config: Config) -> anyhow::Result<Self> {
         let store = Store::open(&config.data_dir.join("broadcast.sqlite"))?;
         let data = &config.data_dir;
+        let (ai, notifications) = ai::AiChat::new(config.codex_executable.clone(), config.codex_home.clone());
+        let summary = ai::summary::ProjectSummaries::new(config.codex_executable.clone(), std::env::current_dir()?);
         let app = App {
             store,
             events: EventHub::new(),
@@ -67,23 +74,32 @@ impl Server {
             client_storage: client_storage::ClientStorage::new(data.join("client-storage.json")),
             jira: jira::Jira::new(data.join("jira-connection.json"))?,
             codex_sessions: codex::progress::Sessions::new(&config.codex_home),
+            ai,
+            summary,
             config,
         };
-        Ok(Self { app: Arc::new(app) })
+        Ok(Self { app: Arc::new(app), notifications })
     }
 
     /// Serves until `shutdown` resolves, then ends open event streams so graceful shutdown can finish.
     /// The trust gate wraps the router because it rewrites launcher-prefixed paths before routing;
     /// inside it, cloud mode diverts business APIs to the cloud board.
     pub async fn serve(self, listener: TcpListener, shutdown: impl Future<Output = ()> + Send + 'static) -> std::io::Result<()> {
-        let app = self.app;
+        let Self { app, notifications } = self;
+        tokio::spawn(ai::AiChat::consume(Arc::clone(&app), notifications));
+        ai::summary::ProjectSummaries::start(&app);
         let routes = middleware::from_fn_with_state(Arc::clone(&app), cloud::proxy::route).layer(routes::router(Arc::clone(&app)));
         let service = middleware::from_fn_with_state(Arc::clone(&app), trust::guard).layer(routes);
-        axum::serve(listener, ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service))
+        let stopping = Arc::clone(&app);
+        let served = axum::serve(listener, ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service))
             .with_graceful_shutdown(async move {
                 shutdown.await;
-                app.events.close();
+                stopping.events.close();
+                stopping.ai.end_streams();
             })
-            .await
+            .await;
+        app.ai.close(&app).await;
+        app.summary.close().await;
+        served
     }
 }

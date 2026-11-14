@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { createBroadcastServer } from "../server/index.mjs";
+import { startNativeServer } from "./helpers/native-server.mjs";
 import { AI_SANDBOX_MODES } from "../shared/domain.mjs";
 
 // The fake Codex CLI the fixture installs. Kept at module scope so the
@@ -53,16 +54,23 @@ async function createServerFixture(host = "127.0.0.1", { withCodex = true } = {}
   await writeFile(codexStatePath, JSON.stringify({
     "local-projects": { local: { rootPaths: [workspace] } },
   }));
-  const app = createBroadcastServer({
-    dataDirectory: directory,
+  const options = {
     codexExecutable,
     codexStatePath,
     skillPath: "/fixture/manage-broadcast/SKILL.md",
-  });
-  const address = await app.listen({ host, port: 0 });
+  };
+  let app;
+  let port;
+  if (process.env.BROADCAST_SERVER_BIN) {
+    ({ app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, options, { host }));
+  } else {
+    app = createBroadcastServer({ dataDirectory: directory, ...options });
+    ({ port } = await app.listen({ host, port: 0 }));
+  }
   return {
     app,
-    baseUrl: `http://127.0.0.1:${address.port}`,
+    port,
+    baseUrl: `http://127.0.0.1:${port}`,
     directory,
     workspace,
     async close() {
@@ -379,7 +387,7 @@ test("local AI routes reject private-LAN clients while ordinary API routes remai
     return;
   }
   const fixture = await createServerFixture("0.0.0.0");
-  const port = fixture.app.server.address().port;
+  const { port } = fixture;
   try {
     const projects = await requestFrom(address, port, "/api/projects");
     assert.equal(projects.status, 200);
@@ -433,7 +441,10 @@ test("AI SSE is live-only and thread snapshots remain the durable source", async
   }
 });
 
-test("server close stops accepting requests before AI shutdown completes", async () => {
+// Replaces the in-process AI close, which the native server does not expose.
+const inProcessOnly = { skip: process.env.BROADCAST_SERVER_BIN ? "patches in-process aiChat.close" : false };
+
+test("server close stops accepting requests before AI shutdown completes", inProcessOnly, async () => {
   const fixture = await createServerFixture();
   let appClosed = false;
   try {
