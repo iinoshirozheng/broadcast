@@ -4,16 +4,28 @@ use std::sync::Arc;
 
 use axum::Extension;
 use axum::extract::{Request, State};
+use broadcast_domain::constants::DEFAULT_PROJECT_ID;
 use broadcast_domain::js::decode_uri_component;
-use broadcast_domain::{ApiError, fields};
+use broadcast_domain::{ApiError, Result, fields};
 use serde_json::{Value, json};
 
 use crate::App;
+use crate::cloud::config::CloudConfig;
 use crate::codex;
 use crate::http::{Reply, json, method_not_allowed, query, reject_query, segment};
 use crate::trust::Peer;
 
+/// Machine capabilities of a cloud companion stay with this device, so only its loopback may ask.
+async fn capability_config(app: &App, peer: &Peer) -> Result<CloudConfig> {
+    let config = app.cloud.read().await?;
+    if config.remote_url.is_some() {
+        peer.assert_local()?;
+    }
+    Ok(config)
+}
+
 pub async fn meta(State(app): State<Arc<App>>, Extension(peer): Extension<Peer>, request: Request) -> Reply {
+    let config = capability_config(&app, &peer).await?;
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
@@ -22,11 +34,17 @@ pub async fn meta(State(app): State<Arc<App>>, Extension(peer): Extension<Peer>,
     if !peer.configured {
         body.insert("manageBroadcastSkillPath".into(), json!(app.config.skill_path));
     }
-    body.insert("capabilities".into(), json!({ "localAiChat": !peer.configured && peer.loopback }));
+    body.insert("capabilities".into(), json!({ "localAiChat": !peer.configured && peer.loopback() }));
+    if config.remote_url.is_some() {
+        body.insert("mode".into(), json!("cloud"));
+        body.insert("realtime".into(), json!({ "transport": "websocket", "endpoint": "/api/events" }));
+        body.insert("localCapabilities".into(), json!({ "available": !peer.configured }));
+    }
     Ok(json(200, &Value::Object(body)))
 }
 
-pub async fn workspaces(State(app): State<Arc<App>>, request: Request) -> Reply {
+pub async fn workspaces(State(app): State<Arc<App>>, Extension(peer): Extension<Peer>, request: Request) -> Reply {
+    capability_config(&app, &peer).await?;
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
@@ -34,7 +52,12 @@ pub async fn workspaces(State(app): State<Arc<App>>, request: Request) -> Reply 
     Ok(json(200, &json!({ "workspaces": codex::workspaces(&app.config.codex_home).await })))
 }
 
-pub async fn development_contexts(State(app): State<Arc<App>>, request: Request) -> Reply {
+pub async fn development_contexts(
+    State(app): State<Arc<App>>,
+    Extension(peer): Extension<Peer>,
+    request: Request,
+) -> Reply {
+    let config = capability_config(&app, &peer).await?;
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
@@ -46,11 +69,16 @@ pub async fn development_contexts(State(app): State<Arc<App>>, request: Request)
     let id = decode_uri_component(segment(request.uri(), 3))
         .ok_or_else(|| ApiError::new(400, "INVALID_PATH", "Project id contains invalid encoding"))?;
     let id = fields::project_id(Some(&Value::String(id)))?;
-    let lookup = id.clone();
-    let project = app
-        .store(move |store| store.get_project(&lookup))
-        .await?
-        .ok_or_else(|| ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{id}' does not exist")))?;
+    // A cloud board's projects live remotely; this device only knows its own workspace mappings.
+    let project_workspace = if config.remote_url.is_some() {
+        (id != DEFAULT_PROJECT_ID).then(|| config.workspace(&id).map(str::to_owned)).flatten()
+    } else {
+        let lookup = id.clone();
+        app.store(move |store| store.get_project(&lookup))
+            .await?
+            .ok_or_else(|| ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{id}' does not exist")))?
+            .workspace_path
+    };
     let param = |name: &str, max: usize| {
         let value = query.iter().find(|(key, _)| key == name).map_or(Value::Null, |(_, value)| json!(value));
         fields::nullable_string(Some(&value), name, max).map(Option::flatten)
@@ -66,8 +94,8 @@ pub async fn development_contexts(State(app): State<Arc<App>>, request: Request)
         None => {
             codex::resolve_workspace(
                 &app.config.codex_home,
-                &project.id,
-                project.workspace_path.as_deref(),
+                &id,
+                project_workspace.as_deref(),
                 codex_project_id.as_deref(),
                 thread_id.as_deref(),
             )

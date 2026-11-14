@@ -15,6 +15,7 @@ broadcast-store.workspace = true
 chrono.workspace = true
 form_urlencoded.workspace = true
 hmac.workspace = true
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

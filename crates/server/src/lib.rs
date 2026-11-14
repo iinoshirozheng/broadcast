@@ -1,9 +1,12 @@
 //! HTTP API and web host for the Broadcast board, ported from `server/app.mjs`.
 
 mod actor;
+mod client_storage;
+mod cloud;
 mod codex;
 mod config;
 mod events;
+mod files;
 mod host;
 mod http;
 mod routes;
@@ -26,6 +29,9 @@ pub(crate) struct App {
     store: Store,
     events: EventHub,
     host: host::Host,
+    cloud: cloud::config::ConfigStore,
+    client_storage: client_storage::ClientStorage,
+    codex_sessions: codex::progress::Sessions,
     config: Config,
 }
 
@@ -48,7 +54,17 @@ pub struct Server {
 impl Server {
     pub fn open(config: Config) -> anyhow::Result<Self> {
         let store = Store::open(&config.data_dir.join("broadcast.sqlite"))?;
-        Ok(Self { app: Arc::new(App { store, events: EventHub::new(), host: host::Host::default(), config }) })
+        let data = &config.data_dir;
+        let app = App {
+            store,
+            events: EventHub::new(),
+            host: host::Host::default(),
+            cloud: cloud::config::ConfigStore::new(data.join("cloud-companion.json")),
+            client_storage: client_storage::ClientStorage::new(data.join("client-storage.json")),
+            codex_sessions: codex::progress::Sessions::new(&config.codex_home),
+            config,
+        };
+        Ok(Self { app: Arc::new(app) })
     }
 
     /// Serves until `shutdown` resolves, then ends open event streams so graceful shutdown can finish.

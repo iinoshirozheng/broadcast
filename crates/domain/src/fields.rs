@@ -94,6 +94,18 @@ pub fn nullable_string(value: Option<&Value>, name: &str, max_length: usize) -> 
     string_field(value, name, StringRules { nullable: true, max_length: Some(max_length), ..StringRules::default() })
 }
 
+/// `pathField`: a nullable path that cannot be empty or contain null bytes.
+pub fn path_field(value: Option<&Value>, name: &str) -> Result<Option<String>> {
+    let path = nullable_string(value, name, 4096)?.flatten();
+    if path.as_deref() == Some("") {
+        return Err(ApiError::invalid_field(format!("'{name}' cannot be empty")));
+    }
+    if path.as_deref().is_some_and(|path| path.contains('\0')) {
+        return Err(ApiError::invalid_field(format!("'{name}' cannot contain null bytes")));
+    }
+    Ok(path)
+}
+
 /// `parseDueDate`.
 pub fn due_date(value: Option<&Value>, name: &str) -> Result<Option<Option<String>>> {
     let date = nullable_string(value, name, 10)?;

@@ -26,8 +26,19 @@ const PROOF: HeaderName = HeaderName::from_static("x-broadcast-proof");
 pub struct Peer {
     /// Reached through a configured trusted HTTPS origin rather than the device network.
     pub configured: bool,
+    pub address: Option<IpAddr>,
+}
+
+impl Peer {
     /// `isLoopbackAddress`: any 127/8 address.
-    pub loopback: bool,
+    pub fn loopback(&self) -> bool {
+        self.address.is_some_and(loopback)
+    }
+
+    /// `assertLoopbackRequest`.
+    pub fn assert_local(&self) -> Result<(), ApiError> {
+        assert_local(self.address)
+    }
 }
 
 pub async fn guard(State(app): State<Arc<App>>, mut request: Request, next: Next) -> Response {
@@ -85,7 +96,7 @@ fn admit(app: &App, request: &mut Request, headers: &mut HeaderMap) -> Result<Op
     } else if path.starts_with("/api/local/") {
         assert_local(peer)?;
     }
-    request.extensions_mut().insert(Peer { configured, loopback: peer.is_some_and(loopback) });
+    request.extensions_mut().insert(Peer { configured, address: peer });
     Ok(None)
 }
 
@@ -117,7 +128,7 @@ pub fn proof(launcher: &Launcher, headers: &HeaderMap) -> Result<String, ApiErro
 }
 
 /// `assertLoopbackRequest`: exactly this device's loopback address.
-pub fn assert_local(peer: Option<IpAddr>) -> Result<(), ApiError> {
+fn assert_local(peer: Option<IpAddr>) -> Result<(), ApiError> {
     let local = match peer {
         Some(IpAddr::V4(address)) => address == Ipv4Addr::LOCALHOST,
         Some(IpAddr::V6(address)) => {

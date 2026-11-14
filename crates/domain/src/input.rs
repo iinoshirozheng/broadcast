@@ -134,15 +134,7 @@ pub fn project_create(body: &Value) -> Result<ProjectCreate> {
     let name = fields::required_string(body.get("name"), "name", 120)?;
     let slug = Value::String(fields::slugify(&name));
     let id = fields::project_id(nullish(body.get("id")).or(Some(&slug)))?;
-    let workspace_path =
-        fields::nullable_string(nullish(body.get("workspacePath")).or(Some(&NULL)), "workspacePath", 4096)?
-            .flatten();
-    if workspace_path.as_deref() == Some("") {
-        return Err(ApiError::invalid_field("'workspacePath' cannot be empty"));
-    }
-    if workspace_path.as_deref().is_some_and(|path| path.contains('\0')) {
-        return Err(ApiError::invalid_field("'workspacePath' cannot contain null bytes"));
-    }
+    let workspace_path = fields::path_field(nullish(body.get("workspacePath")).or(Some(&NULL)), "workspacePath")?;
     Ok(ProjectCreate { id, name, workspace_path })
 }
 

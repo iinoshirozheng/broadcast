@@ -1,6 +1,7 @@
 //! Route table. Handlers match methods themselves so the 405 body and `allow` header match the JS API.
 
 mod attachments;
+mod client_storage;
 mod comments;
 mod device;
 mod local;
@@ -48,7 +49,11 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/attachments/{id}", any(attachments::item))
         .route("/api/attachments/{id}/content", any(attachments::content))
         .route("/api/attachments/{id}/download", any(attachments::content))
+        .route("/api/client-storage", any(client_storage::client_storage))
         .route("/api/local/host-runtime", any(local::host_runtime))
+        .route("/api/local/codex-thread-progress", any(local::codex_thread_progress))
+        .route("/api/local/cloud-session", any(local::cloud_session))
+        .route("/api/local/project-mappings/{id}", any(local::project_mapping))
         .fallback(fallback)
         .with_state(app)
 }

@@ -1,5 +1,7 @@
 //! Codex desktop state on this device (`~/.codex`) and the git contexts of its workspaces.
 
+pub mod progress;
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
