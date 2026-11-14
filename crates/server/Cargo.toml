@@ -14,10 +14,15 @@ broadcast-domain.workspace = true
 broadcast-store.workspace = true
 chrono.workspace = true
 form_urlencoded.workspace = true
+hmac.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tower.workspace = true
 url.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true

@@ -2,8 +2,8 @@
 
 use broadcast_domain::constants::JIRA_PROJECT_ID;
 use broadcast_domain::records::{
-    Actor, Attachment, DevelopmentContext, Project, Recurrence, Task, TaskRelationSummary, TaskRelations,
-    ThreadBinding, ThreadIdentity,
+    Actor, Attachment, Comment, DevelopmentContext, Project, ProjectReadmeAttachment, Recurrence, Task,
+    TaskActivity, TaskRelationSummary, TaskRelations, ThreadBinding, ThreadIdentity,
 };
 use rusqlite::Row;
 use rusqlite::types::Type;
@@ -159,6 +159,57 @@ pub(crate) fn attachment(row: &Row<'_>) -> Result<Attachment> {
         comment_id: row.get("comment_id")?,
         kind: row.get("kind")?,
         body_fallback: row.get::<_, i64>("body_fallback")? == 1,
+        filename: row.get("filename")?,
+        content_type: row.get("content_type")?,
+        size: row.get("size")?,
+        created_at: row.get("created_at")?,
+        change_revision: row.get("change_revision")?,
+    })
+}
+
+/// `commentFromRow`, without attachments.
+pub(crate) fn comment(row: &Row<'_>) -> Result<Comment> {
+    let thread = ThreadColumns::read(row)?;
+    Ok(Comment {
+        id: row.get("id")?,
+        task_id: row.get("task_id")?,
+        body: row.get("body")?,
+        thread_binding: thread.binding(),
+        legacy_local_thread_id: thread.legacy_local(),
+        thread_id: thread.thread_id,
+        agent_session: optional_json(row, "agent_session")?,
+        author_type: row.get("author_type")?,
+        author_id: row.get("author_id")?,
+        author_name: row.get("author_name")?,
+        author_avatar_url: row.get("author_avatar_url")?,
+        attachments: Vec::new(),
+        version: row.get("version")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+        change_revision: row.get("change_revision")?,
+    })
+}
+
+/// `taskActivityFromRow`.
+pub(crate) fn activity(row: &Row<'_>) -> Result<TaskActivity> {
+    Ok(TaskActivity {
+        id: row.get("id")?,
+        task_id: row.get("task_id")?,
+        actor_type: row.get("actor_type")?,
+        actor_id: row.get("actor_id")?,
+        actor_name: row.get("actor_name")?,
+        actor_avatar_url: row.get("actor_avatar_url")?,
+        changes: json(row, "changes")?,
+        created_at: row.get("created_at")?,
+    })
+}
+
+/// `projectReadmeAttachmentFromRow`.
+pub(crate) fn readme_attachment(row: &Row<'_>) -> Result<ProjectReadmeAttachment> {
+    Ok(ProjectReadmeAttachment {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        kind: "inline",
         filename: row.get("filename")?,
         content_type: row.get("content_type")?,
         size: row.get("size")?,

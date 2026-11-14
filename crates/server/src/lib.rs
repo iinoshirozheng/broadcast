@@ -1,18 +1,23 @@
 //! HTTP API and web host for the Broadcast board, ported from `server/app.mjs`.
 
 mod actor;
+mod codex;
 mod config;
 mod events;
+mod host;
 mod http;
 mod routes;
 mod static_files;
 mod trust;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{ServiceExt, extract::Request, middleware};
 use broadcast_domain::Result;
 use broadcast_store::Store;
+use tokio::net::TcpListener;
+use tower::Layer;
 
 pub use config::Config;
 use events::EventHub;
@@ -20,6 +25,7 @@ use events::EventHub;
 pub(crate) struct App {
     store: Store,
     events: EventHub,
+    host: host::Host,
     config: Config,
 }
 
@@ -42,15 +48,19 @@ pub struct Server {
 impl Server {
     pub fn open(config: Config) -> anyhow::Result<Self> {
         let store = Store::open(&config.data_dir.join("broadcast.sqlite"))?;
-        Ok(Self { app: Arc::new(App { store, events: EventHub::new(), config }) })
+        Ok(Self { app: Arc::new(App { store, events: EventHub::new(), host: host::Host::default(), config }) })
     }
 
-    pub fn router(&self) -> Router {
-        routes::router(Arc::clone(&self.app))
-    }
-
-    /// Ends every open event stream so graceful shutdown can finish.
-    pub fn close(&self) {
-        self.app.events.close();
+    /// Serves until `shutdown` resolves, then ends open event streams so graceful shutdown can finish.
+    /// The trust gate wraps the router because it rewrites launcher-prefixed paths before routing.
+    pub async fn serve(self, listener: TcpListener, shutdown: impl Future<Output = ()> + Send + 'static) -> std::io::Result<()> {
+        let app = self.app;
+        let service = middleware::from_fn_with_state(Arc::clone(&app), trust::guard).layer(routes::router(Arc::clone(&app)));
+        axum::serve(listener, ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service))
+            .with_graceful_shutdown(async move {
+                shutdown.await;
+                app.events.close();
+            })
+            .await
     }
 }

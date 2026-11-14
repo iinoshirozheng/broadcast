@@ -3,7 +3,11 @@
 //! One connection behind a mutex: SQLite serializes writers anyway, and every
 //! mutation runs in a `BEGIN IMMEDIATE` transaction.
 
+mod attachments;
+mod comments;
 mod projects;
+mod readme;
+mod relations;
 mod rows;
 mod tasks;
 
@@ -14,6 +18,7 @@ use broadcast_domain::Result;
 use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations};
 
+pub use attachments::NewAttachment;
 pub use tasks::DeletedTask;
 
 const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!("../../../db/migrations/0001_initial.sql"))];
@@ -44,4 +49,13 @@ impl Store {
 /// `new Date().toISOString()`.
 fn now() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
+/// `#nextCommentAttachmentRevision`: the shared cursor for comments and attachments.
+fn next_revision(connection: &Connection) -> Result<i64> {
+    Ok(connection.query_row(
+        "UPDATE comment_attachment_revision SET value = value + 1 WHERE id = 1 RETURNING value",
+        [],
+        |row| row.get(0),
+    )?)
 }

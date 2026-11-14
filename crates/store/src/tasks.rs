@@ -16,10 +16,10 @@ use crate::rows::{self, ThreadColumns};
 use crate::{Store, now};
 
 /// Bound parameters per enrichment query.
-const CHUNK: usize = 400;
+pub(crate) const CHUNK: usize = 400;
 
-type Columns = Vec<(&'static str, SqlValue)>;
-type ThreadValues = [Option<String>; 5];
+pub(crate) type Columns = Vec<(&'static str, SqlValue)>;
+pub(crate) type ThreadValues = [Option<String>; 5];
 
 pub struct DeletedTask {
     pub task: Task,
@@ -360,7 +360,7 @@ impl Store {
     }
 }
 
-fn get_task(connection: &Connection, id: &str) -> Result<Option<Task>> {
+pub(crate) fn get_task(connection: &Connection, id: &str) -> Result<Option<Task>> {
     let task = connection
         .query_row("SELECT * FROM tasks WHERE id = ?1 OR identifier = ?1", [id], rows::task)
         .optional()?;
@@ -368,12 +368,12 @@ fn get_task(connection: &Connection, id: &str) -> Result<Option<Task>> {
     Ok(enrich(connection, vec![task])?.pop())
 }
 
-fn require_task(connection: &Connection, id: &str) -> Result<Task> {
+pub(crate) fn require_task(connection: &Connection, id: &str) -> Result<Task> {
     get_task(connection, id)?
         .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into())
 }
 
-fn require_version(task: &Task, expected: i64) -> Result<()> {
+pub(crate) fn require_version(task: &Task, expected: i64) -> Result<()> {
     if task.version == expected {
         return Ok(());
     }
@@ -446,7 +446,7 @@ fn context_values(context: Option<&DevelopmentContext>) -> [Option<String>; 3] {
     }
 }
 
-fn thread_values(binding: &ThreadBinding) -> ThreadValues {
+pub(crate) fn thread_values(binding: &ThreadBinding) -> ThreadValues {
     let identity = binding.identity.as_ref();
     [
         Some(binding.thread_id.clone()),
@@ -458,7 +458,7 @@ fn thread_values(binding: &ThreadBinding) -> ThreadValues {
 }
 
 /// `storedThreadBinding`: `None` leaves the thread columns untouched.
-fn stored_thread_binding(binding: &Option<Option<ThreadBinding>>, thread_id: Option<&str>) -> Option<ThreadValues> {
+pub(crate) fn stored_thread_binding(binding: &Option<Option<ThreadBinding>>, thread_id: Option<&str>) -> Option<ThreadValues> {
     match binding {
         None => thread_id.map(|thread_id| [Some(thread_id.to_owned()), None, None, None, None]),
         Some(None) => Some(ThreadValues::default()),
@@ -467,7 +467,7 @@ fn stored_thread_binding(binding: &Option<Option<ThreadBinding>>, thread_id: Opt
 }
 
 /// `storedThreadBindingForExisting`: the same thread id keeps its stored identity.
-fn stored_thread_binding_for_existing(current: &Task, attribution: &Attribution) -> Option<ThreadValues> {
+pub(crate) fn stored_thread_binding_for_existing(current: &Task, attribution: &Attribution) -> Option<ThreadValues> {
     if attribution.thread_binding.is_none()
         && let Some(binding) = &current.thread_binding
         && attribution.thread_id.as_deref() == Some(binding.thread_id.as_str())
@@ -478,7 +478,7 @@ fn stored_thread_binding_for_existing(current: &Task, attribution: &Attribution)
 }
 
 /// Thread and agent-session columns written by an attributed mutation.
-fn attribution_columns(current: &Task, attribution: &Attribution, with_thread: bool) -> Result<Columns> {
+pub(crate) fn attribution_columns(current: &Task, attribution: &Attribution, with_thread: bool) -> Result<Columns> {
     let mut columns = Columns::new();
     if with_thread && let Some(values) = stored_thread_binding_for_existing(current, attribution) {
         let names = [
@@ -543,7 +543,7 @@ fn change_columns(changes: &TaskChanges) -> Result<Columns> {
 }
 
 /// `UPDATE tasks SET <columns>, version = version + 1, updated_at = ? WHERE id = ?`.
-fn update_columns(connection: &Connection, id: &str, columns: Columns, timestamp: &str) -> Result<()> {
+pub(crate) fn update_columns(connection: &Connection, id: &str, columns: Columns, timestamp: &str) -> Result<()> {
     let mut sql = String::from("UPDATE tasks SET ");
     let mut values = Vec::with_capacity(columns.len() + 2);
     for (column, value) in columns {
@@ -559,17 +559,13 @@ fn update_columns(connection: &Connection, id: &str, columns: Columns, timestamp
 }
 
 /// `#consumeAttachmentBodyFallback`.
-fn consume_attachment_body_fallback(connection: &Connection, task_id: &str, comment_id: Option<&str>) -> Result<()> {
+pub(crate) fn consume_attachment_body_fallback(connection: &Connection, task_id: &str, comment_id: Option<&str>) -> Result<()> {
     let ids = connection
         .prepare("SELECT id FROM attachments WHERE task_id = ? AND comment_id IS ? AND body_fallback = 1")?
         .query_map(params![task_id, comment_id], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
     for id in ids {
-        let revision: i64 = connection.query_row(
-            "UPDATE comment_attachment_revision SET value = value + 1 WHERE id = 1 RETURNING value",
-            [],
-            |row| row.get(0),
-        )?;
+        let revision = crate::next_revision(connection)?;
         connection
             .execute("UPDATE attachments SET body_fallback = 0, change_revision = ? WHERE id = ?", params![revision, id])?;
     }
@@ -577,7 +573,7 @@ fn consume_attachment_body_fallback(connection: &Connection, task_id: &str, comm
 }
 
 /// `#recordTaskActivity`.
-fn record_activity(
+pub(crate) fn record_activity(
     connection: &Connection,
     task_id: &str,
     actor: &Actor,

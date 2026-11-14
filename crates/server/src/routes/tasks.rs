@@ -40,7 +40,8 @@ pub async fn collection(State(app): State<Arc<App>>, request: Request) -> Reply 
         }
         "POST" => {
             let actor = actor::from_headers(request.headers())?;
-            let input = input::task_create(&read_json(request).await?)?;
+            let mut input = input::task_create(&read_json(request).await?)?;
+            input.attribution = app.host.resolve(input.attribution);
             if input.project_id == JIRA_PROJECT_ID {
                 return Err(conflict(
                     "JIRA_CREATE_UNAVAILABLE",
@@ -89,6 +90,7 @@ async fn source(app: &Arc<App>, id: &str) -> Result<Option<&'static str>, Error>
 async fn patch(app: Arc<App>, id: String, request: Request) -> Reply {
     let actor = actor::from_headers(request.headers())?;
     let mut patch = input::task_patch(&read_json(request).await?)?;
+    patch.attribution = app.host.resolve(patch.attribution);
     let source = source(&app, &id).await?.ok_or_else(|| not_found(&id))?;
     if source != "jira" && patch.changes.project_id.as_deref() == Some(JIRA_PROJECT_ID) {
         return Err(conflict("JIRA_PROJECT_MOVE_UNAVAILABLE", "本地任务不能移入 Jira 同步项目").into());
@@ -122,7 +124,8 @@ async fn delete(app: Arc<App>, id: String, request: Request) -> Reply {
 
 async fn move_task(app: Arc<App>, id: String, request: Request) -> Reply {
     let headers = request.headers().clone();
-    let movement = input::task_move(&read_json(request).await?)?;
+    let mut movement = input::task_move(&read_json(request).await?)?;
+    movement.attribution = app.host.resolve(movement.attribution);
     source(&app, &id).await?.ok_or_else(|| not_found(&id))?;
     // Jira-sourced tasks also move in Jira; that lands with the Jira port.
     let actor = actor::from_headers(&headers)?;
@@ -140,7 +143,8 @@ async fn archive_or_restore(app: Arc<App>, id: String, request: Request, archive
         .into());
     }
     let headers = request.headers().clone();
-    let mutation = input::version_mutation(&read_json(request).await?)?;
+    let mut mutation = input::version_mutation(&read_json(request).await?)?;
+    mutation.attribution = app.host.resolve(mutation.attribution);
     let actor = actor::from_headers(&headers)?;
     let task = app
         .store(move |store| {

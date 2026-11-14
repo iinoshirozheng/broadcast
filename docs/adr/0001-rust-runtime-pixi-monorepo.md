@@ -67,9 +67,15 @@ so packaging infrastructure is edited only once.
 - [x] Phase 3 — `server` vertical slice: `/health`, projects, tasks, events (SSE),
       LAN trust guard; serves web dist; parity against `test/server.test.mjs` with
       `BROADCAST_SERVER_BIN=target/debug/broadcast-server`
-- [ ] Phase 3b — remaining routes: comments, attachments, relations, activities, readme,
-      meta, client storage, trusted-origin and launcher modes, local/* (host runtime,
-      cloud session, Jira, AI chat)
+- [ ] Phase 3b — remaining routes
+  - [x] comments, attachments, relations, activities, tree, labels, readme, meta,
+        device workspaces, development contexts, host runtime, trusted-origin and
+        launcher modes (`test/server.test.mjs` and `test/project-readme.test.mjs` run
+        against the binary through `test/helpers/native-server.mjs`)
+  - [ ] client storage, Codex thread progress, cloud session and project mappings
+  - [ ] cloud companion: config, proxy, `/api/events` WebSocket bridge
+  - [ ] Jira configuration and sync
+  - [ ] local AI chat
 - [ ] Phase 4 — `agents` (runners, process tree)
 - [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
 - [ ] Phase 6 — Rust CLI replaces `cli/broadcast.mjs` and `runner/claude-runner.mjs`

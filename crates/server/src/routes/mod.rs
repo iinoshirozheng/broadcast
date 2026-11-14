@@ -1,13 +1,18 @@
 //! Route table. Handlers match methods themselves so the 405 body and `allow` header match the JS API.
 
+mod attachments;
+mod comments;
+mod device;
+mod local;
 mod projects;
+mod readme;
+mod relations;
 mod tasks;
 
 use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Request, State};
-use axum::middleware;
 use axum::routing::any;
 use broadcast_domain::ApiError;
 use serde_json::json;
@@ -22,21 +27,41 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/events", any(events))
         .route("/api/projects", any(projects::collection))
         .route("/api/projects/{id}", any(projects::item))
+        .route("/api/meta", any(device::meta))
+        .route("/api/device-workspaces", any(device::workspaces))
+        .route("/api/projects/{id}/development-contexts", any(device::development_contexts))
+        .route("/api/projects/{id}/labels", any(readme::labels))
+        .route("/api/projects/{id}/readme", any(readme::readme))
+        .route("/api/projects/{id}/readme/attachments", any(readme::readme_attachments))
         .route("/api/tasks", any(tasks::collection))
         .route("/api/tasks/{id}", any(|State(app), request| tasks::item(app, request, None)))
         .route("/api/tasks/{id}/move", any(|State(app), request| tasks::item(app, request, Some("move"))))
         .route("/api/tasks/{id}/archive", any(|State(app), request| tasks::item(app, request, Some("archive"))))
         .route("/api/tasks/{id}/restore", any(|State(app), request| tasks::item(app, request, Some("restore"))))
+        .route("/api/tasks/{id}/comments", any(comments::for_task))
+        .route("/api/tasks/{id}/attachments", any(attachments::for_task))
+        .route("/api/tasks/{id}/activities", any(relations::activities))
+        .route("/api/tasks/{id}/tree", any(relations::tree))
+        .route("/api/tasks/{id}/relations/{kind}/{related}", any(relations::relation))
+        .route("/api/comments/{id}", any(comments::item))
+        .route("/api/comments/{id}/attachments", any(attachments::for_comment))
+        .route("/api/attachments/{id}", any(attachments::item))
+        .route("/api/attachments/{id}/content", any(attachments::content))
+        .route("/api/attachments/{id}/download", any(attachments::content))
+        .route("/api/local/host-runtime", any(local::host_runtime))
         .fallback(fallback)
-        .layer(middleware::from_fn_with_state(Arc::clone(&app), trust::guard))
         .with_state(app)
 }
 
-async fn health(request: Request) -> Reply {
+async fn health(State(app): State<Arc<App>>, request: Request) -> Reply {
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
-    Ok(json(200, &json!({ "status": "ok" })))
+    let Some(launcher) = &app.config.launcher else {
+        return Ok(json(200, &json!({ "status": "ok" })));
+    };
+    let proof = trust::proof(launcher, request.headers())?;
+    Ok(json(200, &json!({ "status": "ok", "product": "broadcast", "version": app.config.version, "proof": proof })))
 }
 
 async fn events(State(app): State<Arc<App>>, request: Request) -> Reply {

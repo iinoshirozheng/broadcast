@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { once } from "node:events";
 import { access, chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import os from "node:os";
@@ -11,6 +9,7 @@ import { afterEach, test } from "node:test";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { createBroadcastServer, resolveServerOptions } from "../server/index.mjs";
+import { startNativeServer } from "./helpers/native-server.mjs";
 
 const runningApps = [];
 
@@ -26,7 +25,7 @@ async function startServer(configure, listenOptions = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-test-"));
   const options = configure ? await configure(directory) : {};
   if (process.env.BROADCAST_SERVER_BIN) {
-    const { app, port } = await startServerBinary(process.env.BROADCAST_SERVER_BIN, directory);
+    const { app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, options, listenOptions);
     runningApps.push({ app, directory });
     return `http://127.0.0.1:${port}`;
   }
@@ -36,30 +35,8 @@ async function startServer(configure, listenOptions = {}) {
   return `http://127.0.0.1:${address.port}`;
 }
 
-// Runs the same request against the native server build instead of the in-process app.
-async function startServerBinary(binary, directory) {
-  const child = spawn(binary, [], {
-    env: { ...process.env, BROADCAST_DATA_DIR: directory, BROADCAST_HOST: "127.0.0.1", BROADCAST_PORT: "0" },
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  const port = await new Promise((resolve, reject) => {
-    let output = "";
-    child.once("error", reject);
-    child.once("exit", (code) => reject(new Error(`${binary} exited with ${code}`)));
-    child.stdout.on("data", (chunk) => {
-      output += chunk;
-      const match = output.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
-      if (match) resolve(Number(match[1]));
-    });
-  });
-  const close = async () => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    const exited = once(child, "exit");
-    child.kill("SIGTERM");
-    await exited;
-  };
-  return { app: { close }, port };
-}
+// Node-era schema upgrades are not ported to the native server (ADR 0001, rule 4).
+const legacySchema = { skip: process.env.BROADCAST_SERVER_BIN ? "Node-era schema upgrade" : false };
 
 async function request(baseUrl, pathname, options = {}) {
   const headers = new Headers(options.headers);
@@ -188,7 +165,7 @@ test("launcher mode proves service identity and hides every route behind its ins
   assert.equal(launcherApi.response.headers.get("access-control-allow-origin"), "null");
 });
 
-test("existing task and comment thread attribution remains content-specific", async () => {
+test("existing task and comment thread attribution remains content-specific", legacySchema, async () => {
   const baseUrl = await startServer(async (directory) => {
     const databasePath = path.join(directory, "broadcast.sqlite");
     const database = new DatabaseSync(databasePath);
@@ -327,7 +304,7 @@ test("existing task and comment thread attribution remains content-specific", as
   assert.equal(commentForeignKeys.some((foreignKey) => foreignKey.table === "tasks"), true);
 });
 
-test("task thread migration excludes comment-only aggregate entries", async () => {
+test("task thread migration excludes comment-only aggregate entries", legacySchema, async () => {
   const baseUrl = await startServer(async (directory) => {
     const databasePath = path.join(directory, "broadcast.sqlite");
     const database = new DatabaseSync(databasePath);

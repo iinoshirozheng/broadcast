@@ -7,6 +7,7 @@ import { afterEach, test } from "node:test";
 import { createBroadcastServer } from "../server/index.mjs";
 import { BroadcastDatabase } from "../server/database.mjs";
 import { main } from "../cli/broadcast.mjs";
+import { startNativeServer } from "./helpers/native-server.mjs";
 
 const runningApps = [];
 
@@ -20,6 +21,11 @@ afterEach(async () => {
 
 async function startServer() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-readme-test-"));
+  if (process.env.BROADCAST_SERVER_BIN) {
+    const { app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, {}, {});
+    runningApps.push({ app, directory });
+    return { baseUrl: `http://127.0.0.1:${port}`, app, directory };
+  }
   const app = createBroadcastServer({ dataDirectory: directory });
   const address = await app.listen({ port: 0 });
   runningApps.push({ app, directory });

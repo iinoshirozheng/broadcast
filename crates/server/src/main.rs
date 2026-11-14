@@ -9,12 +9,7 @@ async fn main() -> anyhow::Result<()> {
     let server = Server::open(config)?;
     let shutdown = shutdown_signal()?;
     println!("Broadcast listening on http://127.0.0.1:{port}");
-    axum::serve(listener, server.router())
-        .with_graceful_shutdown(async move {
-            shutdown.await;
-            server.close();
-        })
-        .await?;
+    server.serve(listener, shutdown).await?;
     Ok(())
 }
 

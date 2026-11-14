@@ -96,6 +96,115 @@ pub struct Attachment {
     pub content_type: String,
     pub size: i64,
     pub created_at: String,
+    /// Cursor position; not part of the JSON record.
+    #[serde(skip)]
+    pub change_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: String,
+    pub task_id: String,
+    pub body: String,
+    pub thread_id: Option<String>,
+    pub thread_binding: Option<ThreadBinding>,
+    pub legacy_local_thread_id: Option<String>,
+    pub agent_session: Option<AgentSession>,
+    pub author_type: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub author_avatar_url: Option<String>,
+    pub attachments: Vec<Attachment>,
+    pub version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+    /// Cursor position; not part of the JSON record.
+    #[serde(skip)]
+    pub change_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskActivity {
+    pub id: String,
+    pub task_id: String,
+    pub actor_type: String,
+    pub actor_id: String,
+    pub actor_name: String,
+    pub actor_avatar_url: Option<String>,
+    pub changes: Value,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskTreeSummary {
+    pub identifier: String,
+    pub title: String,
+    pub status: String,
+    pub priority: String,
+    pub archived_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskTreeNode {
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub depth: u32,
+    pub path: Vec<String>,
+    pub summary: TaskTreeSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskTree {
+    pub root_id: String,
+    pub direction: &'static str,
+    pub depth: u32,
+    pub node_count: usize,
+    pub nodes: Vec<TaskTreeNode>,
+}
+
+/// A task and the other end of the relation that changed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationChange {
+    pub task: Task,
+    pub related_task: Task,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectReadme {
+    pub project_id: String,
+    pub content: String,
+    pub version: i64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectReadmeAttachment {
+    pub id: String,
+    pub project_id: String,
+    pub kind: &'static str,
+    pub filename: String,
+    pub content_type: String,
+    pub size: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSummary {
+    pub project_id: String,
+    pub summary: Option<String>,
+    pub generated_at: Option<String>,
+    pub attempted_at: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
