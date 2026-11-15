@@ -14,6 +14,19 @@ rust-src = "1.100.*"
 rust-analyzer = "*"
 cargo-nextest = "*"
 
+[tasks]
+# The web app and the JavaScript tooling (Vite, Biome, wrangler, Miniflare, e2e).
+install-js = { cmd = "pnpm install --frozen-lockfile", inputs = ["package.json", "apps/web/package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"], outputs = ["node_modules/.modules.yaml"] }
+build-native = "cargo build -p broadcast-server -p broadcast-cli"
+build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
+# The Rust server on 127.0.0.1:47823 and the Vite dev server.
+dev = { cmd = "pnpm dev", depends-on = ["install-js"] }
+# The HTTP, CLI, injector and cloud suites run against target/debug and apps/cloud/build.
+test = { cmd = "pnpm test", depends-on = ["build-native", "build-web", { task = "build-cloud", environment = "cloud" }] }
+lint = { cmd = "cargo clippy --all-targets -- -D warnings && pnpm typecheck && pnpm lint", depends-on = ["install-js", { task = "lint-cloud", environment = "cloud" }] }
+fmt = { cmd = "cargo fmt --all && pnpm format", depends-on = ["install-js"] }
+check = { depends-on = ["lint", "test"] }
+
 [feature.macos-release]
 platforms = ["osx-arm64"]
 
@@ -34,6 +47,7 @@ WASM_OPT_BIN = "wasm-opt"
 # worker-build is not on conda-forge; it must match the `worker` crate version.
 install-worker-build = "cargo install worker-build@0.8.7 --locked --root $CONDA_PREFIX"
 build-cloud = { cmd = "worker-build --release", cwd = "apps/cloud", depends-on = ["install-worker-build"] }
+lint-cloud = "cargo clippy -p broadcast-cloud --target wasm32-unknown-unknown -- -D warnings"
 
 [environments]
 default = { features = ["dev"], solve-group = "main" }

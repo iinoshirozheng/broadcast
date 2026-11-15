@@ -29,7 +29,8 @@
     "cloud:deploy:dry-run": "pnpm build:web && wrangler deploy --dry-run",
     "cloud:deploy": "pnpm build:web && wrangler deploy",
     "cloud:data": "node scripts/migrate-to-cloud.mjs",
-    "check": "pnpm typecheck && pnpm build:web && pnpm test"
+    "lint": "biome check .",
+    "format": "biome format --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.7",
