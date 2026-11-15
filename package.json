@@ -12,7 +12,7 @@
     "dev:cloud": "pnpm build:web && wrangler dev --local",
     "build:web": "pnpm --filter @broadcast/web build",
     "typecheck": "tsc -p . && pnpm --filter @broadcast/web typecheck",
-    "test": "node --test \"test/*.test.mjs\" \"test/*.test.ts\" && pnpm --filter @broadcast/web test",
+    "test": "node --test \"test/*.test.ts\" && pnpm --filter @broadcast/web test",
     "test:e2e": "e2e run",
     "test:cloud": "node --test test/cloud-shared-worker.test.ts",
     "app:dev": "tauri dev",

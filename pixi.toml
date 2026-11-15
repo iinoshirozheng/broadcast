@@ -35,8 +35,9 @@ build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
 start = { cmd = "cargo run --release -p broadcast-server", depends-on = ["build-web"] }
 # The Rust server on 127.0.0.1:47823 and the Vite dev server.
 dev = { cmd = "pnpm dev", depends-on = ["install-js"] }
-# The HTTP, CLI, injector and cloud suites run against target/debug and apps/cloud/build.
-test = { cmd = "pnpm test", depends-on = ["build-native", "build-web", { task = "build-cloud", environment = "cloud" }] }
+# The Rust suites build their own binaries; the TypeScript suites run against target/debug and
+# apps/cloud/build.
+test = { cmd = "cargo test && pnpm test", depends-on = ["build-native", "build-web", { task = "build-cloud", environment = "cloud" }] }
 # Playwright against the Rust server and the built web app (`.e2e/results/` on failure).
 test-e2e = { cmd = "pnpm test:e2e", depends-on = ["build-native", "build-web"] }
 lint = { cmd = "cargo clippy --all-targets -- -D warnings && pnpm typecheck && pnpm lint", depends-on = ["install-js", { task = "lint-cloud", environment = "cloud" }] }

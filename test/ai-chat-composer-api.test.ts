@@ -5,7 +5,31 @@ import path from "node:path";
 import { test } from "node:test";
 
 import { composerReferencePersistence } from "../apps/web/src/composerReference.ts";
-import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.mjs";
+import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.ts";
+
+interface Candidates {
+  candidates: {
+    command?: string;
+    selection?: unknown;
+    dispatch?: { handlerId: string };
+    persistence?: { referenceKey: string };
+  }[];
+}
+
+interface Rebound {
+  ready: boolean;
+  document: { nodes: { type: string }[] };
+  bindings: Record<string, unknown>[];
+}
+
+interface ApiError {
+  error: { code: string };
+}
+
+// The JSON body of `response`, whose shape the assertions check.
+async function json<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
 
 test("composer rebind HTTP API returns send-ready documents and boundary errors", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-composer-rebind-api-"));
@@ -40,33 +64,28 @@ process.stdin.on("data", (chunk) => {
 });
 `,
   );
-  const dataDirectory = path.join(directory, "data");
-  const options = {
-    codexExecutable: executable,
-    codexStatePath: path.join(directory, "missing-codex-state.json"),
-  };
-  const { app, port } = await startNativeServer(dataDirectory, options, { host: "127.0.0.1" });
+  const server = await startNativeServer(path.join(directory, "data"), executable);
   try {
-    const baseUrl = `http://127.0.0.1:${port}`;
+    const baseUrl = `http://127.0.0.1:${server.port}`;
     const persistence = composerReferencePersistence("skill", "real-skill", "Real Skill");
     const slashCandidatesResponse = await fetch(
       `${baseUrl}/api/local/ai/composer/candidates?projectId=local&trigger=%2F&query=&surface=issue-description`,
     );
     assert.equal(slashCandidatesResponse.status, 200);
-    const slashCandidates = await slashCandidatesResponse.json();
+    const slashCandidates = await json<Candidates>(slashCandidatesResponse);
     assert.ok(slashCandidates.candidates.length > 4);
     const newCandidate = slashCandidates.candidates.find(
       (candidate) => candidate.command === "/new",
     );
-    assert.deepEqual(newCandidate.selection, { type: "insertText", text: "/new " });
+    assert.deepEqual(newCandidate?.selection, { type: "insertText", text: "/new " });
     assert.ok(slashCandidates.candidates.every((candidate) => !("dispatch" in candidate)));
 
     const aiChatSlashResponse = await fetch(
       `${baseUrl}/api/local/ai/composer/candidates?projectId=local&trigger=%2F&query=&surface=ai-chat`,
     );
     assert.equal(aiChatSlashResponse.status, 200);
-    const aiChatSlash = await aiChatSlashResponse.json();
-    const verifiedHandlers = new Set([
+    const aiChatSlash = await json<Candidates>(aiChatSlashResponse);
+    const verifiedHandlers = new Set<string | undefined>([
       "new-conversation",
       "open-model-menu",
       "open-reasoning-menu",
@@ -83,8 +102,8 @@ process.stdin.on("data", (chunk) => {
       `${baseUrl}/api/local/ai/composer/candidates?projectId=local&trigger=%40&query=real&surface=comment`,
     );
     assert.equal(skillCandidatesResponse.status, 200);
-    const skillCandidates = await skillCandidatesResponse.json();
-    assert.equal(skillCandidates.candidates[0].persistence.referenceKey, persistence.referenceKey);
+    const skillCandidates = await json<Candidates>(skillCandidatesResponse);
+    assert.equal(skillCandidates.candidates[0].persistence?.referenceKey, persistence.referenceKey);
     assert.equal(JSON.stringify(skillCandidates).includes("server-only"), false);
 
     const response = await fetch(`${baseUrl}/api/local/ai/composer/rebind`, {
@@ -108,7 +127,7 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(response.status, 200);
-    const rebound = await response.json();
+    const rebound = await json<Rebound>(response);
     assert.equal(rebound.ready, true);
     assert.deepEqual(
       rebound.document.nodes.map((node) => node.type),
@@ -117,7 +136,7 @@ process.stdin.on("data", (chunk) => {
     assert.equal(rebound.bindings[0].label, "Real Skill");
     assert.equal(JSON.stringify(rebound).includes("server-only"), false);
     assert.equal(
-      app.database.database.prepare("SELECT COUNT(*) AS count FROM ai_chat_events").get().count,
+      server.database().prepare("SELECT COUNT(*) AS count FROM ai_chat_events").get()?.count,
       0,
     );
 
@@ -145,7 +164,7 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(unsupportedResponse.status, 200);
-    const unsupported = await unsupportedResponse.json();
+    const unsupported = await json<Rebound>(unsupportedResponse);
     assert.equal(unsupported.ready, false);
     assert.deepEqual(unsupported.bindings, [
       {
@@ -182,7 +201,10 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(invalidResponse.status, 400);
-    assert.equal((await invalidResponse.json()).error.code, "INVALID_COMPOSER_REBIND_REQUEST");
+    assert.equal(
+      (await json<ApiError>(invalidResponse)).error.code,
+      "INVALID_COMPOSER_REBIND_REQUEST",
+    );
 
     const missingProjectResponse = await fetch(`${baseUrl}/api/local/ai/composer/rebind`, {
       method: "POST",
@@ -194,9 +216,12 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(missingProjectResponse.status, 400);
-    assert.equal((await missingProjectResponse.json()).error.code, "INVALID_COMPOSER_QUERY");
+    assert.equal(
+      (await json<ApiError>(missingProjectResponse)).error.code,
+      "INVALID_COMPOSER_QUERY",
+    );
 
-    const authoritativeThread = app.database.createAiChatThread({
+    const authoritativeThread = server.createAiChatThread({
       id: "authoritative-composer-thread",
       title: "Authoritative workspace",
       origin: {
@@ -229,9 +254,9 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(authoritativeThreadResponse.status, 200);
-    assert.equal((await authoritativeThreadResponse.json()).ready, true);
+    assert.equal((await json<Rebound>(authoritativeThreadResponse)).ready, true);
 
-    const crossProjectThread = app.database.createAiChatThread({
+    const crossProjectThread = server.createAiChatThread({
       id: "cross-project-composer-thread",
       title: "Cross project",
       origin: { projectId: "other", projectName: "Other", workspacePath: directory },
@@ -250,9 +275,12 @@ process.stdin.on("data", (chunk) => {
       }),
     });
     assert.equal(crossProjectThreadResponse.status, 400);
-    assert.equal((await crossProjectThreadResponse.json()).error.code, "INVALID_COMPOSER_QUERY");
+    assert.equal(
+      (await json<ApiError>(crossProjectThreadResponse)).error.code,
+      "INVALID_COMPOSER_QUERY",
+    );
 
-    const unavailableThread = app.database.createAiChatThread({
+    const unavailableThread = server.createAiChatThread({
       id: "unavailable-workspace-composer-thread",
       title: "Unavailable workspace",
       origin: {
@@ -276,7 +304,7 @@ process.stdin.on("data", (chunk) => {
     });
     assert.equal(unavailableThreadResponse.status, 409);
     assert.equal(
-      (await unavailableThreadResponse.json()).error.code,
+      (await json<ApiError>(unavailableThreadResponse)).error.code,
       "PROJECT_WORKSPACE_UNAVAILABLE",
     );
 
@@ -297,11 +325,11 @@ process.stdin.on("data", (chunk) => {
     });
     assert.equal(unavailableWorkspaceResponse.status, 409);
     assert.equal(
-      (await unavailableWorkspaceResponse.json()).error.code,
+      (await json<ApiError>(unavailableWorkspaceResponse)).error.code,
       "PROJECT_WORKSPACE_UNAVAILABLE",
     );
   } finally {
-    await app.close();
+    await server.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
