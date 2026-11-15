@@ -107,11 +107,11 @@ test("theme follows system color scheme, language route and mobile viewport rema
   await browser.goto("/?lang=en");
   await expect(browser.locator("html")).toHaveAttribute("data-theme", "dark");
   await browser.goto("/?lang=zh");
-  await expect(screen.getByRole("button", "新建议题")).toBeVisible();
+  await expect(screen.getByRole("button", "新建議題")).toBeVisible();
   await browser.setViewport({ width: 390, height: 844 });
-  await screen.getByRole("button", "新建议题").tap();
-  await screen.getByLabel("标题").fill("移动端议题");
-  await screen.getByRole("dialog", "新建议题").getByRole("button", "创建议题").tap();
-  await expect(screen.getByRole("dialog", "新建议题")).toBeHidden();
+  await screen.getByRole("button", "新建議題").tap();
+  await screen.getByLabel("標題").fill("移动端议题");
+  await screen.getByRole("dialog", "新建議題").getByRole("button", "建立議題").tap();
+  await expect(screen.getByRole("dialog", "新建議題")).toBeHidden();
   await expect(screen.getByRole("article", "移动端议题")).toBeVisible();
 });
