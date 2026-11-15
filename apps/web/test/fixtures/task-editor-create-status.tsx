@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 
-import { TaskEditor, type NewTaskEditorDraft } from "../../apps/web/src/components/TaskEditor";
-import type { ActorIdentity, TaskDraft } from "../../apps/web/src/types";
+import { TaskEditor, type NewTaskEditorDraft } from "../../src/components/TaskEditor";
+import type { ActorIdentity, TaskDraft } from "../../src/types";
 
 const currentUser: ActorIdentity = {
   type: "user",

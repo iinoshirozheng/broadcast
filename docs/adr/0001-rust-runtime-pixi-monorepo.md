@@ -151,6 +151,11 @@ so packaging infrastructure is edited only once.
         worker builds only for wasm32 and the desktop needs staged resources.
         `apps/web` (from `web/`) builds into `apps/web/dist`, the server's default static
         directory and the worker's assets. The userscript moves to `crates/codex/assets`.
+  - [x] pnpm workspace: `apps/web` (`@broadcast/web`) owns the web dependencies and its own
+        tests (`apps/web/test`, the vitest component test); the root keeps the server, CLI,
+        cloud, injector and release suites in `test/` and the Tauri, wrangler, miniflare and
+        e2e tooling. `pnpm-lock.yaml` comes from `pnpm import` of the npm lockfile, so tool
+        versions are unchanged; `esbuild` and `workerd` may run install scripts.
 - [ ] Release check — universal DMG build, signing and notarization with pixi Rust
 
 ## Consequences

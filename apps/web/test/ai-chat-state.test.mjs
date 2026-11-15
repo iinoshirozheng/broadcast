@@ -13,7 +13,7 @@ import {
   normalizeChatSelection,
   parseAiChatComposerFragment,
   patchAiChatSnapshot,
-} from "../apps/web/src/aiChatState.ts";
+} from "../src/aiChatState.ts";
 
 const models = [
   {

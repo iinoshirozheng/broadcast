@@ -5,7 +5,7 @@ const children = [
     stdio: "inherit",
     env: { BROADCAST_HOST: "127.0.0.1", ...process.env },
   }),
-  spawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "dev:web"], {
+  spawn(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["dev:web"], {
     stdio: "inherit",
   }),
 ];

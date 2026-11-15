@@ -7,7 +7,7 @@ import {
   createRevisionWebSocketClient,
   getRevisionPollingInterval,
   getRevisionWebSocketConfig,
-} from "../apps/web/src/revisionPolling.mjs";
+} from "../src/revisionPolling.mjs";
 
 function createTimerHarness() {
   const intervals = [];
@@ -354,8 +354,8 @@ test("a failed reconnect revision check closes the socket so compensation retrie
 
 test("the app connects the selected realtime transport without reloading the page", async () => {
   const [appSource, apiSource] = await Promise.all([
-    readFile(new URL("../apps/web/src/App.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../apps/web/src/api.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/api.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(apiSource, /\/api\/revisions\?\$\{query\}/);

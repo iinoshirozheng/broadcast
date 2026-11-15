@@ -3,7 +3,7 @@ import { web } from '@e2e-dev/web';
 
 // Model-free config: every step is deterministic locators + expect, no agents.
 // The runner starts tests/server.mjs (isolated Broadcast server, temp data
-// dir) and waits for /health. `npm run build:web` must have produced apps/web/dist.
+// dir) and waits for /health. `pnpm build:web` must have produced apps/web/dist.
 export default {
   projectId: 'broadcast',
   workers: 1,
