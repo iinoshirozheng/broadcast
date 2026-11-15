@@ -10,14 +10,12 @@ Broadcast 是 CDP 注入型工具。它通过 `--remote-debugging-port` 连接 C
 注入，因此无论重启或重装多少次，面板都不会出现。
 
 官方 Windows 启动器会另外拉起一个带独立 profile 和 CDP 的托管实例。这条路径还有
-一个独立缺陷：`scripts/codex-injector.mjs` 的 `activateCodexApp()` 只在 macOS 上
-实现，Windows 分支直接返回。托管窗口被其他窗口盖住或隐藏后，启动器不会再次把它
-唤到前台，用户就会觉得面板“不见了”。
+一个独立问题：托管窗口被其他窗口盖住或隐藏后，如果启动器不再次把它唤到前台，用户
+就会觉得面板“不见了”。启动器在 `crates/codex/src/windows.rs` 的 `activate_window()`
+中处理这一点。
 
 本目录提供：
 
-- 源码修复：Windows 下按托管 Codex 的进程号定位它自己的主窗口，把已运行的实例
-  带到前台。
 - 只读诊断脚本：不改状态地判断入口、面板和窗口当前是否可用。
 
 ## 脚本
@@ -34,7 +32,7 @@ Broadcast 是 CDP 注入型工具。它通过 `--remote-debugging-port` 连接 C
 | --- | --- |
 | 0 | 入口和面板已挂载，且处于可见的 Codex 窗口 |
 | 1 | CDP 可达，但面板当前不可用 |
-| 2 | 注入器、CDP 端点或主窗口目标缺失 |
+| 2 | CDP 端口、CDP 端点或主窗口目标缺失 |
 
 判定面板是否真的可用，应同时满足：`entryMounted`、`panelVisible` 为真，
 `statusVisible` 为假。iframe 的 `src` 常为 `about:blank`，这是 CDP
@@ -42,11 +40,9 @@ Broadcast 是 CDP 注入型工具。它通过 `--remote-debugging-port` 连接 C
 
 ## 验证记录
 
-本机 Windows 11 + Codex `26.1007.9446.0`：
-
-- `activateWindowsCodexWindow()` 真机调用：最小化的托管窗口被 `SW_RESTORE`
-  恢复并回到前台。
-- `node --test test/windows-codex.test.mjs` 5/5 通过。
+本机 Windows 11 + Codex `26.1007.9446.0` 上，此前的 Node 启动器经真机验证：最小化的
+托管窗口被 `SW_RESTORE` 恢复并回到前台。`activate_window()` 是它的 Rust 移植，使用
+同一段 PowerShell，尚未在 Windows 真机上重新验证。
 
 ## 限制
 

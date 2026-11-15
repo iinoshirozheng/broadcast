@@ -6,8 +6,8 @@
 
 ## 构建与签名范围
 
-流程复用 `npm run app:build:windows`，运行环境与现有 Windows CI 一致：
-GitHub-hosted `windows-2025`、Node 22、Rust 1.88.0。
+流程复用 `pnpm app:build:windows`，运行环境与现有 Windows CI 一致：
+GitHub-hosted `windows-2025`，工具链由 `setup-pixi` 按 `pixi.lock` 安装。
 该命令通过 `scripts/prepare-tauri-app.mjs` 和 `scripts/tauri-build.mjs`，
 按 `apps/desktop/tauri.windows.conf.json` 生成 NSIS 安装程序。
 

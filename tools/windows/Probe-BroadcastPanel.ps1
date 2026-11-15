@@ -4,16 +4,16 @@
     Read-only diagnostic probe for the Broadcast panel on Windows.
 
 .DESCRIPTION
-    Inspects the Broadcast injector, the Codex CDP endpoint, the Codex main window,
+    Inspects the Broadcast launcher, the Codex CDP endpoint, the Codex main window,
     and the mounted panel state. It never calls open() or any other mutating action.
 
     Output is one JSON object. Exit codes:
       0  The panel entry and panel are mounted in a visible Codex window.
       1  The panel is not usable while the Codex CDP endpoint is reachable.
-      2  The required environment (injector, CDP endpoint, or main target) is missing.
+      2  The required environment (CDP port, CDP endpoint, or main target) is missing.
 
 .PARAMETER CdpPort
-    CDP port. When omitted, the port is read from the running codex-injector.mjs process.
+    CDP port. When omitted, the port is read from the command line of the Codex process the launcher started.
 #>
 [CmdletBinding()]
 param(
@@ -29,15 +29,16 @@ function Write-Report($report, $exitCode) {
     exit $exitCode
 }
 
-function Get-InjectorProcesses {
-    @(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'codex-injector' })
+function Get-LauncherProcesses {
+    @(Get-CimInstance Win32_Process -Filter "Name='broadcast-launcher.exe'" -ErrorAction SilentlyContinue)
 }
 
-function Get-InjectorPort($commandLine) {
-    $match = [regex]::Match($commandLine, '--port\s+(\d+)')
-    if (-not $match.Success) { return $null }
-    return [int]$match.Groups[1].Value
+function Get-CodexCdpPort {
+    $codex = Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -notmatch '--type=' -and $_.CommandLine -match '--remote-debugging-port=\d+' } |
+        Select-Object -First 1
+    if (-not $codex) { return $null }
+    return [int][regex]::Match($codex.CommandLine, '--remote-debugging-port=(\d+)').Groups[1].Value
 }
 
 function Get-MainCodexWindowPids {
@@ -100,21 +101,19 @@ function Get-MainCodexTarget($port) {
         Select-Object -First 1
 }
 
-$injectors = @(Get-InjectorProcesses)
-$injector = $injectors | Select-Object -First 1
-$injectorPid = if ($injector) { $injector.ProcessId } else { $null }
-$injectorPort = if ($injector) { Get-InjectorPort $injector.CommandLine } else { $null }
-$port = if ($CdpPort -gt 0) { $CdpPort } else { $injectorPort }
+$launchers = @(Get-LauncherProcesses)
+$launcherPid = if ($launchers) { $launchers[0].ProcessId } else { $null }
+$port = if ($CdpPort -gt 0) { $CdpPort } else { Get-CodexCdpPort }
 
 $base = [ordered]@{
     cdpPort = $port
-    injectorPid = $injectorPid
-    injectorCount = $injectors.Count
+    launcherPid = $launcherPid
+    launcherCount = $launchers.Count
     visibleCodexWindows = @(Get-MainCodexWindowPids)
 }
 
 if (-not $port) {
-    $base["status"] = "no-injector-port"
+    $base["status"] = "no-cdp-port"
     Write-Report $base 2
 }
 

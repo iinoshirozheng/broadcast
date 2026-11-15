@@ -30,18 +30,17 @@ When cloud mode is active, the cloud is the only business-data source. A failed 
 
 ## Owner: validate locally
 
-Install dependencies and build the frontend:
+Install the JavaScript dependencies:
 
 ```bash
-npm ci
-npm run build:web
+pixi run install-js
 ```
 
-Create an ignored `.dev.vars` file containing a local-only value for `BROADCAST_SHARED_SECRET`, apply the D1 migration to Wrangler's local state, and start the Worker:
+Create an ignored `.dev.vars` file containing a local-only value for `BROADCAST_SHARED_SECRET`, apply the D1 migration to Wrangler's local state, and start the Worker. Wrangler builds the Rust Worker with `pixi run -e cloud build-cloud`:
 
 ```bash
-npm run cloud:migrate:local
-npm run dev:cloud
+pixi run pnpm cloud:migrate:local
+pixi run pnpm dev:cloud
 ```
 
 Open the printed loopback URL. The browser shows its native Basic Authentication prompt. Enter any local actor name as the username and the value from `.dev.vars` as the password.
@@ -53,15 +52,15 @@ Local Wrangler state lives under `.wrangler/` and is not committed.
 Authenticate Wrangler first:
 
 ```bash
-npx wrangler login
-npx wrangler whoami
+pixi run pnpm exec wrangler login
+pixi run pnpm exec wrangler whoami
 ```
 
 Provision the production D1 database and private R2 bucket using the exact names above.
 
 ```bash
-npx wrangler d1 create broadcast-db
-npx wrangler r2 bucket create broadcast-attachments
+pixi run pnpm exec wrangler d1 create broadcast-db
+pixi run pnpm exec wrangler r2 bucket create broadcast-attachments
 ```
 
 `wrangler.jsonc` contains one production configuration and identifies the D1 binding by its resource name and `database_id`. A D1 database ID is public metadata and does not grant access, so it can be committed. Wrangler local development creates persistent local equivalents under `.wrangler/`; those are local simulations, not additional Cloudflare environments.
@@ -69,15 +68,15 @@ npx wrangler r2 bucket create broadcast-attachments
 Apply the remote D1 migration and validate the deployment bundle:
 
 ```bash
-npm run cloud:migrate
-npm run cloud:deploy:dry-run
+pixi run pnpm cloud:migrate
+pixi run pnpm cloud:deploy:dry-run
 ```
 
 Set the shared password through Wrangler's private interactive prompt after the database schema is ready. Do not put the value in `wrangler.jsonc`, a shell command, a log, or a committed file. Then deploy the production Worker:
 
 ```bash
-npx wrangler secret put BROADCAST_SHARED_SECRET
-npm run cloud:deploy
+pixi run pnpm exec wrangler secret put BROADCAST_SHARED_SECRET
+pixi run pnpm cloud:deploy
 ```
 
 These commands create or update Cloudflare resources. This repository contains the production D1 database ID for the binding, but it does not contain the shared password or any API or OAuth token. Keep those credentials out of Git; cloning the repository does not grant access or mean the Worker has already been deployed.
@@ -94,29 +93,25 @@ Current Cloudflare references:
 
 ## Friend: connect an existing GitHub installation
 
-The owner follows this device setup too, using the owner's own actor name and checkout path. The friend does not need your local database or your filesystem paths. They update their existing clone and build the current UI:
+The owner follows this device setup too, using the owner's own actor name and checkout path. The friend does not need your local database or your filesystem paths. Open the Broadcast desktop App. It runs the loopback companion, embeds the board in Codex, and on macOS links its `broadcast` CLI into `/opt/homebrew/bin`. Without the App, run the companion from an up-to-date clone instead; it serves the board in a browser only:
 
 ```bash
 git pull --ff-only
-npm ci
-npm run build:web
+pixi run build-native
+BROADCAST_HOST=127.0.0.1 pixi run start
 ```
 
-Start the local companion:
+and use `target/debug/broadcast` in place of `broadcast` below.
+
+Then configure cloud mode. Use the deployed HTTPS Worker origin, choose the actor name that should appear on their actions, and enter the shared password only at the private `Shared key:` prompt:
 
 ```bash
-BROADCAST_HOST=127.0.0.1 npm start
-```
-
-In a second terminal, configure cloud mode. Use the deployed HTTPS Worker origin, choose the actor name that should appear on their actions, and enter the shared password only at the private `Shared key:` prompt:
-
-```bash
-npm run broadcast -- cloud login \
+broadcast cloud login \
   --url https://YOUR-WORKER-ORIGIN \
   --actor-name "FRIEND-DISPLAY-NAME"
 
-npm run broadcast -- cloud status
-npm run broadcast -- project list
+broadcast cloud status
+broadcast project list
 ```
 
 The shared password is not part of the command and is not echoed by the prompt.
@@ -124,19 +119,13 @@ The shared password is not part of the command and is not echoed by the prompt.
 For every cloud project used with Codex, map its project ID to that friend's own absolute checkout path:
 
 ```bash
-npm run broadcast -- project map PROJECT_ID \
+broadcast project map PROJECT_ID \
   --workspace-path /absolute/path/on/their/device
 ```
 
 The owner runs the same mapping command with the owner's own path. Mappings are intentionally different on each device and are never synchronized to D1.
 
-Launch the injected Codex window:
-
-```bash
-BROADCAST_HOST=127.0.0.1 npm run codex
-```
-
-`npm run codex` reuses or starts the loopback companion. Keep it running while using the embedded board. The companion supplies local Codex/Git/Skill/MCP capabilities and sends the shared password to the Worker only in the HTTPS Basic `Authorization` header. It does not write that password to D1 or R2, return it to the browser UI, or print it in logs. Device paths also stay off Cloudflare.
+Keep the companion running while using the board. The companion supplies local Codex/Git/Skill/MCP capabilities and sends the shared password to the Worker only in the HTTPS Basic `Authorization` header. It does not write that password to D1 or R2, return it to the browser UI, or print it in logs. Device paths also stay off Cloudflare.
 
 Do not point `BROADCAST_URL` directly at the cloud origin for this workflow. `broadcast` talks to the loopback companion, which applies Basic Authentication and the device's local project mapping. If the companion uses a non-default loopback port, set `BROADCAST_COMPANION_URL` to that loopback origin.
 
@@ -154,7 +143,7 @@ The browser view supports the shared board and attachments. Device-only Codex, G
 The owner rotates the Worker secret using Wrangler's interactive prompt:
 
 ```bash
-npx wrangler secret put BROADCAST_SHARED_SECRET
+pixi run pnpm exec wrangler secret put BROADCAST_SHARED_SECRET
 ```
 
 After rotation, both devices rerun `broadcast cloud login` and enter the new password. Browser-only users must authenticate again; closing the authenticated browser session or clearing site authentication may be necessary because browsers cache Basic credentials.
@@ -166,7 +155,7 @@ Because both collaborators share one password, rotation affects both at once. Th
 The migration tool takes a consistent SQLite snapshot with `VACUUM INTO`, removes structured device-only paths, exports attachment hashes, and writes a private bundle. The default local paths are:
 
 ```bash
-npm run cloud:data -- export \
+pixi run pnpm cloud:data export \
   --database .data/broadcast.sqlite \
   --attachments .data/attachments \
   --output cloud-migration-exports/initial
@@ -174,16 +163,16 @@ npm run cloud:data -- export \
 
 The output directory contains issue content and attachment bytes. It is mode-restricted and ignored by Git, but it must still be handled as private data. This export is optional when starting with an empty cloud board.
 
-Before importing, authenticate Wrangler, provision the named D1 and R2 resources, and run `npm run cloud:migrate` so the remote D1 schema exists. The target D1 must contain no projects, and none of the bundle's attachment keys may already exist in R2. Import refuses a non-empty target instead of merging or overwriting it.
+Before importing, authenticate Wrangler, provision the named D1 and R2 resources, and run `pixi run pnpm cloud:migrate` so the remote D1 schema exists. The target D1 must contain no projects, and none of the bundle's attachment keys may already exist in R2. Import refuses a non-empty target instead of merging or overwriting it.
 
 Run the one-time Wrangler adapter with an explicit remote-operation acknowledgement:
 
 ```bash
-BROADCAST_MIGRATION_REMOTE=1 npm run cloud:data -- import \
+BROADCAST_MIGRATION_REMOTE=1 pixi run pnpm cloud:data import \
   --bundle cloud-migration-exports/initial \
   --adapter ./scripts/wrangler-cloud-adapter.mjs
 
-BROADCAST_MIGRATION_REMOTE=1 npm run cloud:data -- verify \
+BROADCAST_MIGRATION_REMOTE=1 pixi run pnpm cloud:data verify \
   --bundle cloud-migration-exports/initial \
   --adapter ./scripts/wrangler-cloud-adapter.mjs
 ```

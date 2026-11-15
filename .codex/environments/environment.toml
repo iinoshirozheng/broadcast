@@ -8,4 +8,4 @@ script = ""
 [[actions]]
 name = "启动"
 icon = "run"
-command = "npm run codex"
+command = "pixi run install-js && pixi run pnpm app:dev"
