@@ -1,3 +1,4 @@
+import { isClaudeAgentId } from "../actors";
 import type { ActorIdentity } from "../types";
 
 export function ActorAvatar({
@@ -7,17 +8,17 @@ export function ActorAvatar({
   actor: ActorIdentity;
   className?: string;
 }) {
-  const kind = actor.id === "claude-agent" ? "claude-agent" : actor.type;
+  const claude = actor.type === "agent" && isClaudeAgentId(actor.id);
   return (
     <span
-      className={`actor-avatar actor-avatar-${kind}${className ? ` ${className}` : ""}`}
+      className={`actor-avatar actor-avatar-${actor.type}${className ? ` ${className}` : ""}`}
       aria-hidden="true"
       title={actor.name}
     >
-      {kind === "agent" ? (
+      {actor.type === "agent" ? (
         <img
           className="actor-avatar-image actor-avatar-agent-image"
-          src="codex-agent-logo.png"
+          src={claude ? "claude-agent-logo.svg" : "codex-agent-logo.png"}
           alt=""
         />
       ) : actor.avatarUrl ? (

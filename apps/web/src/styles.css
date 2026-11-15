@@ -3437,11 +3437,6 @@ kbd {
   background: #7167bf;
 }
 
-.actor-avatar-claude-agent {
-  border-radius: 50%;
-  background: #d97757;
-}
-
 .actor-avatar-agent {
   overflow: visible;
   border: 0;
