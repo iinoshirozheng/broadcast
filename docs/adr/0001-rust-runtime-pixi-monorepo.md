@@ -110,7 +110,8 @@ so packaging infrastructure is edited only once.
         is gone; the workflows still pin 1.88 until cutover. Windows: WMI process listing, the
         packaged-app activation, `taskkill`, window activation and the `WindowsApps` CLI copy are
         ported from `windows-codex.mjs`; the workspace and the desktop pass clippy for
-        `x86_64-pc-windows-gnu` (zig as C compiler), but nothing has run on Windows yet.
+        `x86_64-pc-windows-gnu` (zig as C compiler), and the Windows CI job runs the suites and
+        builds the NSIS installer.
         Verified on macOS with a fake Codex: injection, the served board, CLI reads and writes
         through the descriptor, recovery, quit cleanup and the skill install. The final
         `activateWithOptions` was skipped by a temporary `open: false`, because activation fails
@@ -194,8 +195,9 @@ so packaging infrastructure is edited only once.
         `Z:\…`, which path assertions reject. The server and CLI also build for
         `aarch64-pc-windows-gnullvm` (llvm-mingw), but arm64 Wine (Ubuntu 9.0, Debian 10.0)
         hangs creating its prefix in Docker, so that build cannot avoid the emulation.
-  - [ ] Unverified: the MSVC build, the NSIS installer and the suites on Windows, until
-        their CI jobs run.
+  - [x] The MSVC build, the NSIS installer and the suites run on Windows: the
+        `windows-2025` CI job of 57b5f2b (run 43691803114) passes `pixi run test` (the
+        server, CLI and cloud suites) and builds the unsigned NSIS installer.
 
 ## Consequences
 
