@@ -17,9 +17,9 @@ export function useTaskCardDragPreview({
   const taskIndexes = new Map(tasks.map((task, index) => [task.id, index]));
   const remainingTasks = tasks.filter((task) => task.id !== draggedTaskId);
   const remainingIndexes = new Map(remainingTasks.map((task, index) => [task.id, index]));
-  const draggedTaskIndex = draggedTaskId ? taskIndexes.get(draggedTaskId) ?? -1 : -1;
+  const draggedTaskIndex = draggedTaskId ? (taskIndexes.get(draggedTaskId) ?? -1) : -1;
   const beforeIndex = dropBeforeTaskId
-    ? remainingIndexes.get(dropBeforeTaskId) ?? remainingTasks.length
+    ? (remainingIndexes.get(dropBeforeTaskId) ?? remainingTasks.length)
     : remainingTasks.length;
   const previewIndex = isDropTarget && dropBeforeTaskId !== undefined ? beforeIndex : -1;
   const dragDistance = draggedTaskHeight + 8;
@@ -29,10 +29,13 @@ export function useTaskCardDragPreview({
   }, [draggedTaskId, isDropTarget]);
 
   function findDropBefore(container: HTMLElement, clientY: number): string | null {
-    const cards = Array.from(container.querySelectorAll<HTMLElement>("[data-task-id]"))
-      .filter((card) => card.dataset.taskId !== draggedTaskId);
-    return cards.find((card) => clientY < card.getBoundingClientRect().top + card.offsetHeight / 2)
-      ?.dataset.taskId ?? null;
+    const cards = Array.from(container.querySelectorAll<HTMLElement>("[data-task-id]")).filter(
+      (card) => card.dataset.taskId !== draggedTaskId,
+    );
+    return (
+      cards.find((card) => clientY < card.getBoundingClientRect().top + card.offsetHeight / 2)
+        ?.dataset.taskId ?? null
+    );
   }
 
   function clearDropPreview() {
@@ -46,7 +49,10 @@ export function useTaskCardDragPreview({
   }
 
   function leaveDropPreview(event: DragEvent<HTMLElement>) {
-    if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
+    if (
+      !(event.relatedTarget instanceof Node) ||
+      !event.currentTarget.contains(event.relatedTarget)
+    ) {
       clearDropPreview();
     }
   }
@@ -62,5 +68,11 @@ export function useTaskCardDragPreview({
     return shift;
   }
 
-  return { findDropBefore, clearDropPreview, updateDropPreview, leaveDropPreview, getTaskDragShift };
+  return {
+    findDropBefore,
+    clearDropPreview,
+    updateDropPreview,
+    leaveDropPreview,
+    getTaskDragShift,
+  };
 }

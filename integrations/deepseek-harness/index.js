@@ -6,8 +6,9 @@ export const name = "broadcast";
 export const inject = ["webServer"];
 
 const ROUTE = "/integrations/broadcast";
-const RUNTIME_FILE = process.env.BROADCAST_RUNTIME_FILE
-  ?? path.join(os.homedir(), "Library/Application Support/Broadcast/launcher-runtime.json");
+const RUNTIME_FILE =
+  process.env.BROADCAST_RUNTIME_FILE ??
+  path.join(os.homedir(), "Library/Application Support/Broadcast/launcher-runtime.json");
 
 async function activeBroadcastUrl() {
   const descriptor = JSON.parse(await readFile(RUNTIME_FILE, "utf8"));
@@ -21,25 +22,26 @@ async function activeBroadcastUrl() {
 
 export function apply(ctx) {
   ctx.effect(
-    () => ctx.webServer.register({
-      kind: "exact",
-      path: ROUTE,
-      handler: async (_request, response) => {
-        try {
-          response.writeHead(307, {
-            location: await activeBroadcastUrl(),
-            "cache-control": "no-store",
-          });
-          response.end();
-        } catch {
-          response.writeHead(503, {
-            "content-type": "text/plain; charset=utf-8",
-            "cache-control": "no-store",
-          });
-          response.end("Broadcast is not running.");
-        }
-      },
-    }),
+    () =>
+      ctx.webServer.register({
+        kind: "exact",
+        path: ROUTE,
+        handler: async (_request, response) => {
+          try {
+            response.writeHead(307, {
+              location: await activeBroadcastUrl(),
+              "cache-control": "no-store",
+            });
+            response.end();
+          } catch {
+            response.writeHead(503, {
+              "content-type": "text/plain; charset=utf-8",
+              "cache-control": "no-store",
+            });
+            response.end("Broadcast is not running.");
+          }
+        },
+      }),
     "broadcast: active runtime route",
   );
 }

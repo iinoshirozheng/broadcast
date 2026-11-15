@@ -1,12 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  chmod,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -52,37 +46,33 @@ export function createWranglerCloudAdapters({
 
   const resolvedPersistTo = persistTo ?? environment.BROADCAST_MIGRATION_PERSIST_TO;
   if (!useRemote && !resolvedPersistTo) {
-    throw new Error(
-      "Local migration requires BROADCAST_MIGRATION_PERSIST_TO",
-    );
+    throw new Error("Local migration requires BROADCAST_MIGRATION_PERSIST_TO");
   }
   const resolvedConfig = path.resolve(
-    configPath
-      ?? environment.BROADCAST_MIGRATION_CONFIG
-      ?? path.join(projectRoot, "wrangler.jsonc"),
+    configPath ??
+      environment.BROADCAST_MIGRATION_CONFIG ??
+      path.join(projectRoot, "wrangler.jsonc"),
   );
   const modeArguments = useRemote
     ? ["--remote"]
     : ["--local", "--persist-to", path.resolve(resolvedPersistTo)];
-  const temporaryDirectory = mkdtemp(
-    path.join(os.tmpdir(), "broadcast-wrangler-migration-"),
-  ).then(async (directory) => {
-    await chmod(directory, 0o700);
-    return directory;
-  });
+  const temporaryDirectory = mkdtemp(path.join(os.tmpdir(), "broadcast-wrangler-migration-")).then(
+    async (directory) => {
+      await chmod(directory, 0o700);
+      return directory;
+    },
+  );
   let commandQueue = Promise.resolve();
   let sequence = 0;
 
   function run(args) {
-    const result = commandQueue.then(() => runCommand(
-      process.execPath,
-      [wranglerExecutable, ...args],
-      {
+    const result = commandQueue.then(() =>
+      runCommand(process.execPath, [wranglerExecutable, ...args], {
         cwd: projectRoot,
         encoding: "utf8",
         maxBuffer: 16 * 1024 * 1024,
-      },
-    ));
+      }),
+    );
     commandQueue = result.catch(() => {});
     return result;
   }
@@ -126,17 +116,19 @@ export function createWranglerCloudAdapters({
         "--config",
         resolvedConfig,
       ]);
-      return Object.fromEntries(parseD1Results(result.stdout).map((row) => [
-        row.project_id,
-        {
-          projects: Number(row.projects),
-          project_readmes: Number(row.project_readmes),
-          tasks: Number(row.tasks),
-          comments: Number(row.comments),
-          task_relations: Number(row.task_relations),
-          attachments: Number(row.attachments),
-        },
-      ]));
+      return Object.fromEntries(
+        parseD1Results(result.stdout).map((row) => [
+          row.project_id,
+          {
+            projects: Number(row.projects),
+            project_readmes: Number(row.project_readmes),
+            tasks: Number(row.tasks),
+            comments: Number(row.comments),
+            task_relations: Number(row.task_relations),
+            attachments: Number(row.attachments),
+          },
+        ]),
+      );
     },
     async listProjectReadmes() {
       const readmes = [];
@@ -230,9 +222,8 @@ export function createWranglerCloudAdapters({
 }
 
 export function createCloudMigrationAdapters({ bundle, command } = {}) {
-  const preparedImportSql = command === "import"
-    ? createCloudD1ImportSql(bundle.tables)
-    : undefined;
+  const preparedImportSql =
+    command === "import" ? createCloudD1ImportSql(bundle.tables) : undefined;
   return createWranglerCloudAdapters({ preparedImportSql });
 }
 

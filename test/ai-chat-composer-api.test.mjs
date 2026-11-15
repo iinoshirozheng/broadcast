@@ -10,7 +10,9 @@ import { startNativeServer } from "./helpers/native-server.mjs";
 test("composer rebind HTTP API returns send-ready documents and boundary errors", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-composer-rebind-api-"));
   const executable = path.join(directory, "fake-codex.mjs");
-  await writeFile(executable, `#!/usr/bin/env node
+  await writeFile(
+    executable,
+    `#!/usr/bin/env node
 const args = process.argv.slice(2);
 if (args[0] !== "app-server") process.exit(2);
 process.stdin.setEncoding("utf8");
@@ -36,7 +38,8 @@ process.stdin.on("data", (chunk) => {
     }
   }
 });
-`);
+`,
+  );
   await chmod(executable, 0o755);
   const dataDirectory = path.join(directory, "data");
   const options = {
@@ -53,7 +56,9 @@ process.stdin.on("data", (chunk) => {
     assert.equal(slashCandidatesResponse.status, 200);
     const slashCandidates = await slashCandidatesResponse.json();
     assert.ok(slashCandidates.candidates.length > 4);
-    const newCandidate = slashCandidates.candidates.find((candidate) => candidate.command === "/new");
+    const newCandidate = slashCandidates.candidates.find(
+      (candidate) => candidate.command === "/new",
+    );
     assert.deepEqual(newCandidate.selection, { type: "insertText", text: "/new " });
     assert.ok(slashCandidates.candidates.every((candidate) => !("dispatch" in candidate)));
 
@@ -69,9 +74,11 @@ process.stdin.on("data", (chunk) => {
       "compact-conversation",
     ]);
     assert.ok(aiChatSlash.candidates.length > 0);
-    assert.ok(aiChatSlash.candidates.every((candidate) => (
-      verifiedHandlers.has(candidate.dispatch?.handlerId)
-    )));
+    assert.ok(
+      aiChatSlash.candidates.every((candidate) =>
+        verifiedHandlers.has(candidate.dispatch?.handlerId),
+      ),
+    );
 
     const skillCandidatesResponse = await fetch(
       `${baseUrl}/api/local/ai/composer/candidates?projectId=local&trigger=%40&query=real&surface=comment`,
@@ -104,7 +111,10 @@ process.stdin.on("data", (chunk) => {
     assert.equal(response.status, 200);
     const rebound = await response.json();
     assert.equal(rebound.ready, true);
-    assert.deepEqual(rebound.document.nodes.map((node) => node.type), ["text", "skill"]);
+    assert.deepEqual(
+      rebound.document.nodes.map((node) => node.type),
+      ["text", "skill"],
+    );
     assert.equal(rebound.bindings[0].label, "Real Skill");
     assert.equal(JSON.stringify(rebound).includes("/server-only"), false);
     assert.equal(
@@ -161,12 +171,14 @@ process.stdin.on("data", (chunk) => {
         projectId: "local",
         document: {
           version: 1,
-          nodes: [{
-            type: "persistedReference",
-            referenceKind: "skill",
-            referenceKey: "cmVhbC1za2lsbA==",
-            label: "Real Skill",
-          }],
+          nodes: [
+            {
+              type: "persistedReference",
+              referenceKind: "skill",
+              referenceKey: "cmVhbC1za2lsbA==",
+              label: "Real Skill",
+            },
+          ],
         },
       }),
     });
@@ -206,12 +218,14 @@ process.stdin.on("data", (chunk) => {
         threadId: authoritativeThread.id,
         document: {
           version: 1,
-          nodes: [{
-            type: "persistedReference",
-            referenceKind: "skill",
-            referenceKey: persistence.referenceKey,
-            label: "Real Skill",
-          }],
+          nodes: [
+            {
+              type: "persistedReference",
+              referenceKind: "skill",
+              referenceKey: persistence.referenceKey,
+              label: "Real Skill",
+            },
+          ],
         },
       }),
     });

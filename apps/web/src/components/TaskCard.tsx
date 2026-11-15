@@ -14,10 +14,7 @@ import {
 import { labelPresentation } from "../labels";
 import { taskPriorityLabel, useBroadcastI18n } from "../i18n";
 import { AGENT_ACTORS, actorKey, assigneeTargetForActor } from "../actors";
-import type {
-  TaskCardPresentation,
-  TaskConversationItem,
-} from "../taskConversations";
+import type { TaskCardPresentation, TaskConversationItem } from "../taskConversations";
 import { ActorAvatar } from "./ActorAvatar";
 import { DueDateIcon, PriorityIcon, ProjectIcon } from "./SemanticIcons";
 import { LabelPicker } from "./LabelPicker";
@@ -66,14 +63,15 @@ function taskBodyText(value: string) {
     }
     if (node.type === "break") return " ";
     if (node.value !== undefined) return node.value;
-    const separator = node.type === "root"
-      || node.type === "blockquote"
-      || node.type === "list"
-      || node.type === "listItem"
-      || node.type === "table"
-      || node.type === "tableRow"
-      ? " "
-      : "";
+    const separator =
+      node.type === "root" ||
+      node.type === "blockquote" ||
+      node.type === "list" ||
+      node.type === "listItem" ||
+      node.type === "table" ||
+      node.type === "tableRow"
+        ? " "
+        : "";
     return node.children?.map(visibleText).join(separator) ?? "";
   }
 
@@ -83,13 +81,19 @@ function taskBodyText(value: string) {
 }
 
 function calendarDate(value: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" })
-    .format(new Date(`${value}T12:00:00`));
+  return new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" }).format(
+    new Date(`${value}T12:00:00`),
+  );
 }
 
-function createdDate(value: string, locale: string, text: (chinese: string, english: string) => string) {
-  const formatted = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" })
-    .format(new Date(value));
+function createdDate(
+  value: string,
+  locale: string,
+  text: (chinese: string, english: string) => string,
+) {
+  const formatted = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(
+    new Date(value),
+  );
   return text(`${formatted}创建`, `Created ${formatted}`);
 }
 
@@ -107,15 +111,16 @@ function firstTaskImage(task: Task) {
   const markdownImage = task.description.match(
     /!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^)]*["'])?\)/,
   );
-  const source = markdownImage?.[1]
-    ?? markdownImage?.[2];
+  const source = markdownImage?.[1] ?? markdownImage?.[2];
   return source ? resolvePersistedAttachmentUrl(source) : null;
 }
 
 function TaskCardMedia({ src }: { src: string }) {
   const mediaRef = useRef<HTMLDivElement>(null);
   const imageSizeRef = useRef<{ naturalWidth: number; naturalHeight: number } | null>(null);
-  const [presentation, setPresentation] = useState<{ width: number; clamped: boolean } | null>(null);
+  const [presentation, setPresentation] = useState<{ width: number; clamped: boolean } | null>(
+    null,
+  );
   const clamped = presentation?.clamped ?? false;
   const updatePresentation = useCallback(() => {
     const media = mediaRef.current;
@@ -124,13 +129,13 @@ function TaskCardMedia({ src }: { src: string }) {
     const renderedWidth = Math.min(imageSize.naturalWidth, media.clientWidth);
     const nextPresentation = {
       width: imageSize.naturalWidth,
-      clamped: imageSize.naturalHeight * renderedWidth / imageSize.naturalWidth > 300,
+      clamped: (imageSize.naturalHeight * renderedWidth) / imageSize.naturalWidth > 300,
     };
-    setPresentation((current) => (
+    setPresentation((current) =>
       current?.width === nextPresentation.width && current.clamped === nextPresentation.clamped
         ? current
-        : nextPresentation
-    ));
+        : nextPresentation,
+    );
   }, []);
 
   useEffect(() => {
@@ -163,16 +168,11 @@ function TaskCardMedia({ src }: { src: string }) {
   );
 }
 
-function ProcessingProgress({
-  presentation,
-}: {
-  presentation: TaskCardPresentation;
-}) {
+function ProcessingProgress({ presentation }: { presentation: TaskCardPresentation }) {
   const { text } = useBroadcastI18n();
   const { processing } = presentation;
-  const hasProgress = processing.total !== null
-    && processing.total > 0
-    && processing.completed !== null;
+  const hasProgress =
+    processing.total !== null && processing.total > 0 && processing.completed !== null;
   if (!hasProgress) return null;
 
   const total = processing.total!;
@@ -208,7 +208,9 @@ function ProcessingLabel({ processing }: { processing: TaskCardPresentation["pro
   return (
     <span className="task-processing-label">
       {running
-        ? (elapsed ? text(`已处理 ${elapsed}...`, `Processing for ${elapsed}...`) : text("正在处理...", "Processing..."))
+        ? elapsed
+          ? text(`已处理 ${elapsed}...`, `Processing for ${elapsed}...`)
+          : text("正在处理...", "Processing...")
         : text("暂停处理", "Processing paused")}
     </span>
   );
@@ -224,7 +226,14 @@ function ProcessingStatusRow({
   const running = presentation.processing.running;
   return (
     <div className={`task-processing-row${running ? " is-running" : " is-paused"}`}>
-      {running && <img className="task-processing-glyph" src={processingAnimation} alt="" aria-hidden="true" />}
+      {running && (
+        <img
+          className="task-processing-glyph"
+          src={processingAnimation}
+          alt=""
+          aria-hidden="true"
+        />
+      )}
       <ProcessingLabel processing={presentation.processing} />
       <span className="task-processing-spacer" aria-hidden="true" />
       {presentation.conversations.length > 0 && (
@@ -266,14 +275,23 @@ function TaskLabels({ task }: { task: Task }) {
       {task.labels.slice(0, 2).map((label) => {
         const presentation = labelPresentation(label, language);
         return (
-          <span className={`label-chip${presentation.tone ? ` label-chip-${presentation.tone}` : ""}`} key={label}>
+          <span
+            className={`label-chip${presentation.tone ? ` label-chip-${presentation.tone}` : ""}`}
+            key={label}
+          >
             {presentation.tone && <i aria-hidden="true" />}
             <span>{presentation.name}</span>
           </span>
         );
       })}
       {task.labels.length > 2 && (
-        <span className="label-more" title={task.labels.slice(2).map((label) => labelPresentation(label, language).name).join(", ")}>
+        <span
+          className="label-more"
+          title={task.labels
+            .slice(2)
+            .map((label) => labelPresentation(label, language).name)
+            .join(", ")}
+        >
           +{task.labels.length - 2}
         </span>
       )}
@@ -333,7 +351,10 @@ function DueDateControl({
   const displayIdentifier = task.externalKey ?? task.identifier;
   if (!task.dueDate) return null;
   return (
-    <label className="due-date-chip card-property-control" title={text(`截止日期 ${task.dueDate}`, `Due date ${task.dueDate}`)}>
+    <label
+      className="due-date-chip card-property-control"
+      title={text(`截止日期 ${task.dueDate}`, `Due date ${task.dueDate}`)}
+    >
       <DueDateIcon color="currentColor" size={12} /> {calendarDate(task.dueDate, locale)}
       <input
         type="date"
@@ -367,19 +388,22 @@ function AssigneeControl({
   const displayIdentifier = task.externalKey ?? task.identifier;
   const currentUserKey = actorKey(currentUser);
   const assignee = actorKey(task.assignee) === currentUserKey ? currentUser : task.assignee;
-  const participants = persistedParticipants.map((participant) => (
-    actorKey(participant) === currentUserKey ? currentUser : participant
-  ));
-  const options = [assignee, currentUser, ...AGENT_ACTORS]
-    .filter((actor, index, actors) => (
-      actors.findIndex((candidate) => actorKey(candidate) === actorKey(actor)) === index
-    ));
+  const participants = persistedParticipants.map((participant) =>
+    actorKey(participant) === currentUserKey ? currentUser : participant,
+  );
+  const options = [assignee, currentUser, ...AGENT_ACTORS].filter(
+    (actor, index, actors) =>
+      actors.findIndex((candidate) => actorKey(candidate) === actorKey(actor)) === index,
+  );
   return (
     <TaskPropertyPicker
       value={actorKey(task.assignee)}
       options={options.map((actor) => ({
         value: actorKey(actor),
-        label: actorKey(actor) === currentUserKey ? text(`${actor.name}（我）`, `${actor.name} (me)`) : actor.name,
+        label:
+          actorKey(actor) === currentUserKey
+            ? text(`${actor.name}（我）`, `${actor.name} (me)`)
+            : actor.name,
         icon: <ActorAvatar actor={actor} className="task-property-assignee-avatar" />,
       }))}
       open={open}
@@ -426,7 +450,9 @@ export function TaskCard({
   const { locale, text } = useBroadcastI18n();
   const displayIdentifier = task.externalKey ?? task.identifier;
   const [propertyMenu, setPropertyMenu] = useState<"priority" | "labels" | "assignee" | null>(null);
-  const [savingProperty, setSavingProperty] = useState<"priority" | "labels" | "dueDate" | "assignee" | null>(null);
+  const [savingProperty, setSavingProperty] = useState<
+    "priority" | "labels" | "dueDate" | "assignee" | null
+  >(null);
   const creator: ActorIdentity = {
     type: task.creatorType,
     id: task.creatorId,
@@ -434,29 +460,33 @@ export function TaskCard({
     avatarUrl: task.creatorAvatarUrl,
   };
   const processingCard = task.status === "in_progress";
-  const supportsConversation = task.status === "in_progress"
-    || task.status === "in_review"
-    || task.status === "blocked"
-    || task.status === "done"
-    || task.status === "canceled";
+  const supportsConversation =
+    task.status === "in_progress" ||
+    task.status === "in_review" ||
+    task.status === "blocked" ||
+    task.status === "done" ||
+    task.status === "canceled";
   const showsConversation = supportsConversation && presentation.conversations.length > 0;
-  const showsInlineParticipants = variant === "main"
-    && task.participants.length > 0;
+  const showsInlineParticipants = variant === "main" && task.participants.length > 0;
   const image = showCover ? firstTaskImage(task) : null;
   const body = useMemo(
-    () => showBody ? taskBodyText(task.description) : "",
+    () => (showBody ? taskBodyText(task.description) : ""),
     [showBody, task.description],
   );
   const hasProperties = task.priority !== "none" || task.labels.length > 0 || task.dueDate;
-  const showsProperties = Boolean(projectName)
-    || (!processingCard && (hasProperties || showsInlineParticipants || showsConversation));
+  const showsProperties =
+    Boolean(projectName) ||
+    (!processingCard && (hasProperties || showsInlineParticipants || showsConversation));
   const propertyDisabled = savingProperty !== null;
 
-  function updateProperty(changes: Partial<TaskDraft>, property: NonNullable<typeof savingProperty>) {
+  function updateProperty(
+    changes: Partial<TaskDraft>,
+    property: NonNullable<typeof savingProperty>,
+  ) {
     setSavingProperty(property);
     void onUpdate(task, changes)
       .catch(() => {})
-      .finally(() => setSavingProperty((current) => current === property ? null : current));
+      .finally(() => setSavingProperty((current) => (current === property ? null : current)));
   }
 
   return (
@@ -486,7 +516,10 @@ export function TaskCard({
       <button
         className="task-card-open"
         type="button"
-        aria-label={text(`打开 ${displayIdentifier}: ${task.title}`, `Open ${displayIdentifier}: ${task.title}`)}
+        aria-label={text(
+          `打开 ${displayIdentifier}: ${task.title}`,
+          `Open ${displayIdentifier}: ${task.title}`,
+        )}
         onClick={() => onEdit(task)}
       />
 
@@ -494,7 +527,9 @@ export function TaskCard({
         <span className="card-reference">
           <span className="task-identifier">ID: {displayIdentifier}</span>
         </span>
-        {presentation.unread && <span className="task-unread-dot" aria-label={text("有未读更新", "Unread updates")} />}
+        {presentation.unread && (
+          <span className="task-unread-dot" aria-label={text("有未读更新", "Unread updates")} />
+        )}
         {task.status === "in_review" && onComplete && (
           <button
             className="task-card-complete"
@@ -507,8 +542,12 @@ export function TaskCard({
               card.style.viewTransitionName = "completing-task";
               const transition = document.startViewTransition(() => onComplete(task));
               void transition.finished.then(
-                () => { card.style.viewTransitionName = `review-task-${task.id}`; },
-                () => { card.style.viewTransitionName = `review-task-${task.id}`; },
+                () => {
+                  card.style.viewTransitionName = `review-task-${task.id}`;
+                },
+                () => {
+                  card.style.viewTransitionName = `review-task-${task.id}`;
+                },
               );
             }}
           >
@@ -535,9 +574,7 @@ export function TaskCard({
 
       {body && <p className="task-card-description">{body}</p>}
 
-      {image && (
-        <TaskCardMedia key={image} src={image} />
-      )}
+      {image && <TaskCardMedia key={image} src={image} />}
 
       {showsProperties && (
         <div className="card-properties" aria-label={text("议题属性", "Issue properties")}>
@@ -574,10 +611,15 @@ export function TaskCard({
             <DueDateControl
               task={task}
               disabled={propertyDisabled}
-              onChange={(dueDate) => updateProperty({
-                dueDate,
-                ...(dueDate ? {} : { recurrence: null }),
-              }, "dueDate")}
+              onChange={(dueDate) =>
+                updateProperty(
+                  {
+                    dueDate,
+                    ...(dueDate ? {} : { recurrence: null }),
+                  },
+                  "dueDate",
+                )
+              }
             />
           )}
           {!processingCard && showsInlineParticipants && (
@@ -591,7 +633,9 @@ export function TaskCard({
               onChange={(assigneeTarget) => updateProperty({ assigneeTarget }, "assignee")}
             />
           )}
-          {!processingCard && showsConversation && <span className="card-properties-spacer" aria-hidden="true" />}
+          {!processingCard && showsConversation && (
+            <span className="card-properties-spacer" aria-hidden="true" />
+          )}
           {!processingCard && showsConversation && (
             <TaskConversationMenu
               conversations={presentation.conversations}

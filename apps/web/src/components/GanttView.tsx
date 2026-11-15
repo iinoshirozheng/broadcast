@@ -44,12 +44,48 @@ interface GanttViewProps {
 let pendingDetailViewport: { projectId: string; x: number; y: number } | null = null;
 
 const GANTT_GROUPS: GanttGroupDefinition[] = [
-  { id: "in-progress", chineseLabel: "处理中", englishLabel: "In progress", statuses: ["in_progress"], defaultOpen: true },
-  { id: "in-review", chineseLabel: "等你确认", englishLabel: "In review", statuses: ["in_review"], defaultOpen: true },
-  { id: "blocked", chineseLabel: "遇到阻碍", englishLabel: "Blocked", statuses: ["blocked"], defaultOpen: true },
-  { id: "todo", chineseLabel: "待处理", englishLabel: "To do", statuses: ["backlog", "todo"], defaultOpen: true },
-  { id: "done", chineseLabel: "已完成", englishLabel: "Completed", statuses: ["done"], defaultOpen: false },
-  { id: "canceled", chineseLabel: "已取消", englishLabel: "Canceled", statuses: ["canceled"], defaultOpen: false },
+  {
+    id: "in-progress",
+    chineseLabel: "处理中",
+    englishLabel: "In progress",
+    statuses: ["in_progress"],
+    defaultOpen: true,
+  },
+  {
+    id: "in-review",
+    chineseLabel: "等你确认",
+    englishLabel: "In review",
+    statuses: ["in_review"],
+    defaultOpen: true,
+  },
+  {
+    id: "blocked",
+    chineseLabel: "遇到阻碍",
+    englishLabel: "Blocked",
+    statuses: ["blocked"],
+    defaultOpen: true,
+  },
+  {
+    id: "todo",
+    chineseLabel: "待处理",
+    englishLabel: "To do",
+    statuses: ["backlog", "todo"],
+    defaultOpen: true,
+  },
+  {
+    id: "done",
+    chineseLabel: "已完成",
+    englishLabel: "Completed",
+    statuses: ["done"],
+    defaultOpen: false,
+  },
+  {
+    id: "canceled",
+    chineseLabel: "已取消",
+    englishLabel: "Canceled",
+    statuses: ["canceled"],
+    defaultOpen: false,
+  },
 ];
 
 function localDate(value: string) {
@@ -85,13 +121,17 @@ function taskProgress(task: Task, presentation: TaskCardPresentation | undefined
 }
 
 function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  }[character]!));
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+      })[character]!,
+  );
 }
 
 function dateCellClass(date: Date) {
@@ -99,14 +139,24 @@ function dateCellClass(date: Date) {
   const classes: string[] = [];
   if (date.getDay() === 0 || date.getDay() === 6) classes.push("is-weekend");
   if (
-    date.getFullYear() === today.getFullYear()
-    && date.getMonth() === today.getMonth()
-    && date.getDate() === today.getDate()
-  ) classes.push("is-today");
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  )
+    classes.push("is-today");
   return classes.join(" ");
 }
 
-export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCompleted, todayRequest, onOpenTask, onUpdate }: GanttViewProps) {
+export function GanttView({
+  tasks,
+  presentations,
+  hasActiveFilters,
+  zoom,
+  hideCompleted,
+  todayRequest,
+  onOpenTask,
+  onUpdate,
+}: GanttViewProps) {
   const { language, locale, text } = useBroadcastI18n();
   const i18nRef = useRef({ language, locale, text });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,7 +176,10 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
   i18nRef.current = { language, locale, text };
 
   const visibleTasks = useMemo(
-    () => hideCompleted ? tasks.filter((task) => task.status !== "done" && task.status !== "canceled") : tasks,
+    () =>
+      hideCompleted
+        ? tasks.filter((task) => task.status !== "done" && task.status !== "canceled")
+        : tasks,
     [hideCompleted, tasks],
   );
   useEffect(() => {
@@ -182,14 +235,16 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
       const task = item as BroadcastGanttTask;
       if (task.broadcastGroup) return "";
       const displayEnd = addDays(end, -1);
-      const dateLabel = start.getFullYear() === displayEnd.getFullYear()
-        ? `${ganttDate(start, i18nRef.current.locale)} — ${ganttDate(displayEnd, i18nRef.current.locale)}`
-        : `${ganttDate(start, i18nRef.current.locale, true)} — ${ganttDate(displayEnd, i18nRef.current.locale, true)}`;
-      const avatar = task.broadcastAssigneeType === "agent"
-        ? `<img src="codex-agent-logo.png" alt="">`
-        : task.broadcastAssigneeAvatarUrl
-        ? `<img src="${escapeHtml(task.broadcastAssigneeAvatarUrl)}" alt="">`
-        : `<span>${escapeHtml(task.broadcastAssigneeInitial)}</span>`;
+      const dateLabel =
+        start.getFullYear() === displayEnd.getFullYear()
+          ? `${ganttDate(start, i18nRef.current.locale)} — ${ganttDate(displayEnd, i18nRef.current.locale)}`
+          : `${ganttDate(start, i18nRef.current.locale, true)} — ${ganttDate(displayEnd, i18nRef.current.locale, true)}`;
+      const avatar =
+        task.broadcastAssigneeType === "agent"
+          ? `<img src="codex-agent-logo.png" alt="">`
+          : task.broadcastAssigneeAvatarUrl
+            ? `<img src="${escapeHtml(task.broadcastAssigneeAvatarUrl)}" alt="">`
+            : `<span>${escapeHtml(task.broadcastAssigneeInitial)}</span>`;
       return `<span class="gantt-bar-content"><i class="gantt-bar-assignee${task.broadcastAssigneeType === "agent" ? " is-agent" : ""}" title="${escapeHtml(task.broadcastAssigneeName)}">${avatar}</i><span class="gantt-bar-copy"><strong>${escapeHtml(task.broadcastTitle)}</strong><small>${dateLabel}</small></span></span>`;
     };
     const rowClass = (item: GanttTask) => {
@@ -201,11 +256,15 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
     instance.templates.task_row_class = (_start, _end, item) => rowClass(item);
     instance.templates.scale_cell_class = dateCellClass;
     instance.templates.timeline_cell_class = (_item, date) => dateCellClass(date);
-    const monthFormat = (date: Date) => new Intl.DateTimeFormat(i18nRef.current.locale, { year: "numeric", month: "long" }).format(date);
+    const monthFormat = (date: Date) =>
+      new Intl.DateTimeFormat(i18nRef.current.locale, { year: "numeric", month: "long" }).format(
+        date,
+      );
     const dayFormat = (date: Date) => {
-      const weekdayLabels = i18nRef.current.language === "zh"
-        ? ["日", "一", "二", "三", "四", "五", "六"]
-        : ["S", "M", "T", "W", "T", "F", "S"];
+      const weekdayLabels =
+        i18nRef.current.language === "zh"
+          ? ["日", "一", "二", "三", "四", "五", "六"]
+          : ["S", "M", "T", "W", "T", "F", "S"];
       return `<span class="gantt-scale-date"><span class="gantt-scale-weekday">${weekdayLabels[date.getDay()]}</span><span class="gantt-scale-day">${date.getDate()}</span></span>`;
     };
     instance.ext.zoom.init({
@@ -233,8 +292,18 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
           scale_height: 66,
           min_column_width: 82,
           scales: [
-            { unit: "year", step: 1, format: (date: Date) => new Intl.DateTimeFormat(i18nRef.current.locale, { year: "numeric" }).format(date) },
-            { unit: "month", step: 1, format: (date: Date) => new Intl.DateTimeFormat(i18nRef.current.locale, { month: "short" }).format(date) },
+            {
+              unit: "year",
+              step: 1,
+              format: (date: Date) =>
+                new Intl.DateTimeFormat(i18nRef.current.locale, { year: "numeric" }).format(date),
+            },
+            {
+              unit: "month",
+              step: 1,
+              format: (date: Date) =>
+                new Intl.DateTimeFormat(i18nRef.current.locale, { month: "short" }).format(date),
+            },
           ],
         },
       ],
@@ -242,9 +311,15 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
     instance.ext.zoom.setLevel(zoom);
     const updateTodayMarker = () => {
       if (!containerRef.current) return;
-      const gridOffset = instance.config.show_grid === false ? 0 : Number(instance.config.grid_width);
-      const left = gridOffset + instance.posFromDate(localDate(dateValue(new Date()))) - instance.getScrollState().x;
-      setTodayMarkerLeft(left >= gridOffset && left <= containerRef.current.clientWidth ? left : null);
+      const gridOffset =
+        instance.config.show_grid === false ? 0 : Number(instance.config.grid_width);
+      const left =
+        gridOffset +
+        instance.posFromDate(localDate(dateValue(new Date()))) -
+        instance.getScrollState().x;
+      setTodayMarkerLeft(
+        left >= gridOffset && left <= containerRef.current.clientWidth ? left : null,
+      );
     };
     const updateTimelineFill = () => {
       const dataArea = container.querySelector<HTMLElement>(".gantt_data_area");
@@ -256,7 +331,11 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
         fill.className = "gantt-timeline-fill";
         dataArea.prepend(fill);
       }
-      fill.replaceChildren(...Array.from(sourceRow.querySelectorAll(".gantt_task_cell"), (cell) => cell.cloneNode(false)));
+      fill.replaceChildren(
+        ...Array.from(sourceRow.querySelectorAll(".gantt_task_cell"), (cell) =>
+          cell.cloneNode(false),
+        ),
+      );
     };
     const updateOverlays = () => {
       updateTodayMarker();
@@ -286,7 +365,8 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
     let linkedHoverTaskId: string | null = null;
     const setLinkedHoverTask = (taskId: string | null) => {
       if (taskId === linkedHoverTaskId) return;
-      container.querySelectorAll(".gantt_row.is-linked-hover, .gantt_task_row.is-linked-hover")
+      container
+        .querySelectorAll(".gantt_row.is-linked-hover, .gantt_task_row.is-linked-hover")
         .forEach((row) => row.classList.remove("is-linked-hover"));
       linkedHoverTaskId = taskId;
       if (!taskId) return;
@@ -295,15 +375,20 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
       });
     };
     const handlePointerMove = (event: PointerEvent) => {
-      const item = (event.target as HTMLElement | null)?.closest<HTMLElement>(".gantt_row, .gantt_task_row, .gantt_task_line");
-      const taskId = item && !item.matches(".is-group, .gantt-group-task") ? item.getAttribute("task_id") : null;
+      const item = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+        ".gantt_row, .gantt_task_row, .gantt_task_line",
+      );
+      const taskId =
+        item && !item.matches(".is-group, .gantt-group-task") ? item.getAttribute("task_id") : null;
       setLinkedHoverTask(taskId);
     };
     const handlePointerLeave = () => setLinkedHoverTask(null);
     const originalEvent = instance.event;
     instance.event = (...args) => {
       const [target, eventName] = args;
-      const resizeWatcherWindow = container.querySelector<HTMLIFrameElement>("iframe.gantt_container_resize_watcher")?.contentWindow;
+      const resizeWatcherWindow = container.querySelector<HTMLIFrameElement>(
+        "iframe.gantt_container_resize_watcher",
+      )?.contentWindow;
       if (eventName === "resize" && Object.is(target, resizeWatcherWindow)) return;
       originalEvent(...args);
     };
@@ -382,9 +467,15 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
       const groupLabel = i18nRef.current.text(group.chineseLabel, group.englishLabel);
       const groupTasks = visibleTasks
         .filter((task) => group.statuses.includes(task.status))
-        .sort((left, right) => Number(Boolean(right.startDate && right.dueDate)) - Number(Boolean(left.startDate && left.dueDate)));
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.startDate && right.dueDate)) -
+            Number(Boolean(left.startDate && left.dueDate)),
+        );
       if (!groupTasks.length) continue;
-      const progress = groupTasks.reduce((sum, task) => sum + taskProgress(task, presentations[task.id]), 0) / groupTasks.length;
+      const progress =
+        groupTasks.reduce((sum, task) => sum + taskProgress(task, presentations[task.id]), 0) /
+        groupTasks.length;
       data.push({
         id: groupId,
         text: groupLabel,
@@ -415,10 +506,12 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
           text: task.title,
           row_height: 58,
           bar_height: 44,
-          ...(isScheduled ? {
-            start_date: localDate(task.startDate!),
-            end_date: addDays(localDate(task.dueDate!), 1),
-          } : { unscheduled: true }),
+          ...(isScheduled
+            ? {
+                start_date: localDate(task.startDate!),
+                end_date: addDays(localDate(task.dueDate!), 1),
+              }
+            : { unscheduled: true }),
           progress: itemProgress,
           broadcastStatus: task.status,
           broadcastTitle: task.title,
@@ -435,27 +528,32 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
 
     const scheduledTasks = visibleTasks.filter((task) => task.startDate && task.dueDate);
     const scheduledIds = new Set(scheduledTasks.map((task) => task.id));
-    const links = visibleTasks.flatMap((task) => task.relations.blocks
-      .filter((relation) => scheduledIds.has(task.id) && scheduledIds.has(relation.id))
-      .map((relation) => ({
-        id: `${task.id}:${relation.id}`,
-        source: task.id,
-        target: relation.id,
-        type: "0",
-      })));
+    const links = visibleTasks.flatMap((task) =>
+      task.relations.blocks
+        .filter((relation) => scheduledIds.has(task.id) && scheduledIds.has(relation.id))
+        .map((relation) => ({
+          id: `${task.id}:${relation.id}`,
+          source: task.id,
+          target: relation.id,
+          type: "0",
+        })),
+    );
     const today = localDate(dateValue(new Date()));
     const scheduledStarts = scheduledTasks.map((task) => localDate(task.startDate!).getTime());
     const scheduledEnds = scheduledTasks.map((task) => localDate(task.dueDate!).getTime());
     const rangeStart = new Date(Math.min(today.getTime(), ...scheduledStarts));
     const rangeEnd = new Date(Math.max(today.getTime(), ...scheduledEnds));
     const previousScroll = instance.getScrollState();
-    const timelineWidth = containerRef.current?.querySelector<HTMLElement>(".gantt_task")?.clientWidth ?? 0;
-    const restoredViewport = pendingDetailViewport?.projectId === visibleTasks[0]?.projectId
-      ? pendingDetailViewport
-      : null;
-    const anchorDate = hasParsedDataRef.current && timelineWidth
-      ? instance.dateFromPos(previousScroll.x + timelineWidth / 2)
-      : null;
+    const timelineWidth =
+      containerRef.current?.querySelector<HTMLElement>(".gantt_task")?.clientWidth ?? 0;
+    const restoredViewport =
+      pendingDetailViewport?.projectId === visibleTasks[0]?.projectId
+        ? pendingDetailViewport
+        : null;
+    const anchorDate =
+      hasParsedDataRef.current && timelineWidth
+        ? instance.dateFromPos(previousScroll.x + timelineWidth / 2)
+        : null;
     instance.config.start_date = addDays(rangeStart, -7);
     instance.config.end_date = addDays(rangeEnd, 8);
     instance.clearAll();
@@ -463,7 +561,10 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
     if (restoredViewport) {
       instance.scrollTo(restoredViewport.x, restoredViewport.y);
     } else if (anchorDate) {
-      instance.scrollTo(Math.max(0, instance.posFromDate(anchorDate) - timelineWidth / 2), previousScroll.y);
+      instance.scrollTo(
+        Math.max(0, instance.posFromDate(anchorDate) - timelineWidth / 2),
+        previousScroll.y,
+      );
     } else if (scheduledStarts.length) {
       instance.showDate(new Date(Math.min(...scheduledStarts)));
     }
@@ -497,7 +598,11 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
       <div className="gantt-canvas-shell">
         <div className="gantt-canvas" ref={containerRef} />
         {todayMarkerLeft !== null && (
-          <div className="gantt-today-marker" style={{ left: todayMarkerLeft }} aria-label={text("今天", "Today")}>
+          <div
+            className="gantt-today-marker"
+            style={{ left: todayMarkerLeft }}
+            aria-label={text("今天", "Today")}
+          >
             <span>{text("今天", "Today")}</span>
           </div>
         )}
@@ -505,13 +610,17 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
           type="button"
           className={`gantt-grid-toggle${gridCollapsed ? " is-collapsed" : ""}`}
           style={{ left: gridCollapsed ? 14 : gridWidth }}
-          aria-label={gridCollapsed
-            ? text("展开标题区域", "Expand title area")
-            : text("收起标题区域", "Collapse title area")}
+          aria-label={
+            gridCollapsed
+              ? text("展开标题区域", "Expand title area")
+              : text("收起标题区域", "Collapse title area")
+          }
           aria-expanded={!gridCollapsed}
-          title={gridCollapsed
-            ? text("展开标题区域", "Expand title area")
-            : text("收起标题区域", "Collapse title area")}
+          title={
+            gridCollapsed
+              ? text("展开标题区域", "Expand title area")
+              : text("收起标题区域", "Collapse title area")
+          }
           onClick={toggleGrid}
         >
           <LinearIcon name={gridCollapsed ? "chevronRight" : "chevronLeft"} />
@@ -519,9 +628,14 @@ export function GanttView({ tasks, presentations, hasActiveFilters, zoom, hideCo
         {!visibleTasks.length && (
           <div className="gantt-empty-overlay">
             <DueDateIcon color="currentColor" />
-            <span>{hasActiveFilters || hideCompleted
-              ? text("当前条件下没有议题", "No issues match the current conditions")
-              : text("创建议题后，可在这里安排时间线", "Create an issue to schedule it on the timeline")}</span>
+            <span>
+              {hasActiveFilters || hideCompleted
+                ? text("当前条件下没有议题", "No issues match the current conditions")
+                : text(
+                    "创建议题后，可在这里安排时间线",
+                    "Create an issue to schedule it on the timeline",
+                  )}
+            </span>
           </div>
         )}
       </div>

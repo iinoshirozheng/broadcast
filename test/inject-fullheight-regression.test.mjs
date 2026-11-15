@@ -17,11 +17,12 @@ const instanceToken = "7a6f8d37-78ce-46c9-87a8-08e10db88da2";
 const instanceSecret = "2e587946-96d6-47b5-930a-1ba70214fa88";
 const sourceRef = process.env.BROADCAST_INJECTION_SOURCE_REF;
 const source = sourceRef
-  ? (await execFileAsync(
-      "git",
-      ["show", `${sourceRef}:crates/codex/assets/broadcast.user.js`],
-      { cwd: projectRoot, maxBuffer: 2 * 1024 * 1024 },
-    )).stdout
+  ? (
+      await execFileAsync("git", ["show", `${sourceRef}:crates/codex/assets/broadcast.user.js`], {
+        cwd: projectRoot,
+        maxBuffer: 2 * 1024 * 1024,
+      })
+    ).stdout
   : await readFile(new URL("../crates/codex/assets/broadcast.user.js", import.meta.url), "utf8");
 const embeddedHostSource = await readFile(
   new URL("../apps/web/src/embeddedHost.mjs", import.meta.url),
@@ -318,14 +319,17 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
         response.end();
         return;
       }
-      const challenge = new URL(request.url, "http://127.0.0.1")
-        .searchParams.get("__broadcast_challenge");
+      const challenge = new URL(request.url, "http://127.0.0.1").searchParams.get(
+        "__broadcast_challenge",
+      );
       response.setHeader(
         "x-broadcast-proof",
         createHmac("sha256", instanceSecret).update(challenge).digest("hex"),
       );
       response.setHeader("content-type", "text/html; charset=utf-8");
-      response.end(`<!doctype html><html><head></head><body><script>parent.postMessage({ type: "broadcast:ready" }, "*")</script></body></html>`);
+      response.end(
+        `<!doctype html><html><head></head><body><script>parent.postMessage({ type: "broadcast:ready" }, "*")</script></body></html>`,
+      );
       return;
     }
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -333,24 +337,31 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
     response.end(fixtureHtml(origin));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => {
-    server.close(resolve);
-    server.closeAllConnections();
-  }));
+  t.after(
+    () =>
+      new Promise((resolve) => {
+        server.close(resolve);
+        server.closeAllConnections();
+      }),
+  );
 
   const profile = await mkdtemp(path.join(os.tmpdir(), "broadcast-fullheight-chrome-"));
   t.after(() => rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
   const url = `http://127.0.0.1:${server.address().port}/fixture`;
-  const child = spawn(chrome, [
-    "--headless=new",
-    "--disable-gpu",
-    "--no-sandbox",
-    `--user-data-dir=${profile}`,
-    "--remote-debugging-pipe",
-    "about:blank",
-  ], {
-    stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
-  });
+  const child = spawn(
+    chrome,
+    [
+      "--headless=new",
+      "--disable-gpu",
+      "--no-sandbox",
+      `--user-data-dir=${profile}`,
+      "--remote-debugging-pipe",
+      "about:blank",
+    ],
+    {
+      stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
+    },
+  );
   const browser = new CdpPipeBrowser(child);
   let session;
   let encodedResult = "";
@@ -380,10 +391,7 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
     if (child.exitCode === null && child.signalCode === null) {
       const exited = new Promise((resolve) => child.once("exit", resolve));
       child.kill("SIGTERM");
-      await Promise.race([
-        exited,
-        new Promise((resolve) => setTimeout(resolve, 2_000)),
-      ]);
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       await exited;
     }

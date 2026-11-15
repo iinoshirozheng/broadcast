@@ -27,7 +27,9 @@ export function ActorAvatar({
           alt=""
           referrerPolicy="no-referrer"
         />
-      ) : actor.name.slice(0, 1)}
+      ) : (
+        actor.name.slice(0, 1)
+      )}
     </span>
   );
 }

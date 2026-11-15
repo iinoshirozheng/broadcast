@@ -12,7 +12,13 @@ import {
 import { createPortal } from "react-dom";
 import MarkdownIt, { type StateInline } from "markdown-it";
 import { exampleSetup } from "prosemirror-example-setup";
-import { Fragment, Schema, Slice, type MarkType, type Node as ProseMirrorNode } from "prosemirror-model";
+import {
+  Fragment,
+  Schema,
+  Slice,
+  type MarkType,
+  type Node as ProseMirrorNode,
+} from "prosemirror-model";
 import {
   defaultMarkdownParser,
   defaultMarkdownSerializer,
@@ -72,15 +78,8 @@ import { useBroadcastI18n } from "../i18n";
 import { STATUS_DETAILS } from "./BoardColumn";
 import { LinearIcon } from "./LinearIcon";
 import { MermaidDiagram } from "./MarkdownDocument";
-import {
-  ConversationIcon,
-  ProjectIcon,
-  StatusIcon,
-} from "./SemanticIcons";
-import {
-  ComposerCompletionMenu,
-  type ComposerCompletionGroup,
-} from "./ComposerCompletionMenu";
+import { ConversationIcon, ProjectIcon, StatusIcon } from "./SemanticIcons";
+import { ComposerCompletionMenu, type ComposerCompletionGroup } from "./ComposerCompletionMenu";
 import "./InlineMediaComposer.css";
 
 const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
@@ -347,15 +346,17 @@ function IssueReferenceChip({
       data-inline-media-segment={segment.id}
       data-broadcast-inline-media-markdown={segment.markdown}
       aria-disabled={disabled}
-      aria-label={task
-        ? text(
-            `${displayIdentifier} ${task.title}，按退格键或删除键移除`,
-            `${displayIdentifier} ${task.title}, press Backspace or Delete to remove`,
-          )
-        : text(
-            `${displayIdentifier}，按退格键或删除键移除`,
-            `${displayIdentifier}, press Backspace or Delete to remove`,
-          )}
+      aria-label={
+        task
+          ? text(
+              `${displayIdentifier} ${task.title}，按退格键或删除键移除`,
+              `${displayIdentifier} ${task.title}, press Backspace or Delete to remove`,
+            )
+          : text(
+              `${displayIdentifier}，按退格键或删除键移除`,
+              `${displayIdentifier}, press Backspace or Delete to remove`,
+            )
+      }
       onKeyDown={(event) => {
         if (disabled) return;
         if (event.defaultPrevented) return;
@@ -366,7 +367,9 @@ function IssueReferenceChip({
     >
       <span className="issue-reference-identity">
         {task && (
-          <span className={`status-icon issue-reference-status status-icon-${STATUS_DETAILS[task.status].tone}`}>
+          <span
+            className={`status-icon issue-reference-status status-icon-${STATUS_DETAILS[task.status].tone}`}
+          >
             <StatusIcon status={task.status} color="var(--column-status-color)" size={15} />
           </span>
         )}
@@ -387,11 +390,12 @@ function ComposerReferenceChip({
   onRemove: () => void;
 }) {
   const { text } = useBroadcastI18n();
-  const kind = segment.type === "skill-reference"
-    ? text("Skill", "Skill")
-    : segment.type === "agent-reference"
-      ? text("Agent", "Agent")
-      : text("不支持的引用", "Unsupported reference");
+  const kind =
+    segment.type === "skill-reference"
+      ? text("Skill", "Skill")
+      : segment.type === "agent-reference"
+        ? text("Agent", "Agent")
+        : text("不支持的引用", "Unsupported reference");
 
   return (
     <button
@@ -412,9 +416,11 @@ function ComposerReferenceChip({
         onRemove();
       }}
     >
-      {segment.type === "skill-reference"
-        ? <ProjectIcon color="currentColor" />
-        : <ConversationIcon color="currentColor" />}
+      {segment.type === "skill-reference" ? (
+        <ProjectIcon color="currentColor" />
+      ) : (
+        <ConversationIcon color="currentColor" />
+      )}
       <span>{segment.label}</span>
     </button>
   );
@@ -435,139 +441,147 @@ function toggledTaskMarker(marker: string): string {
 
 const markdownMarks = defaultMarkdownParser.schema.spec.marks.append({
   strike: {
-    parseDOM: [
-      { tag: "s" },
-      { tag: "del" },
-      { style: "text-decoration=line-through" },
-    ],
+    parseDOM: [{ tag: "s" }, { tag: "del" }, { style: "text-decoration=line-through" }],
     toDOM() {
       return ["s", 0];
     },
   },
 });
 
-const composerMarks = ["strong", "em", "code", "link", "strike"].reduce(
-  (marks, name) => {
-    const spec = marks.get(name);
-    return spec ? marks.update(name, { ...spec, inclusive: false }) : marks;
-  },
-  markdownMarks,
-);
+const composerMarks = ["strong", "em", "code", "link", "strike"].reduce((marks, name) => {
+  const spec = marks.get(name);
+  return spec ? marks.update(name, { ...spec, inclusive: false }) : marks;
+}, markdownMarks);
 
 const markdownNodes = defaultMarkdownParser.schema.spec.nodes;
 const listItemNode = markdownNodes.get("list_item")!;
-const composerNodes = markdownNodes.update("list_item", {
-  ...listItemNode,
-  attrs: {
-    ...(listItemNode.attrs ?? {}),
-    taskMarker: { default: null },
-  },
-  toDOM(node) {
-    const taskMarker = typeof node.attrs.taskMarker === "string"
-      ? node.attrs.taskMarker
-      : null;
-    if (!taskMarker) return ["li", 0];
-    const checkboxAttributes: Record<string, string> = {
-      type: "checkbox",
-      contenteditable: "false",
-      tabindex: "-1",
-      "data-inline-media-task-checkbox": "true",
-    };
-    if (taskMarkerIsChecked(taskMarker)) checkboxAttributes.checked = "checked";
-    return [
-      "li",
-      { class: "task-list-item" },
-      ["input", checkboxAttributes],
-      ["div", { class: "inline-media-task-content" }, 0],
-    ];
-  },
-}).update("heading", {
-  ...markdownNodes.get("heading")!,
-  content: "inline*",
-}).append({
-  table: {
-    group: "block",
-    content: "table_row+",
-    parseDOM: [{ tag: "table" }],
-    toDOM() {
-      return ["table", ["tbody", 0]];
+const composerNodes = markdownNodes
+  .update("list_item", {
+    ...listItemNode,
+    attrs: {
+      ...(listItemNode.attrs ?? {}),
+      taskMarker: { default: null },
     },
-  },
-  table_row: {
-    content: "(table_header | table_cell)+",
-    parseDOM: [{ tag: "tr" }],
-    toDOM() {
-      return ["tr", 0];
+    toDOM(node) {
+      const taskMarker = typeof node.attrs.taskMarker === "string" ? node.attrs.taskMarker : null;
+      if (!taskMarker) return ["li", 0];
+      const checkboxAttributes: Record<string, string> = {
+        type: "checkbox",
+        contenteditable: "false",
+        tabindex: "-1",
+        "data-inline-media-task-checkbox": "true",
+      };
+      if (taskMarkerIsChecked(taskMarker)) checkboxAttributes.checked = "checked";
+      return [
+        "li",
+        { class: "task-list-item" },
+        ["input", checkboxAttributes],
+        ["div", { class: "inline-media-task-content" }, 0],
+      ];
     },
-  },
-  table_header: {
-    attrs: { align: { default: null } },
+  })
+  .update("heading", {
+    ...markdownNodes.get("heading")!,
     content: "inline*",
-    parseDOM: [{
-      tag: "th",
-      getAttrs(dom) {
-        return { align: dom instanceof HTMLElement ? dom.style.textAlign || null : null };
+  })
+  .append({
+    table: {
+      group: "block",
+      content: "table_row+",
+      parseDOM: [{ tag: "table" }],
+      toDOM() {
+        return ["table", ["tbody", 0]];
       },
-    }],
-    toDOM(node) {
-      return ["th", node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0];
     },
-  },
-  table_cell: {
-    attrs: { align: { default: null } },
-    content: "inline*",
-    parseDOM: [{
-      tag: "td",
-      getAttrs(dom) {
-        return { align: dom instanceof HTMLElement ? dom.style.textAlign || null : null };
+    table_row: {
+      content: "(table_header | table_cell)+",
+      parseDOM: [{ tag: "tr" }],
+      toDOM() {
+        return ["tr", 0];
       },
-    }],
-    toDOM(node) {
-      return ["td", node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0];
     },
-  },
-  [INLINE_MEDIA_NODE]: {
-    group: "block",
-    atom: true,
-    selectable: true,
-    draggable: true,
-    attrs: { segmentId: {} },
-    toDOM(node) {
-      return ["div", {
-        "data-broadcast-editor-media": String(node.attrs.segmentId),
-      }];
-    },
-    parseDOM: [{
-      tag: "div[data-broadcast-editor-media]",
-      getAttrs(dom) {
-        if (!(dom instanceof HTMLElement)) return false;
-        const segmentIdValue = dom.dataset.broadcastEditorMedia;
-        return segmentIdValue ? { segmentId: segmentIdValue } : false;
+    table_header: {
+      attrs: { align: { default: null } },
+      content: "inline*",
+      parseDOM: [
+        {
+          tag: "th",
+          getAttrs(dom) {
+            return { align: dom instanceof HTMLElement ? dom.style.textAlign || null : null };
+          },
+        },
+      ],
+      toDOM(node) {
+        return ["th", node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0];
       },
-    }],
-  },
-  [INLINE_REFERENCE_NODE]: {
-    inline: true,
-    group: "inline",
-    atom: true,
-    selectable: true,
-    draggable: true,
-    attrs: { segmentId: {} },
-    toDOM(node) {
-      return ["span", {
-        "data-broadcast-editor-reference": String(node.attrs.segmentId),
-      }];
     },
-    parseDOM: [{
-      tag: "span[data-broadcast-editor-reference]",
-      getAttrs(dom) {
-        if (!(dom instanceof HTMLElement)) return false;
-        const segmentIdValue = dom.dataset.broadcastEditorReference;
-        return segmentIdValue ? { segmentId: segmentIdValue } : false;
+    table_cell: {
+      attrs: { align: { default: null } },
+      content: "inline*",
+      parseDOM: [
+        {
+          tag: "td",
+          getAttrs(dom) {
+            return { align: dom instanceof HTMLElement ? dom.style.textAlign || null : null };
+          },
+        },
+      ],
+      toDOM(node) {
+        return ["td", node.attrs.align ? { style: `text-align:${node.attrs.align}` } : {}, 0];
       },
-    }],
-  },
-});
+    },
+    [INLINE_MEDIA_NODE]: {
+      group: "block",
+      atom: true,
+      selectable: true,
+      draggable: true,
+      attrs: { segmentId: {} },
+      toDOM(node) {
+        return [
+          "div",
+          {
+            "data-broadcast-editor-media": String(node.attrs.segmentId),
+          },
+        ];
+      },
+      parseDOM: [
+        {
+          tag: "div[data-broadcast-editor-media]",
+          getAttrs(dom) {
+            if (!(dom instanceof HTMLElement)) return false;
+            const segmentIdValue = dom.dataset.broadcastEditorMedia;
+            return segmentIdValue ? { segmentId: segmentIdValue } : false;
+          },
+        },
+      ],
+    },
+    [INLINE_REFERENCE_NODE]: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      selectable: true,
+      draggable: true,
+      attrs: { segmentId: {} },
+      toDOM(node) {
+        return [
+          "span",
+          {
+            "data-broadcast-editor-reference": String(node.attrs.segmentId),
+          },
+        ];
+      },
+      parseDOM: [
+        {
+          tag: "span[data-broadcast-editor-reference]",
+          getAttrs(dom) {
+            if (!(dom instanceof HTMLElement)) return false;
+            const segmentIdValue = dom.dataset.broadcastEditorReference;
+            return segmentIdValue ? { segmentId: segmentIdValue } : false;
+          },
+        },
+      ],
+    },
+  });
 
 const composerSchema = new Schema({
   nodes: composerNodes,
@@ -581,7 +595,8 @@ function inlineMediaPlaceholderMarkdown(segmentIdValue: string): string {
 function inlineMediaPlaceholderId(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith(INLINE_MEDIA_PLACEHOLDER_PREFIX)) return null;
   const encoded = value.slice(INLINE_MEDIA_PLACEHOLDER_PREFIX.length);
-  if (!encoded || encoded.includes("/") || encoded.includes("?") || encoded.includes("#")) return null;
+  if (!encoded || encoded.includes("/") || encoded.includes("?") || encoded.includes("#"))
+    return null;
   try {
     return decodeURIComponent(encoded);
   } catch {
@@ -594,10 +609,12 @@ function isAtomSegment(segment: InlineMediaSegment): boolean {
 }
 
 function isMediaAtomSegment(segment: InlineMediaSegment | undefined): boolean {
-  return segment?.type === "pending-image"
-    || segment?.type === "persisted-image"
-    || segment?.type === "pending-attachment"
-    || segment?.type === "persisted-attachment";
+  return (
+    segment?.type === "pending-image" ||
+    segment?.type === "persisted-image" ||
+    segment?.type === "pending-attachment" ||
+    segment?.type === "persisted-attachment"
+  );
 }
 
 function atomHostClass(segment: InlineMediaSegment | undefined): string {
@@ -605,9 +622,10 @@ function atomHostClass(segment: InlineMediaSegment | undefined): string {
   if (isInlineReference(segment)) return "inline-media-atom";
   if (segment.type === "pending-attachment" || segment.type === "persisted-attachment") {
     if (
-      (segment.type === "pending-attachment" && segment.file.type.startsWith("video/"))
-      || (segment.type === "persisted-attachment" && segment.contentType?.startsWith("video/"))
-    ) return "inline-media-atom inline-media-attachment-atom inline-media-video-atom";
+      (segment.type === "pending-attachment" && segment.file.type.startsWith("video/")) ||
+      (segment.type === "persisted-attachment" && segment.contentType?.startsWith("video/"))
+    )
+      return "inline-media-atom inline-media-attachment-atom inline-media-video-atom";
     return "inline-media-atom inline-media-attachment-atom";
   }
   return "inline-media-atom inline-media-image-atom";
@@ -635,9 +653,8 @@ function editorMarkdownFromSegments(segments: readonly InlineMediaSegment[]): st
   let markdown = "";
   let previousWasMedia = false;
   for (const segment of segments) {
-    const value = segment.type === "text"
-      ? segment.text
-      : inlineMediaPlaceholderMarkdown(segment.id);
+    const value =
+      segment.type === "text" ? segment.text : inlineMediaPlaceholderMarkdown(segment.id);
     if (!value) continue;
     if (isMediaAtomSegment(segment)) {
       markdown = markdownBlockBoundary(markdown, value);
@@ -702,28 +719,27 @@ function editorNodesWithAtoms(
       const taskMarker = TASK_LIST_MARKER.exec(children[0].textContent)?.[0];
       if (taskMarker) {
         children[0] = children[0].cut(taskMarker.length);
-        return [node.type.create(
-          { ...node.attrs, taskMarker },
-          Fragment.fromArray(children),
-          node.marks,
-        )];
+        return [
+          node.type.create({ ...node.attrs, taskMarker }, Fragment.fromArray(children), node.marks),
+        ];
       }
     }
   }
   return [node.copy(Fragment.fromArray(children))];
 }
 
-const composerMarkdownTokenizer = new MarkdownIt("commonmark", { html: false })
-  .enable(["table", "strikethrough"]);
+const composerMarkdownTokenizer = new MarkdownIt("commonmark", { html: false }).enable([
+  "table",
+  "strikethrough",
+]);
 const singleTildeDelimiterMarker = -0x7e;
 
 composerMarkdownTokenizer.inline.ruler.before(
   "strikethrough",
   "single_tilde_strikethrough",
   (state: StateInline, silent: boolean) => {
-    const scanned = state.src.charCodeAt(state.pos) === 0x7e
-      ? state.scanDelims(state.pos, true)
-      : null;
+    const scanned =
+      state.src.charCodeAt(state.pos) === 0x7e ? state.scanDelims(state.pos, true) : null;
     if (scanned?.length !== 1 || silent) return false;
 
     const token = state.push("text", "", 0);
@@ -757,33 +773,29 @@ composerMarkdownTokenizer.inline.ruler2.before(
   },
 );
 
-const composerMarkdownParser = new MarkdownParser(
-  composerSchema,
-  composerMarkdownTokenizer,
-  {
-    ...defaultMarkdownParser.tokens,
-    s: { mark: "strike" },
-    table: { block: "table" },
-    thead: { ignore: true },
-    tbody: { ignore: true },
-    tr: { block: "table_row" },
-    th: {
-      block: "table_header",
-      getAttrs(token) {
-        const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
-        return { align: align ?? null };
-      },
+const composerMarkdownParser = new MarkdownParser(composerSchema, composerMarkdownTokenizer, {
+  ...defaultMarkdownParser.tokens,
+  s: { mark: "strike" },
+  table: { block: "table" },
+  thead: { ignore: true },
+  tbody: { ignore: true },
+  tr: { block: "table_row" },
+  th: {
+    block: "table_header",
+    getAttrs(token) {
+      const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
+      return { align: align ?? null };
     },
-    td: {
-      block: "table_cell",
-      getAttrs(token) {
-        const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
-        return { align: align ?? null };
-      },
-    },
-    softbreak: { node: "hard_break" },
   },
-);
+  td: {
+    block: "table_cell",
+    getAttrs(token) {
+      const align = /^text-align:(left|center|right)$/.exec(token.attrGet("style") ?? "")?.[1];
+      return { align: align ?? null };
+    },
+  },
+  softbreak: { node: "hard_break" },
+});
 
 function editorDocumentFromSegments(segments: readonly InlineMediaSegment[]): ProseMirrorNode {
   const atoms = new Map<string, InlineMediaSegment>();
@@ -791,9 +803,9 @@ function editorDocumentFromSegments(segments: readonly InlineMediaSegment[]): Pr
   const parsed = composerMarkdownParser.parse(editorMarkdownFromSegments(segments));
   const documentNode = editorNodesWithAtoms(parsed, atoms)[0];
   if (documentNode.lastChild?.type === composerSchema.nodes.paragraph) return documentNode;
-  return documentNode.copy(documentNode.content.append(Fragment.from(
-    composerSchema.nodes.paragraph.create(),
-  )));
+  return documentNode.copy(
+    documentNode.content.append(Fragment.from(composerSchema.nodes.paragraph.create())),
+  );
 }
 
 function markInputRule(
@@ -817,16 +829,11 @@ function taskListInputRule(): InputRule {
     if ($from.parent.type !== composerSchema.nodes.paragraph || $from.depth < 2) return null;
     const listItemDepth = $from.depth - 1;
     const listItem = $from.node(listItemDepth);
-    if (
-      listItem.type !== composerSchema.nodes.list_item
-      || start !== $from.start()
-    ) return null;
-    return state.tr
-      .delete(start, end)
-      .setNodeMarkup($from.before(listItemDepth), undefined, {
-        ...listItem.attrs,
-        taskMarker: match[0],
-      });
+    if (listItem.type !== composerSchema.nodes.list_item || start !== $from.start()) return null;
+    return state.tr.delete(start, end).setNodeMarkup($from.before(listItemDepth), undefined, {
+      ...listItem.attrs,
+      taskMarker: match[0],
+    });
   });
 }
 
@@ -875,81 +882,90 @@ function handleIndentKey(view: EditorView, event: globalThis.KeyboardEvent): boo
   const blockStart = $from.start();
   const indentation = /^[\u00a0 ]{1,2}/.exec($from.parent.textContent)?.[0];
   if (event.shiftKey) {
-    if (indentation) view.dispatch(view.state.tr.delete(blockStart, blockStart + indentation.length));
+    if (indentation)
+      view.dispatch(view.state.tr.delete(blockStart, blockStart + indentation.length));
   } else {
     view.dispatch(view.state.tr.insertText("\u00a0\u00a0", blockStart));
   }
   return true;
 }
 
-const editorMarkdownSerializer = new MarkdownSerializer({
-  ...defaultMarkdownSerializer.nodes,
-  hard_break(state) {
-    state.write("\n");
-  },
-  paragraph(state, node, parent, index) {
-    const storedTaskMarker = parent.type === composerSchema.nodes.list_item && index === 0
-      && typeof parent.attrs.taskMarker === "string"
-      ? parent.attrs.taskMarker
-      : null;
-    const textTaskMarker = parent.type === composerSchema.nodes.list_item && index === 0
-      ? TASK_LIST_MARKER.exec(node.textContent)?.[0]
-      : null;
-    const taskMarker = storedTaskMarker ?? textTaskMarker;
-    if (taskMarker) {
-      state.write(taskMarker);
-      state.renderInline(storedTaskMarker ? node : node.cut(taskMarker.length), false);
-    } else {
-      state.renderInline(node);
-    }
-    state.closeBlock(node);
-  },
-  table(state, node) {
-    const outputState = state as typeof state & { out: string };
-    node.forEach((row, _offset, rowIndex) => {
-      state.write("|");
-      row.forEach((cell) => {
-        state.write(" ");
-        const cellStart = outputState.out.length;
-        state.renderInline(cell, false);
-        outputState.out = outputState.out.slice(0, cellStart)
-          + outputState.out.slice(cellStart).replace(/\|/g, "\\|");
-        state.write(" |");
-      });
-      state.ensureNewLine();
-      if (rowIndex === 0) {
+const editorMarkdownSerializer = new MarkdownSerializer(
+  {
+    ...defaultMarkdownSerializer.nodes,
+    hard_break(state) {
+      state.write("\n");
+    },
+    paragraph(state, node, parent, index) {
+      const storedTaskMarker =
+        parent.type === composerSchema.nodes.list_item &&
+        index === 0 &&
+        typeof parent.attrs.taskMarker === "string"
+          ? parent.attrs.taskMarker
+          : null;
+      const textTaskMarker =
+        parent.type === composerSchema.nodes.list_item && index === 0
+          ? TASK_LIST_MARKER.exec(node.textContent)?.[0]
+          : null;
+      const taskMarker = storedTaskMarker ?? textTaskMarker;
+      if (taskMarker) {
+        state.write(taskMarker);
+        state.renderInline(storedTaskMarker ? node : node.cut(taskMarker.length), false);
+      } else {
+        state.renderInline(node);
+      }
+      state.closeBlock(node);
+    },
+    table(state, node) {
+      const outputState = state as typeof state & { out: string };
+      node.forEach((row, _offset, rowIndex) => {
         state.write("|");
         row.forEach((cell) => {
-          const separator = cell.attrs.align === "left"
-            ? ":---"
-            : cell.attrs.align === "center"
-              ? ":---:"
-              : cell.attrs.align === "right"
-                ? "---:"
-                : "---";
-          state.write(` ${separator} |`);
+          state.write(" ");
+          const cellStart = outputState.out.length;
+          state.renderInline(cell, false);
+          outputState.out =
+            outputState.out.slice(0, cellStart) +
+            outputState.out.slice(cellStart).replace(/\|/g, "\\|");
+          state.write(" |");
         });
         state.ensureNewLine();
-      }
-    });
-    state.closeBlock(node);
+        if (rowIndex === 0) {
+          state.write("|");
+          row.forEach((cell) => {
+            const separator =
+              cell.attrs.align === "left"
+                ? ":---"
+                : cell.attrs.align === "center"
+                  ? ":---:"
+                  : cell.attrs.align === "right"
+                    ? "---:"
+                    : "---";
+            state.write(` ${separator} |`);
+          });
+          state.ensureNewLine();
+        }
+      });
+      state.closeBlock(node);
+    },
+    [INLINE_MEDIA_NODE](state, node) {
+      state.write(inlineMediaPlaceholderMarkdown(String(node.attrs.segmentId)));
+      state.closeBlock(node);
+    },
+    [INLINE_REFERENCE_NODE](state, node) {
+      state.write(inlineMediaPlaceholderMarkdown(String(node.attrs.segmentId)));
+    },
   },
-  [INLINE_MEDIA_NODE](state, node) {
-    state.write(inlineMediaPlaceholderMarkdown(String(node.attrs.segmentId)));
-    state.closeBlock(node);
+  {
+    ...defaultMarkdownSerializer.marks,
+    strike: {
+      open: "~~",
+      close: "~~",
+      mixable: true,
+      expelEnclosingWhitespace: true,
+    },
   },
-  [INLINE_REFERENCE_NODE](state, node) {
-    state.write(inlineMediaPlaceholderMarkdown(String(node.attrs.segmentId)));
-  },
-}, {
-  ...defaultMarkdownSerializer.marks,
-  strike: {
-    open: "~~",
-    close: "~~",
-    mixable: true,
-    expelEnclosingWhitespace: true,
-  },
-});
+);
 
 function segmentsFromEditorDocument(
   documentNode: ProseMirrorNode,
@@ -960,19 +976,23 @@ function segmentsFromEditorDocument(
   const restored = createInlineMediaSegments(markdown, referenceTasks).map((segment) => {
     if (segment.type !== "persisted-image") return segment;
     const atomId = inlineMediaPlaceholderId(segment.url);
-    return atomId ? atomSegments.get(atomId) ?? segment : segment;
+    return atomId ? (atomSegments.get(atomId) ?? segment) : segment;
   });
-  return selfContainedClipboardSegments(normalizeSegments(restored.map((segment, index) => {
-    if (segment.type !== "text") return segment;
-    let value = segment.text;
-    if (isBroadcastAttachmentMedia(restored[index - 1]) && value.startsWith("\n")) {
-      value = value.slice(1);
-    }
-    if (isBroadcastAttachmentMedia(restored[index + 1]) && value.endsWith("\n")) {
-      value = value.slice(0, -1);
-    }
-    return value === segment.text ? segment : { ...segment, text: value };
-  })));
+  return selfContainedClipboardSegments(
+    normalizeSegments(
+      restored.map((segment, index) => {
+        if (segment.type !== "text") return segment;
+        let value = segment.text;
+        if (isBroadcastAttachmentMedia(restored[index - 1]) && value.startsWith("\n")) {
+          value = value.slice(1);
+        }
+        if (isBroadcastAttachmentMedia(restored[index + 1]) && value.endsWith("\n")) {
+          value = value.slice(0, -1);
+        }
+        return value === segment.text ? segment : { ...segment, text: value };
+      }),
+    ),
+  );
 }
 
 function clipboardSegmentsFromSlice(
@@ -999,7 +1019,9 @@ function inlineMediaStateSignature(segments: readonly InlineMediaSegment[]): str
       case "persisted-image":
         return [`${segment.type}:${segment.id}:${segment.url}:${segment.alt}`];
       case "persisted-attachment":
-        return [`${segment.type}:${segment.id}:${segment.attachmentId}:${segment.contentType ?? ""}:${segment.size ?? ""}:${segment.filename}:${segment.url}`];
+        return [
+          `${segment.type}:${segment.id}:${segment.attachmentId}:${segment.contentType ?? ""}:${segment.size ?? ""}:${segment.filename}:${segment.url}`,
+        ];
       case "issue-reference":
         return [`${segment.type}:${segment.id}:${segment.taskId ?? ""}:${segment.markdown}`];
       case "skill-reference":
@@ -1015,7 +1037,8 @@ function inlineMediaStateSignature(segments: readonly InlineMediaSegment[]): str
 function editorIsEmpty(documentNode: ProseMirrorNode): boolean {
   let hasAtom = false;
   documentNode.descendants((node) => {
-    if (node.type.name === INLINE_MEDIA_NODE || node.type.name === INLINE_REFERENCE_NODE) hasAtom = true;
+    if (node.type.name === INLINE_MEDIA_NODE || node.type.name === INLINE_REFERENCE_NODE)
+      hasAtom = true;
     return !hasAtom;
   });
   return !hasAtom && documentNode.textContent.length === 0;
@@ -1027,16 +1050,27 @@ function completionQueryForView(
   mentionTaskCount: number,
 ): ComposerQuery | null {
   const { selection } = view.state;
-  if (!(selection instanceof TextSelection) || !selection.empty || !selection.$from.parent.isTextblock) {
+  if (
+    !(selection instanceof TextSelection) ||
+    !selection.empty ||
+    !selection.$from.parent.isTextblock
+  ) {
     return null;
   }
-  const prefix = selection.$from.parent.textBetween(0, selection.$from.parentOffset, "\n", "\ufffc");
+  const prefix = selection.$from.parent.textBetween(
+    0,
+    selection.$from.parentOffset,
+    "\n",
+    "\ufffc",
+  );
   const match = /(?:^|\s)([@/])([^\s@/]*)$/.exec(prefix);
   if (!match) return null;
   const trigger = match[1] as ComposerTrigger;
-  if ((trigger === "/" && !completionContext) || (
-    trigger === "@" && !completionContext && mentionTaskCount === 0
-  )) return null;
+  if (
+    (trigger === "/" && !completionContext) ||
+    (trigger === "@" && !completionContext && mentionTaskCount === 0)
+  )
+    return null;
 
   const triggerOffset = match.index + match[0].lastIndexOf(trigger);
   const from = selection.$from.start() + triggerOffset;
@@ -1055,9 +1089,9 @@ function atomPosition(documentNode: ProseMirrorNode, segmentIdValue: string): nu
   let found: number | null = null;
   documentNode.descendants((node, position) => {
     if (
-      found === null
-      && (node.type.name === INLINE_MEDIA_NODE || node.type.name === INLINE_REFERENCE_NODE)
-      && node.attrs.segmentId === segmentIdValue
+      found === null &&
+      (node.type.name === INLINE_MEDIA_NODE || node.type.name === INLINE_REFERENCE_NODE) &&
+      node.attrs.segmentId === segmentIdValue
     ) {
       found = position;
       return false;
@@ -1103,21 +1137,24 @@ function adjacentNodeForDelete(
 }
 
 export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineMediaComposerProps>(
-  function InlineMediaComposer({
-    segments,
-    mentionTasks = EMPTY_MENTION_TASKS,
-    mentionAgents = EMPTY_MENTION_AGENTS,
-    referenceTasks,
-    completionContext,
-    placeholder,
-    ariaLabel,
-    disabled = false,
-    allowAttachments = false,
-    className = "",
-    onChange,
-    onError,
-    onKeyDown,
-  }, ref) {
+  function InlineMediaComposer(
+    {
+      segments,
+      mentionTasks = EMPTY_MENTION_TASKS,
+      mentionAgents = EMPTY_MENTION_AGENTS,
+      referenceTasks,
+      completionContext,
+      placeholder,
+      ariaLabel,
+      disabled = false,
+      allowAttachments = false,
+      className = "",
+      onChange,
+      onError,
+      onKeyDown,
+    },
+    ref,
+  ) {
     const { text } = useBroadcastI18n();
     const editorElement = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
@@ -1142,7 +1179,9 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
     const completionSelectionsRef = useRef<CompletionSelection[]>([]);
     const selectedCompletionIndexRef = useRef(-1);
     const [activeCompletionId, setActiveCompletionId] = useState<string | null>(null);
-    const [completionResponse, setCompletionResponse] = useState<ComposerCandidatesResponse | null>(null);
+    const [completionResponse, setCompletionResponse] = useState<ComposerCandidatesResponse | null>(
+      null,
+    );
     const [completionLoading, setCompletionLoading] = useState(false);
     const [completionError, setCompletionError] = useState<string | null>(null);
 
@@ -1158,33 +1197,40 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
     const issueResults = useMemo(() => {
       if (completionQuery?.trigger !== "@") return [];
       const query = completionQuery.query.toLocaleLowerCase();
-      return mentionTasks.filter((task) => (
-        !query
-        || (task.externalKey ?? task.identifier).toLocaleLowerCase().includes(query)
-        || task.title.toLocaleLowerCase().includes(query)
-      ));
+      return mentionTasks.filter(
+        (task) =>
+          !query ||
+          (task.externalKey ?? task.identifier).toLocaleLowerCase().includes(query) ||
+          task.title.toLocaleLowerCase().includes(query),
+      );
     }, [completionQuery, mentionTasks]);
 
     const agentResults = useMemo(() => {
       if (completionQuery?.trigger !== "@") return [];
       const query = completionQuery.query.toLocaleLowerCase();
-      return mentionAgents.filter((agent) => (
-        agent.handle.includes(query) || agent.actor.name.toLocaleLowerCase().includes(query)
-      ));
+      return mentionAgents.filter(
+        (agent) =>
+          agent.handle.includes(query) || agent.actor.name.toLocaleLowerCase().includes(query),
+      );
     }, [completionQuery, mentionAgents]);
 
     const completionSelections = useMemo<CompletionSelection[]>(() => {
-      const candidates = completionResponse?.candidates.filter((candidate) => {
-        if (!candidate.selectable || candidate.trigger !== completionQuery?.trigger) return false;
-        if (candidate.kind === "slashAction") {
-          return candidate.selection?.type === "insertText"
-            && typeof candidate.selection.text === "string";
-        }
-        return candidate.persistence?.format === "broadcast.composer-reference.v1"
-          && candidate.persistence.kind === candidate.kind
-          && Boolean(candidate.persistence.referenceKey)
-          && Boolean(candidate.persistence.markdown);
-      }) ?? [];
+      const candidates =
+        completionResponse?.candidates.filter((candidate) => {
+          if (!candidate.selectable || candidate.trigger !== completionQuery?.trigger) return false;
+          if (candidate.kind === "slashAction") {
+            return (
+              candidate.selection?.type === "insertText" &&
+              typeof candidate.selection.text === "string"
+            );
+          }
+          return (
+            candidate.persistence?.format === "broadcast.composer-reference.v1" &&
+            candidate.persistence.kind === candidate.kind &&
+            Boolean(candidate.persistence.referenceKey) &&
+            Boolean(candidate.persistence.markdown)
+          );
+        }) ?? [];
       return [
         ...agentResults.map((agent): CompletionSelection => ({ type: "agent", agent })),
         ...issueResults.map((task): CompletionSelection => ({ type: "issue", task })),
@@ -1192,14 +1238,15 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       ];
     }, [agentResults, completionQuery?.trigger, completionResponse, issueResults]);
 
-    const selectedCompletionIndex = completionSelections.length === 0
-      ? -1
-      : Math.max(
-          completionSelections.findIndex((selection) => (
-            completionSelectionId(selection) === activeCompletionId
-          )),
-          0,
-        );
+    const selectedCompletionIndex =
+      completionSelections.length === 0
+        ? -1
+        : Math.max(
+            completionSelections.findIndex(
+              (selection) => completionSelectionId(selection) === activeCompletionId,
+            ),
+            0,
+          );
     completionSelectionsRef.current = completionSelections;
     selectedCompletionIndexRef.current = selectedCompletionIndex;
 
@@ -1210,8 +1257,13 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       for (const selection of completionSelections) {
         const candidate = selection.type === "candidate" ? selection.candidate : null;
         const agent = selection.type === "agent" ? selection.agent : null;
-        const groupId = candidate ? `codex:${candidate.group}` : agent ? "broadcast:agents" : "broadcast:issues";
-        const groupLabel = candidate?.group ?? (agent ? "Agent" : text("Broadcast 议题", "Broadcast issues"));
+        const groupId = candidate
+          ? `codex:${candidate.group}`
+          : agent
+            ? "broadcast:agents"
+            : "broadcast:issues";
+        const groupLabel =
+          candidate?.group ?? (agent ? "Agent" : text("Broadcast 议题", "Broadcast issues"));
         let group = groupsById.get(groupId);
         if (!group) {
           group = { id: groupId, label: groupLabel, options: [] };
@@ -1232,17 +1284,19 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         const task = selection.type === "issue" ? selection.task : null;
         group.options.push({
           id: completionSelectionId(selection),
-          label: candidate?.kind === "slashAction"
-            ? candidate.command
-            : candidate?.label ?? task!.externalKey ?? task!.identifier,
+          label:
+            candidate?.kind === "slashAction"
+              ? candidate.command
+              : (candidate?.label ?? task!.externalKey ?? task!.identifier),
           description: candidate ? candidate.description : task!.title,
-          icon: candidate?.kind === "skill"
-            ? "project"
-            : candidate?.kind === "agent"
-              ? "conversation"
-              : candidate?.kind === "slashAction"
-                ? "action"
-                : "project",
+          icon:
+            candidate?.kind === "skill"
+              ? "project"
+              : candidate?.kind === "agent"
+                ? "conversation"
+                : candidate?.kind === "slashAction"
+                  ? "action"
+                  : "project",
           selectableIndex,
         });
         selectableIndex += 1;
@@ -1250,13 +1304,18 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       return groups;
     }, [completionSelections, text]);
 
-    const completionDiagnostics = useMemo(() => (
-      completionResponse?.sources
-        .filter((source) => source.state !== "available")
-        .map((source) => `${source.kind}: ${source.state}${
-          source.reasonCode ? ` (${source.reasonCode})` : ""
-        }`) ?? []
-    ), [completionResponse]);
+    const completionDiagnostics = useMemo(
+      () =>
+        completionResponse?.sources
+          .filter((source) => source.state !== "available")
+          .map(
+            (source) =>
+              `${source.kind}: ${source.state}${
+                source.reasonCode ? ` (${source.reasonCode})` : ""
+              }`,
+          ) ?? [],
+      [completionResponse],
+    );
 
     function editorAttributes(): Record<string, string> {
       return {
@@ -1285,10 +1344,11 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         mentionTasksRef.current.length,
       );
       const current = completionQueryRef.current;
-      const sameQuery = current?.from === next?.from
-        && current?.to === next?.to
-        && current?.query === next?.query
-        && current?.trigger === next?.trigger;
+      const sameQuery =
+        current?.from === next?.from &&
+        current?.to === next?.to &&
+        current?.query === next?.query &&
+        current?.trigger === next?.trigger;
       if (!sameQuery) {
         completionSelectionsRef.current = [];
         selectedCompletionIndexRef.current = -1;
@@ -1303,9 +1363,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       _getPos: () => number | undefined,
     ): NodeView {
       const segmentIdValue = String(node.attrs.segmentId);
-      const host = document.createElement(
-        node.type.name === INLINE_MEDIA_NODE ? "div" : "span",
-      );
+      const host = document.createElement(node.type.name === INLINE_MEDIA_NODE ? "div" : "span");
       host.className = atomHostClass(atomSegments.current.get(segmentIdValue));
       host.dataset.inlineMediaSegment = segmentIdValue;
       host.contentEditable = "false";
@@ -1315,10 +1373,8 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       return {
         dom: host,
         update(nextNode) {
-          if (
-            nextNode.type !== node.type
-            || String(nextNode.attrs.segmentId) !== segmentIdValue
-          ) return false;
+          if (nextNode.type !== node.type || String(nextNode.attrs.segmentId) !== segmentIdValue)
+            return false;
           host.className = atomHostClass(atomSegments.current.get(segmentIdValue));
           return true;
         },
@@ -1375,9 +1431,10 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         update(nextNode) {
           const nextParams = String(nextNode.attrs.params ?? "");
           if (
-            nextNode.type !== node.type
-            || nextParams.trim().split(/\s+/)[0]?.toLowerCase() !== "mermaid"
-          ) return false;
+            nextNode.type !== node.type ||
+            nextParams.trim().split(/\s+/)[0]?.toLowerCase() !== "mermaid"
+          )
+            return false;
           const current = mermaidHosts.current.get(id);
           if (current && current.source !== nextNode.textContent) {
             mermaidHosts.current.set(id, { ...current, source: nextNode.textContent });
@@ -1389,9 +1446,11 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
           return event.target instanceof Node && preview.contains(event.target);
         },
         ignoreMutation(mutation) {
-          return mutation.type !== "selection"
-            && mutation.target instanceof Node
-            && preview.contains(mutation.target);
+          return (
+            mutation.type !== "selection" &&
+            mutation.target instanceof Node &&
+            preview.contains(mutation.target)
+          );
         },
         destroy() {
           mermaidHosts.current.delete(id);
@@ -1413,9 +1472,9 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
     function insertFiles(files: FileList | File[], position?: number): void {
       const view = viewRef.current;
       if (!view || disabledRef.current) return;
-      const selected = Array.from(files).filter((file) => (
-        file.type.startsWith("image/") || allowAttachmentsRef.current
-      ));
+      const selected = Array.from(files).filter(
+        (file) => file.type.startsWith("image/") || allowAttachmentsRef.current,
+      );
       if (selected.length === 0) return;
 
       const oversized = selected.find((file) => file.size > MAX_ATTACHMENT_SIZE);
@@ -1427,11 +1486,13 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         return;
       }
 
-      const existing = new Set(editorSegments.current.flatMap((segment) => (
-        segment.type === "pending-image" || segment.type === "pending-attachment"
-          ? [fileKey(segment.file)]
-          : []
-      )));
+      const existing = new Set(
+        editorSegments.current.flatMap((segment) =>
+          segment.type === "pending-image" || segment.type === "pending-attachment"
+            ? [fileKey(segment.file)]
+            : [],
+        ),
+      );
       const insertable = selected.filter((file) => {
         const key = fileKey(file);
         if (existing.has(key)) return false;
@@ -1440,14 +1501,17 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       });
       if (insertable.length === 0) return;
 
-      const additions = insertable.map((file): InlineMediaSegment => (
-        file.type.startsWith("image/") ? imageSegment(file) : attachmentSegment(file)
-      ));
+      const additions = insertable.map(
+        (file): InlineMediaSegment =>
+          file.type.startsWith("image/") ? imageSegment(file) : attachmentSegment(file),
+      );
       populateAtomSegments(atomSegments.current, additions);
       const nodes = additions.map(editorAtomNode);
       let transaction = view.state.tr;
       if (position !== undefined) {
-        transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(position)));
+        transaction = transaction.setSelection(
+          TextSelection.near(transaction.doc.resolve(position)),
+        );
       }
       transaction = transaction.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0));
       if (transaction.selection instanceof NodeSelection) {
@@ -1468,9 +1532,13 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       const insertionDocument = editorDocumentFromSegments(insertion);
       let transaction = view.state.tr;
       if (position !== undefined) {
-        transaction = transaction.setSelection(TextSelection.near(transaction.doc.resolve(position)));
+        transaction = transaction.setSelection(
+          TextSelection.near(transaction.doc.resolve(position)),
+        );
       }
-      view.dispatch(transaction.replaceSelection(Slice.maxOpen(insertionDocument.content)).scrollIntoView());
+      view.dispatch(
+        transaction.replaceSelection(Slice.maxOpen(insertionDocument.content)).scrollIntoView(),
+      );
       view.focus();
     }
 
@@ -1502,10 +1570,9 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       const segmentIdValue = String(adjacent.node.attrs.segmentId);
       if (!isMediaAtomSegment(atomSegments.current.get(segmentIdValue))) return false;
       armedMediaAtom.current = segmentIdValue;
-      view.dispatch(view.state.tr.setSelection(NodeSelection.create(
-        view.state.doc,
-        adjacent.position,
-      )));
+      view.dispatch(
+        view.state.tr.setSelection(NodeSelection.create(view.state.doc, adjacent.position)),
+      );
       return true;
     }
 
@@ -1515,8 +1582,8 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       if (!query || selections.length === 0) return false;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         const direction = event.key === "ArrowDown" ? 1 : -1;
-        const nextIndex = (selectedCompletionIndexRef.current + direction + selections.length)
-          % selections.length;
+        const nextIndex =
+          (selectedCompletionIndexRef.current + direction + selections.length) % selections.length;
         selectedCompletionIndexRef.current = nextIndex;
         setActiveCompletionId(completionSelectionId(selections[nextIndex]));
         return true;
@@ -1543,24 +1610,28 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         mentionTasksRef.current.length,
       );
       if (
-        !freshQuery
-        || freshQuery.from !== query.from
-        || freshQuery.to !== query.to
-        || freshQuery.trigger !== query.trigger
-      ) return;
+        !freshQuery ||
+        freshQuery.from !== query.from ||
+        freshQuery.to !== query.to ||
+        freshQuery.trigger !== query.trigger
+      )
+        return;
 
       if (selection.type === "agent") {
         const mention = `@${selection.agent.handle} `;
-        view.dispatch(view.state.tr.insertText(mention, freshQuery.from, freshQuery.to).scrollIntoView());
+        view.dispatch(
+          view.state.tr.insertText(mention, freshQuery.from, freshQuery.to).scrollIntoView(),
+        );
         closeCompletion();
         view.focus();
         return;
       }
 
       if (selection.type === "candidate" && selection.candidate.kind === "slashAction") {
-        const insertedText = selection.candidate.selection?.type === "insertText"
-          ? selection.candidate.selection.text
-          : null;
+        const insertedText =
+          selection.candidate.selection?.type === "insertText"
+            ? selection.candidate.selection.text
+            : null;
         if (insertedText === null) return;
         const insertion = createInlineMediaSegments(insertedText, referenceTasksRef.current);
         populateAtomSegments(atomSegments.current, insertion);
@@ -1594,14 +1665,17 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         const persistence = candidate.persistence;
         if (!persistence || persistence.kind !== candidate.kind) return;
         const parsed = createInlineMediaSegments(persistence.markdown).filter(isAtomSegment);
-        const parsedReference = parsed.length === 1 && (
-          parsed[0].type === "skill-reference" || parsed[0].type === "agent-reference"
-        ) ? parsed[0] : null;
+        const parsedReference =
+          parsed.length === 1 &&
+          (parsed[0].type === "skill-reference" || parsed[0].type === "agent-reference")
+            ? parsed[0]
+            : null;
         if (
-          !parsedReference
-          || parsedReference.type !== `${candidate.kind}-reference`
-          || parsedReference.referenceKey !== persistence.referenceKey
-        ) return;
+          !parsedReference ||
+          parsedReference.type !== `${candidate.kind}-reference` ||
+          parsedReference.referenceKey !== persistence.referenceKey
+        )
+          return;
         reference = parsedReference;
       }
 
@@ -1611,10 +1685,13 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
         freshQuery.to,
         Math.min(freshQuery.to + 1, view.state.doc.content.size),
       );
-      const replacement = nextCharacter && /^\s/.test(nextCharacter)
-        ? Fragment.from(atomNode)
-        : Fragment.fromArray([atomNode, composerSchema.text(" ")]);
-      view.dispatch(view.state.tr.replaceWith(freshQuery.from, freshQuery.to, replacement).scrollIntoView());
+      const replacement =
+        nextCharacter && /^\s/.test(nextCharacter)
+          ? Fragment.from(atomNode)
+          : Fragment.fromArray([atomNode, composerSchema.text(" ")]);
+      view.dispatch(
+        view.state.tr.replaceWith(freshQuery.from, freshQuery.to, replacement).scrollIntoView(),
+      );
       closeCompletion();
       view.focus();
     }
@@ -1625,133 +1702,140 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       populateAtomSegments(atomSegments.current, segments, true);
       editorSegments.current = segments;
 
-      const view = new EditorView({ mount }, {
-        state: EditorState.create({
-          schema: composerSchema,
-          doc: editorDocumentFromSegments(segments),
-          plugins: composerPlugins(),
-        }),
-        attributes: editorAttributes(),
-        editable: () => !disabledRef.current,
-        nodeViews: {
-          code_block: createCodeBlockNodeView,
-          [INLINE_MEDIA_NODE]: createAtomNodeView,
-          [INLINE_REFERENCE_NODE]: createAtomNodeView,
-        },
-        clipboardTextSerializer(slice) {
-          return inlineMediaClipboardText(clipboardSegmentsFromSlice(
-            slice,
-            referenceTasksRef.current,
-            atomSegments.current,
-          ));
-        },
-        dispatchTransaction(transaction) {
-          const previousSelection = view.state.selection;
-          const nextState = view.state.apply(transaction);
-          view.updateState(nextState);
-          updateEmptyState(view);
-
-          if (transaction.docChanged) {
-            armedMediaAtom.current = null;
-            const nextSegments = segmentsFromEditorDocument(
-              nextState.doc,
-              referenceTasksRef.current,
-              atomSegments.current,
+      const view = new EditorView(
+        { mount },
+        {
+          state: EditorState.create({
+            schema: composerSchema,
+            doc: editorDocumentFromSegments(segments),
+            plugins: composerPlugins(),
+          }),
+          attributes: editorAttributes(),
+          editable: () => !disabledRef.current,
+          nodeViews: {
+            code_block: createCodeBlockNodeView,
+            [INLINE_MEDIA_NODE]: createAtomNodeView,
+            [INLINE_REFERENCE_NODE]: createAtomNodeView,
+          },
+          clipboardTextSerializer(slice) {
+            return inlineMediaClipboardText(
+              clipboardSegmentsFromSlice(slice, referenceTasksRef.current, atomSegments.current),
             );
-            editorSegments.current = nextSegments;
-            onChangeRef.current(nextSegments);
-            refreshAtomHosts((revision) => revision + 1);
-          } else if (
-            previousSelection !== nextState.selection
-            && (!(nextState.selection instanceof NodeSelection)
-              || String(nextState.selection.node.attrs.segmentId) !== armedMediaAtom.current)
-          ) {
-            armedMediaAtom.current = null;
-          }
-          updateCompletion(view);
-        },
-        handleKeyDown(view, event) {
-          if (event.isComposing || event.keyCode === 229) {
+          },
+          dispatchTransaction(transaction) {
+            const previousSelection = view.state.selection;
+            const nextState = view.state.apply(transaction);
+            view.updateState(nextState);
+            updateEmptyState(view);
+
+            if (transaction.docChanged) {
+              armedMediaAtom.current = null;
+              const nextSegments = segmentsFromEditorDocument(
+                nextState.doc,
+                referenceTasksRef.current,
+                atomSegments.current,
+              );
+              editorSegments.current = nextSegments;
+              onChangeRef.current(nextSegments);
+              refreshAtomHosts((revision) => revision + 1);
+            } else if (
+              previousSelection !== nextState.selection &&
+              (!(nextState.selection instanceof NodeSelection) ||
+                String(nextState.selection.node.attrs.segmentId) !== armedMediaAtom.current)
+            ) {
+              armedMediaAtom.current = null;
+            }
+            updateCompletion(view);
+          },
+          handleKeyDown(view, event) {
+            if (event.isComposing || event.keyCode === 229) {
+              onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDivElement>);
+              return event.defaultPrevented;
+            }
+            if (handleCompletionKey(view, event)) return true;
+            if (!disabledRef.current && handleIndentKey(view, event)) return true;
+            if (!disabledRef.current && handleMediaDelete(view, event)) return true;
             onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDivElement>);
             return event.defaultPrevented;
-          }
-          if (handleCompletionKey(view, event)) return true;
-          if (!disabledRef.current && handleIndentKey(view, event)) return true;
-          if (!disabledRef.current && handleMediaDelete(view, event)) return true;
-          onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDivElement>);
-          return event.defaultPrevented;
-        },
-        handlePaste(_view, event) {
-          if (disabledRef.current) return false;
-          const pastedFiles: File[] = event.clipboardData
-            ? Array.from(event.clipboardData.files)
-            : [];
-          if (pastedFiles.length > 0) {
-            insertFiles(pastedFiles);
-            return true;
-          }
-          const html = event.clipboardData?.getData("text/html") ?? "";
-          const structured = html ? createInlineMediaSegmentsFromHtml(html, referenceTasksRef.current) : null;
-          const plain = event.clipboardData?.getData("text/plain") ?? "";
-          const insertion = structured ?? (plain ? createInlineMediaSegments(plain, referenceTasksRef.current) : []);
-          if (insertion.length === 0) return false;
-          insertSegments(insertion);
-          return true;
-        },
-        handleDrop(view, event, _slice, moved) {
-          if (disabledRef.current || moved) return false;
-          const files: File[] = event.dataTransfer
-            ? Array.from(event.dataTransfer.files)
-            : [];
-          if (files.length === 0) return false;
-          const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
-          insertFiles(files, coordinates?.pos);
-          return true;
-        },
-        handleDOMEvents: {
-          mousedown(_view, event) {
-            const target = event.target;
-            if (
-              !(target instanceof Element)
-              || !target.closest("[data-inline-media-task-checkbox]")
-            ) return false;
-            event.preventDefault();
+          },
+          handlePaste(_view, event) {
+            if (disabledRef.current) return false;
+            const pastedFiles: File[] = event.clipboardData
+              ? Array.from(event.clipboardData.files)
+              : [];
+            if (pastedFiles.length > 0) {
+              insertFiles(pastedFiles);
+              return true;
+            }
+            const html = event.clipboardData?.getData("text/html") ?? "";
+            const structured = html
+              ? createInlineMediaSegmentsFromHtml(html, referenceTasksRef.current)
+              : null;
+            const plain = event.clipboardData?.getData("text/plain") ?? "";
+            const insertion =
+              structured ??
+              (plain ? createInlineMediaSegments(plain, referenceTasksRef.current) : []);
+            if (insertion.length === 0) return false;
+            insertSegments(insertion);
             return true;
           },
-          click(view, event) {
-            const target = event.target;
-            if (!(target instanceof Element)) return false;
-            const checkbox = target.closest("[data-inline-media-task-checkbox]");
-            if (!checkbox) return false;
-            event.preventDefault();
-            if (disabledRef.current) return true;
-            const listItem = checkbox.closest("li.task-list-item");
-            if (!listItem) return false;
-            const nodePos = view.posAtDOM(listItem, 0) - 1;
-            const node = view.state.doc.nodeAt(nodePos);
-            if (
-              node?.type !== composerSchema.nodes.list_item
-              || typeof node.attrs.taskMarker !== "string"
-            ) return false;
-            view.dispatch(view.state.tr.setNodeMarkup(nodePos, undefined, {
-              ...node.attrs,
-              taskMarker: toggledTaskMarker(node.attrs.taskMarker),
-            }));
-            view.focus();
+          handleDrop(view, event, _slice, moved) {
+            if (disabledRef.current || moved) return false;
+            const files: File[] = event.dataTransfer ? Array.from(event.dataTransfer.files) : [];
+            if (files.length === 0) return false;
+            const coordinates = view.posAtCoords({ left: event.clientX, top: event.clientY });
+            insertFiles(files, coordinates?.pos);
             return true;
           },
-          dragover(_view, event) {
-            if (disabledRef.current || !event.dataTransfer?.types.includes("Files")) return false;
-            event.preventDefault();
-            return true;
-          },
-          blur() {
-            armedMediaAtom.current = null;
-            closeCompletion();
-            return false;
+          handleDOMEvents: {
+            mousedown(_view, event) {
+              const target = event.target;
+              if (
+                !(target instanceof Element) ||
+                !target.closest("[data-inline-media-task-checkbox]")
+              )
+                return false;
+              event.preventDefault();
+              return true;
+            },
+            click(view, event) {
+              const target = event.target;
+              if (!(target instanceof Element)) return false;
+              const checkbox = target.closest("[data-inline-media-task-checkbox]");
+              if (!checkbox) return false;
+              event.preventDefault();
+              if (disabledRef.current) return true;
+              const listItem = checkbox.closest("li.task-list-item");
+              if (!listItem) return false;
+              const nodePos = view.posAtDOM(listItem, 0) - 1;
+              const node = view.state.doc.nodeAt(nodePos);
+              if (
+                node?.type !== composerSchema.nodes.list_item ||
+                typeof node.attrs.taskMarker !== "string"
+              )
+                return false;
+              view.dispatch(
+                view.state.tr.setNodeMarkup(nodePos, undefined, {
+                  ...node.attrs,
+                  taskMarker: toggledTaskMarker(node.attrs.taskMarker),
+                }),
+              );
+              view.focus();
+              return true;
+            },
+            dragover(_view, event) {
+              if (disabledRef.current || !event.dataTransfer?.types.includes("Files")) return false;
+              event.preventDefault();
+              return true;
+            },
+            blur() {
+              armedMediaAtom.current = null;
+              closeCompletion();
+              return false;
+            },
           },
         },
-      });
+      );
       viewRef.current = view;
       updateEmptyState(view);
       updateCompletion(view);
@@ -1768,7 +1852,9 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       populateAtomSegments(atomSegments.current, segments);
       const view = viewRef.current;
       if (!view) return;
-      if (inlineMediaStateSignature(segments) === inlineMediaStateSignature(editorSegments.current)) {
+      if (
+        inlineMediaStateSignature(segments) === inlineMediaStateSignature(editorSegments.current)
+      ) {
         refreshAtomHosts((revision) => revision + 1);
         return;
       }
@@ -1777,12 +1863,14 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       editorSegments.current = segments;
       const nextDocument = editorDocumentFromSegments(segments);
       const wasFocused = view.hasFocus();
-      view.updateState(EditorState.create({
-        schema: composerSchema,
-        doc: nextDocument,
-        selection: TextSelection.atEnd(nextDocument),
-        plugins: composerPlugins(),
-      }));
+      view.updateState(
+        EditorState.create({
+          schema: composerSchema,
+          doc: nextDocument,
+          selection: TextSelection.atEnd(nextDocument),
+          plugins: composerPlugins(),
+        }),
+      );
       updateEmptyState(view);
       refreshAtomHosts((revision) => revision + 1);
       if (wasFocused) view.focus();
@@ -1820,24 +1908,31 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       setCompletionResponse(null);
       setCompletionLoading(true);
       setCompletionError(null);
-      void getAiChatComposerCandidates({
-        projectId: completionContext.projectId,
-        threadId: completionContext.threadId,
-        surface: completionContext.surface,
-        trigger: completionQuery.trigger,
-        query: completionQuery.query,
-      }, controller.signal).then((response) => {
-        if (requestSequence.current !== sequence) return;
-        setCompletionResponse(response);
-        setCompletionLoading(false);
-      }, (error: unknown) => {
-        if (controller.signal.aborted || requestSequence.current !== sequence) return;
-        setCompletionError(error instanceof Error ? error.message : text(
-          "补全来源暂时不可用",
-          "Completion sources are temporarily unavailable.",
-        ));
-        setCompletionLoading(false);
-      });
+      void getAiChatComposerCandidates(
+        {
+          projectId: completionContext.projectId,
+          threadId: completionContext.threadId,
+          surface: completionContext.surface,
+          trigger: completionQuery.trigger,
+          query: completionQuery.query,
+        },
+        controller.signal,
+      ).then(
+        (response) => {
+          if (requestSequence.current !== sequence) return;
+          setCompletionResponse(response);
+          setCompletionLoading(false);
+        },
+        (error: unknown) => {
+          if (controller.signal.aborted || requestSequence.current !== sequence) return;
+          setCompletionError(
+            error instanceof Error
+              ? error.message
+              : text("补全来源暂时不可用", "Completion sources are temporarily unavailable."),
+          );
+          setCompletionLoading(false);
+        },
+      );
       return () => controller.abort();
     }, [
       completionContext?.projectId,
@@ -1868,7 +1963,9 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
             continue;
           }
           const position = view.posAtDOM(node, Math.min(offset, text.length));
-          view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(position))));
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(position))),
+          );
           view.focus();
           return;
         }
@@ -1886,71 +1983,70 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       if (!segment || segment.type === "text") return [];
       const remove = () => removeAtom(segment.id);
       // biome-ignore-start lint/correctness/useJsxKeyInIterable: createPortal below carries the key
-      const content = segment.type === "pending-image"
-        ? <PendingImageBlock segment={segment} disabled={disabled} onRemove={remove} />
-        : segment.type === "persisted-image"
-          ? <PersistedImageBlock segment={segment} disabled={disabled} onRemove={remove} />
-          : segment.type === "pending-attachment" && segment.file.type.startsWith("video/")
-            ? <PendingVideoBlock segment={segment} disabled={disabled} onRemove={remove} />
-            : segment.type === "persisted-attachment" && segment.contentType?.startsWith("video/")
-              ? <PersistedVideoBlock segment={segment} disabled={disabled} onRemove={remove} />
-              : segment.type === "pending-attachment" || segment.type === "persisted-attachment"
-                ? <AttachmentBlock segment={segment} disabled={disabled} onRemove={remove} />
-                : segment.type === "issue-reference"
-                  ? (
-                    <IssueReferenceChip
-                      segment={segment}
-                      task={referenceTasks.find((task) => task.id === segment.taskId) ?? null}
-                      disabled={disabled}
-                      onRemove={remove}
-                    />
-                  )
-                  : <ComposerReferenceChip segment={segment} disabled={disabled} onRemove={remove} />;
+      const content =
+        segment.type === "pending-image" ? (
+          <PendingImageBlock segment={segment} disabled={disabled} onRemove={remove} />
+        ) : segment.type === "persisted-image" ? (
+          <PersistedImageBlock segment={segment} disabled={disabled} onRemove={remove} />
+        ) : segment.type === "pending-attachment" && segment.file.type.startsWith("video/") ? (
+          <PendingVideoBlock segment={segment} disabled={disabled} onRemove={remove} />
+        ) : segment.type === "persisted-attachment" && segment.contentType?.startsWith("video/") ? (
+          <PersistedVideoBlock segment={segment} disabled={disabled} onRemove={remove} />
+        ) : segment.type === "pending-attachment" || segment.type === "persisted-attachment" ? (
+          <AttachmentBlock segment={segment} disabled={disabled} onRemove={remove} />
+        ) : segment.type === "issue-reference" ? (
+          <IssueReferenceChip
+            segment={segment}
+            task={referenceTasks.find((task) => task.id === segment.taskId) ?? null}
+            disabled={disabled}
+            onRemove={remove}
+          />
+        ) : (
+          <ComposerReferenceChip segment={segment} disabled={disabled} onRemove={remove} />
+        );
       // biome-ignore-end lint/correctness/useJsxKeyInIterable: createPortal below carries the key
       return [createPortal(content, host, segment.id)];
     });
-    const mermaidPortals = Array.from(mermaidHosts.current.entries()).map(([
-      id,
-      { host, source },
-    ]) => createPortal(<MermaidDiagram source={source} />, host, id));
+    const mermaidPortals = Array.from(mermaidHosts.current.entries()).map(
+      ([id, { host, source }]) => createPortal(<MermaidDiagram source={source} />, host, id),
+    );
 
     return (
       <>
         <div ref={editorElement} />
         {atomPortals}
         {mermaidPortals}
-        {completionQuery
-          && (completionLoading || completionError !== null || completionSelections.length > 0)
-          && (
-          <ComposerCompletionMenu
-            anchor={completionQuery.anchor}
-            anchorRect={completionQuery.anchorRect}
-            getAnchorRect={() => {
-              const view = viewRef.current;
-              if (!view) return completionQuery.anchorRect;
-              const coords = view.coordsAtPos(completionQuery.from);
-              return new DOMRect(
-                coords.left,
-                coords.top,
-                0,
-                Math.max(1, coords.bottom - coords.top),
-              );
-            }}
-            groups={completionGroups}
-            activeIndex={selectedCompletionIndex}
-            loading={completionLoading}
-            error={completionError}
-            emptyDiagnostics={completionDiagnostics}
-            onActiveIndexChange={(index) => {
-              const selection = completionSelections[index];
-              if (selection) setActiveCompletionId(completionSelectionId(selection));
-            }}
-            onSelect={(index) => {
-              const selection = completionSelections[index];
-              if (selection) selectCompletion(selection);
-            }}
-            onClose={closeCompletion}
-          />
+        {completionQuery &&
+          (completionLoading || completionError !== null || completionSelections.length > 0) && (
+            <ComposerCompletionMenu
+              anchor={completionQuery.anchor}
+              anchorRect={completionQuery.anchorRect}
+              getAnchorRect={() => {
+                const view = viewRef.current;
+                if (!view) return completionQuery.anchorRect;
+                const coords = view.coordsAtPos(completionQuery.from);
+                return new DOMRect(
+                  coords.left,
+                  coords.top,
+                  0,
+                  Math.max(1, coords.bottom - coords.top),
+                );
+              }}
+              groups={completionGroups}
+              activeIndex={selectedCompletionIndex}
+              loading={completionLoading}
+              error={completionError}
+              emptyDiagnostics={completionDiagnostics}
+              onActiveIndexChange={(index) => {
+                const selection = completionSelections[index];
+                if (selection) setActiveCompletionId(completionSelectionId(selection));
+              }}
+              onSelect={(index) => {
+                const selection = completionSelections[index];
+                if (selection) selectCompletion(selection);
+              }}
+              onClose={closeCompletion}
+            />
           )}
       </>
     );

@@ -2,11 +2,16 @@ import type { AgentPlatform } from "./types";
 
 export function agentPlatformLabel(platform: AgentPlatform | "codex") {
   switch (platform) {
-    case "codex": return "Codex";
-    case "claude": return "Claude Code";
-    case "pi": return "Pi";
-    case "agy": return "Google Antigravity (AGY)";
-    case "grok": return "Grok";
+    case "codex":
+      return "Codex";
+    case "claude":
+      return "Claude Code";
+    case "pi":
+      return "Pi";
+    case "agy":
+      return "Google Antigravity (AGY)";
+    case "grok":
+      return "Grok";
   }
 }
 
@@ -17,10 +22,15 @@ export function sessionResumeCommand(platform: AgentPlatform | "codex", sessionI
     ? sessionId
     : `'${sessionId.replace(/'/g, "'\"'\"'")}'`;
   switch (platform) {
-    case "codex": return `codex resume ${argument}`;
-    case "claude": return `claude --resume ${argument}`;
-    case "pi": return `pi --session ${argument}`;
-    case "agy": return `agy --conversation ${argument}`;
-    case "grok": return `grok --resume ${argument}`;
+    case "codex":
+      return `codex resume ${argument}`;
+    case "claude":
+      return `claude --resume ${argument}`;
+    case "pi":
+      return `pi --session ${argument}`;
+    case "agy":
+      return `agy --conversation ${argument}`;
+    case "grok":
+      return `grok --resume ${argument}`;
   }
 }

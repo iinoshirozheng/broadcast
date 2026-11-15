@@ -233,7 +233,8 @@
   margin-bottom: 0;
 }
 
-.inline-media-composer.ProseMirror p:has(+ .inline-media-attachment-atom:not(.inline-media-video-atom)) {
+.inline-media-composer.ProseMirror
+  p:has(+ .inline-media-attachment-atom:not(.inline-media-video-atom)) {
   margin-bottom: 0;
 }
 

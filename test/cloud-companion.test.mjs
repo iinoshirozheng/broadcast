@@ -45,9 +45,11 @@ function memoryConfigStore(overrides = {}) {
 }
 
 function firstLanAddress() {
-  return Object.values(os.networkInterfaces())
-    .flat()
-    .find((entry) => entry?.family === "IPv4" && !entry.internal)?.address ?? null;
+  return (
+    Object.values(os.networkInterfaces())
+      .flat()
+      .find((entry) => entry?.family === "IPv4" && !entry.internal)?.address ?? null
+  );
 }
 
 test("cloud companion blocks project moves for issue-linked local AI chats", async () => {
@@ -78,14 +80,11 @@ test("cloud companion blocks project moves for issue-linked local AI chats", asy
       sandbox: "workspace-write",
     });
 
-    const response = await fetch(
-      `http://127.0.0.1:${port}/api/tasks/REMOTE-1`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ version: 1, projectId: "target" }),
-      },
-    );
+    const response = await fetch(`http://127.0.0.1:${port}/api/tasks/REMOTE-1`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: 1, projectId: "target" }),
+    });
     const payload = await response.json();
 
     assert.equal(response.status, 409);
@@ -171,15 +170,19 @@ test("configured server proxies business APIs without touching local rows and ad
       localCapabilities: { available: true },
       manageBroadcastSkillPath: skillPath,
     });
-    const session = await fetch(`${baseUrl}/api/local/cloud-session`)
-      .then((response) => response.json());
+    const session = await fetch(`${baseUrl}/api/local/cloud-session`).then((response) =>
+      response.json(),
+    );
     assert.equal(Object.hasOwn(session, "sharedKey"), false);
 
     const response = await fetch(`${baseUrl}/api/tasks`);
     assert.equal(response.status, 200);
     assert.equal(upstreamCalls.length, 1);
     assert.equal(upstreamCalls[0].url, "https://tasks.example.test/api/tasks");
-    assert.equal(app.database.database.prepare("SELECT COUNT(*) AS count FROM tasks").get().count, 0);
+    assert.equal(
+      app.database.database.prepare("SELECT COUNT(*) AS count FROM tasks").get().count,
+      0,
+    );
   } finally {
     await app.close();
   }
@@ -194,13 +197,17 @@ test("cloud mode exposes machine capabilities only to loopback while local mode 
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-cloud-lan-"));
   temporaryDirectories.push(directory);
   let upstreamCalls = 0;
-  const { app, port } = await startNativeServer(directory, {
-    cloudConfigStore: memoryConfigStore(),
-    remoteFetch: async () => {
-      upstreamCalls += 1;
-      return jsonResponse({ projects: [] });
+  const { app, port } = await startNativeServer(
+    directory,
+    {
+      cloudConfigStore: memoryConfigStore(),
+      remoteFetch: async () => {
+        upstreamCalls += 1;
+        return jsonResponse({ projects: [] });
+      },
     },
-  }, { host: "0.0.0.0" });
+    { host: "0.0.0.0" },
+  );
   const lanBaseUrl = `http://${lanAddress}:${port}`;
 
   try {
@@ -227,7 +234,13 @@ test("cloud mode exposes machine capabilities only to loopback while local mode 
 
     await writeFile(
       path.join(directory, "cloud-companion.json"),
-      JSON.stringify({ version: 1, remoteUrl: null, actorName: null, sharedKey: null, projectMappings: {} }),
+      JSON.stringify({
+        version: 1,
+        remoteUrl: null,
+        actorName: null,
+        sharedKey: null,
+        projectMappings: {},
+      }),
     );
     const localResponse = await fetch(`${lanBaseUrl}/api/device-workspaces`);
     assert.equal(localResponse.status, 200);

@@ -67,7 +67,9 @@ export function JiraConnectionDialog({
         }}
       >
         <h2 id="jira-connection-title">
-          {connection?.configured ? text("Jira 设置", "Jira settings") : text("连接 Jira", "Connect Jira")}
+          {connection?.configured
+            ? text("Jira 设置", "Jira settings")
+            : text("连接 Jira", "Connect Jira")}
         </h2>
         <label>
           <span>{text("Jira 地址", "Jira URL")}</span>
@@ -90,7 +92,12 @@ export function JiraConnectionDialog({
           </p>
         )}
         <label>
-          <span>{text("Jira 项目（名称或 Key，可多选）", "Jira projects (name or key, multiple allowed)")}</span>
+          <span>
+            {text(
+              "Jira 项目（名称或 Key，可多选）",
+              "Jira projects (name or key, multiple allowed)",
+            )}
+          </span>
           <input
             maxLength={2600}
             placeholder="DMARTECH, JP"
@@ -104,7 +111,9 @@ export function JiraConnectionDialog({
             required={!connection?.configured}
             autoComplete="username"
             maxLength={254}
-            placeholder={connection?.configured ? text("留空则保持不变", "Leave blank to keep unchanged") : ""}
+            placeholder={
+              connection?.configured ? text("留空则保持不变", "Leave blank to keep unchanged") : ""
+            }
             value={username}
             onChange={(event) => setUsername(event.target.value)}
           />
@@ -116,16 +125,30 @@ export function JiraConnectionDialog({
             type="password"
             autoComplete="current-password"
             maxLength={4096}
-            placeholder={connection?.configured ? text("留空则保持不变", "Leave blank to keep unchanged") : ""}
+            placeholder={
+              connection?.configured ? text("留空则保持不变", "Leave blank to keep unchanged") : ""
+            }
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <p>{text("Jira Cloud 请使用 Atlassian Email 和 API token。", "For Jira Cloud, use your Atlassian email and API token.")}</p>
+        <p>
+          {text(
+            "Jira Cloud 请使用 Atlassian Email 和 API token。",
+            "For Jira Cloud, use your Atlassian email and API token.",
+          )}
+        </p>
         {connection?.configured && connection.displayName && (
-          <p>{text("当前账号：", "Current account: ")}{connection.displayName}</p>
+          <p>
+            {text("当前账号：", "Current account: ")}
+            {connection.displayName}
+          </p>
         )}
-        {error && <p className="project-dialog-error" role="alert">{error}</p>}
+        {error && (
+          <p className="project-dialog-error" role="alert">
+            {error}
+          </p>
+        )}
         <div>
           <button className="button secondary" type="button" disabled={saving} onClick={onClose}>
             {text("取消", "Cancel")}
@@ -134,10 +157,10 @@ export function JiraConnectionDialog({
             className="button primary"
             type="submit"
             disabled={
-              saving
-              || !baseUrl.trim()
-              || (!username.trim() && !connection?.configured)
-              || (!password && !connection?.configured)
+              saving ||
+              !baseUrl.trim() ||
+              (!username.trim() && !connection?.configured) ||
+              (!password && !connection?.configured)
             }
           >
             {saving

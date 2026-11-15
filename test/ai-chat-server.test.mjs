@@ -49,9 +49,12 @@ async function createServerFixture(host = "127.0.0.1", { withCodex = true } = {}
     await chmod(codexExecutable, 0o755);
   }
   const codexStatePath = path.join(directory, "codex-state.json");
-  await writeFile(codexStatePath, JSON.stringify({
-    "local-projects": { local: { rootPaths: [workspace] } },
-  }));
+  await writeFile(
+    codexStatePath,
+    JSON.stringify({
+      "local-projects": { local: { rootPaths: [workspace] } },
+    }),
+  );
   const options = {
     codexExecutable,
     codexStatePath,
@@ -77,28 +80,35 @@ function privateLanAddress() {
     .find((entry) => {
       if (entry?.family !== "IPv4" || entry.internal) return false;
       const [first, second] = entry.address.split(".").map(Number);
-      return first === 10
-        || (first === 172 && second >= 16 && second <= 31)
-        || (first === 192 && second === 168)
-        || (first === 169 && second === 254);
+      return (
+        first === 10 ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168) ||
+        (first === 169 && second === 254)
+      );
     })?.address;
 }
 
 async function requestFrom(address, port, pathname) {
   return new Promise((resolve, reject) => {
-    const outgoing = httpRequest({
-      host: address,
-      port,
-      path: pathname,
-      headers: { host: `${address}:${port}` },
-    }, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve({
-        status: response.statusCode,
-        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
-      }));
-    });
+    const outgoing = httpRequest(
+      {
+        host: address,
+        port,
+        path: pathname,
+        headers: { host: `${address}:${port}` },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+          }),
+        );
+      },
+    );
     outgoing.on("error", reject);
     outgoing.end();
   });
@@ -123,7 +133,11 @@ test("a missing Codex CLI reports an unavailable catalog instead of a 500", asyn
     assert.deepEqual(catalog.body.models, []);
     assert.deepEqual(catalog.body.skills, []);
     assert.deepEqual(catalog.body.commands, []);
-    assert.deepEqual(catalog.body.sandboxes, ["read-only", "workspace-write", "danger-full-access"]);
+    assert.deepEqual(catalog.body.sandboxes, [
+      "read-only",
+      "workspace-write",
+      "danger-full-access",
+    ]);
   } finally {
     await fixture.close();
   }
@@ -165,7 +179,11 @@ test("loopback AI API freezes server-owned origin and rejects injected execution
 
     const injected = await request(fixture.baseUrl, "/api/local/ai/threads", {
       method: "POST",
-      body: { projectId: "local", workspacePath: "/tmp/evil", argv: ["--dangerously-bypass-approvals-and-sandbox"] },
+      body: {
+        projectId: "local",
+        workspacePath: "/tmp/evil",
+        argv: ["--dangerously-bypass-approvals-and-sandbox"],
+      },
     });
     assert.equal(injected.response.status, 400);
     assert.equal(injected.body.error.code, "UNKNOWN_FIELD");
@@ -204,7 +222,10 @@ test("loopback AI API freezes server-owned origin and rejects injected execution
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     assert.equal(snapshot.body.thread.codexThreadId, "session-1");
-    assert.equal(snapshot.body.events.some((event) => event.content === "ok"), true);
+    assert.equal(
+      snapshot.body.events.some((event) => event.content === "ok"),
+      true,
+    );
   } finally {
     await fixture.close();
   }
@@ -342,7 +363,10 @@ test("thread management, interrupt and query contracts stay narrow", async () =>
 
     const list = await request(fixture.baseUrl, "/api/local/ai/threads");
     assert.equal(list.response.status, 200);
-    assert.equal(list.body.threads.some((thread) => thread.id === threadId), true);
+    assert.equal(
+      list.body.threads.some((thread) => thread.id === threadId),
+      true,
+    );
 
     const unknownQuery = await request(fixture.baseUrl, "/api/local/ai/threads?projectId=local");
     assert.equal(unknownQuery.response.status, 400);
@@ -355,9 +379,13 @@ test("thread management, interrupt and query contracts stay narrow", async () =>
     assert.equal(updated.response.status, 200);
     assert.equal(updated.body.thread.title, "Renamed");
 
-    const interruptedMissing = await request(fixture.baseUrl, "/api/local/ai/runs/missing/interrupt", {
-      method: "POST",
-    });
+    const interruptedMissing = await request(
+      fixture.baseUrl,
+      "/api/local/ai/runs/missing/interrupt",
+      {
+        method: "POST",
+      },
+    );
     assert.equal(interruptedMissing.response.status, 404);
 
     const removed = await request(fixture.baseUrl, `/api/local/ai/threads/${threadId}`, {

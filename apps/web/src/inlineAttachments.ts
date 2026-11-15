@@ -1,6 +1,10 @@
 import { attachmentContentUrl, attachmentDownloadUrl } from "./api";
 import type { Attachment } from "./types";
-import { referencedAttachmentIds, type PendingInlineAttachment, type PendingInlineImage } from "./documentModel";
+import {
+  referencedAttachmentIds,
+  type PendingInlineAttachment,
+  type PendingInlineImage,
+} from "./documentModel";
 
 type PendingAttachment = PendingInlineImage | PendingInlineAttachment;
 
@@ -8,9 +12,11 @@ export function uploadInlineAttachments(
   pending: PendingAttachment[],
   upload: (file: File, kind: Attachment["kind"]) => Promise<Attachment>,
 ) {
-  return Promise.all(pending.map((item) => upload(
-    item.file, item.type === "pending-image" ? "inline" : "attachment",
-  )));
+  return Promise.all(
+    pending.map((item) =>
+      upload(item.file, item.type === "pending-image" ? "inline" : "attachment"),
+    ),
+  );
 }
 
 export function resolveInlineAttachments(
@@ -30,7 +36,10 @@ export function resolveInlineAttachments(
 
 // Legacy uploads belong to the document, not a separate attachment list. Once
 // its owner saves a complete body, persistence consumes the fallback eligibility.
-export function appendUnreferencedAttachments(value: string, attachments: readonly Attachment[]): string {
+export function appendUnreferencedAttachments(
+  value: string,
+  attachments: readonly Attachment[],
+): string {
   const referenced = referencedAttachmentIds(value);
   const missing: string[] = [];
   for (const attachment of attachments) {
@@ -41,7 +50,5 @@ export function appendUnreferencedAttachments(value: string, attachments: readon
     const url = image ? attachmentContentUrl(attachment) : attachmentDownloadUrl(attachment);
     missing.push(`${image ? "!" : ""}[${label}](${url})`);
   }
-  return missing.length > 0
-    ? `${value}${value ? "\n\n" : ""}${missing.join("\n\n")}`
-    : value;
+  return missing.length > 0 ? `${value}${value ? "\n\n" : ""}${missing.join("\n\n")}` : value;
 }

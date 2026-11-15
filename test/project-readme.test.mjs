@@ -32,9 +32,10 @@ async function request(baseUrl, pathname, options = {}) {
   const response = await fetch(`${baseUrl}${pathname}`, {
     ...options,
     headers,
-    body: options.body === undefined || typeof options.body === "string"
-      ? options.body
-      : JSON.stringify(options.body),
+    body:
+      options.body === undefined || typeof options.body === "string"
+        ? options.body
+        : JSON.stringify(options.body),
   });
   const text = await response.text();
   return {

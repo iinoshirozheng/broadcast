@@ -14,10 +14,9 @@ function waitForExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
   return Promise.race([
     new Promise((resolve) => child.once("exit", resolve)),
-    new Promise((_, reject) => setTimeout(
-      () => reject(new Error("Packaged Broadcast server did not exit")),
-      timeoutMs,
-    )),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Packaged Broadcast server did not exit")), timeoutMs),
+    ),
   ]);
 }
 
@@ -37,12 +36,7 @@ function runBroadcast(wrapperPath, homeDirectory, args) {
 }
 
 const temporaryHome = await mkdtemp(path.join(os.tmpdir(), "broadcast-broadcast."));
-const dataDirectory = path.join(
-  temporaryHome,
-  "Library",
-  "Application Support",
-  "Broadcast",
-);
+const dataDirectory = path.join(temporaryHome, "Library", "Application Support", "Broadcast");
 await mkdir(dataDirectory, { recursive: true });
 const runtimeFile = path.join(dataDirectory, "launcher-runtime.json");
 const nodePath = path.join(appPath, "Contents", "MacOS", "node");
@@ -80,11 +74,16 @@ reservation._handle.readStop();
 
 let stderr = "";
 server.stderr.setEncoding("utf8");
-server.stderr.on("data", (chunk) => { stderr += chunk; });
+server.stderr.on("data", (chunk) => {
+  stderr += chunk;
+});
 try {
   await new Promise((resolve, reject) => {
     let stdout = "";
-    const timeout = setTimeout(() => reject(new Error(stderr || "Packaged server did not start")), 15_000);
+    const timeout = setTimeout(
+      () => reject(new Error(stderr || "Packaged server did not start")),
+      15_000,
+    );
     server.stdout.setEncoding("utf8");
     server.stdout.on("data", (chunk) => {
       stdout += chunk;
@@ -116,37 +115,62 @@ try {
   const projectId = projects.projects?.[0]?.id;
   if (!projectId) throw new Error("Packaged broadcast did not list the local project");
   const cloudStatus = runBroadcast(wrapperPath, temporaryHome, ["cloud", "status", "--json"]);
-  if (cloudStatus.mode !== "local") throw new Error("Packaged cloud status used the wrong endpoint");
+  if (cloudStatus.mode !== "local")
+    throw new Error("Packaged cloud status used the wrong endpoint");
   const mapping = runBroadcast(wrapperPath, temporaryHome, [
-    "project", "map", projectId,
-    "--workspace-path", appRoot,
+    "project",
+    "map",
+    projectId,
+    "--workspace-path",
+    appRoot,
     "--json",
   ]);
   if (mapping.projectId !== projectId || mapping.workspacePath !== appRoot) {
     throw new Error("Packaged project map used the wrong endpoint");
   }
   const created = runBroadcast(wrapperPath, temporaryHome, [
-    "issue", "create",
-    "--project", projectId,
-    "--title", "Packaged broadcast preflight",
-    "--status", "todo",
-    "--thread-id", "00000000-0000-4000-8000-000000000001",
+    "issue",
+    "create",
+    "--project",
+    projectId,
+    "--title",
+    "Packaged broadcast preflight",
+    "--status",
+    "todo",
+    "--thread-id",
+    "00000000-0000-4000-8000-000000000001",
     "--json",
   ]).task;
-  const fetched = runBroadcast(wrapperPath, temporaryHome, ["issue", "get", created.id, "--json"]).task;
-  if (fetched.title !== "Packaged broadcast preflight") throw new Error("Packaged issue get failed");
+  const fetched = runBroadcast(wrapperPath, temporaryHome, [
+    "issue",
+    "get",
+    created.id,
+    "--json",
+  ]).task;
+  if (fetched.title !== "Packaged broadcast preflight")
+    throw new Error("Packaged issue get failed");
   const updated = runBroadcast(wrapperPath, temporaryHome, [
-    "issue", "update", created.id,
-    "--title", "Packaged broadcast verified",
-    "--if-version", String(fetched.version),
-    "--thread-id", "00000000-0000-4000-8000-000000000001",
+    "issue",
+    "update",
+    created.id,
+    "--title",
+    "Packaged broadcast verified",
+    "--if-version",
+    String(fetched.version),
+    "--thread-id",
+    "00000000-0000-4000-8000-000000000001",
     "--json",
   ]).task;
-  if (updated.title !== "Packaged broadcast verified") throw new Error("Packaged issue update failed");
+  if (updated.title !== "Packaged broadcast verified")
+    throw new Error("Packaged issue update failed");
   const comment = runBroadcast(wrapperPath, temporaryHome, [
-    "comment", "add", created.id,
-    "--body", "packaged endpoint verified",
-    "--thread-id", "00000000-0000-4000-8000-000000000001",
+    "comment",
+    "add",
+    created.id,
+    "--body",
+    "packaged endpoint verified",
+    "--thread-id",
+    "00000000-0000-4000-8000-000000000001",
     "--json",
   ]).comment;
   if (comment.body !== "packaged endpoint verified") throw new Error("Packaged comment add failed");

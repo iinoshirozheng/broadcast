@@ -11,18 +11,20 @@ export function setEmbeddedFrameChallenge(challenge) {
 }
 
 export function postEmbeddedHostMessage(message) {
-  window.parent.postMessage({
-    ...message,
-    capability: frameCapability(),
-    challenge: activeFrameChallenge,
-  }, "*");
+  window.parent.postMessage(
+    {
+      ...message,
+      capability: frameCapability(),
+      challenge: activeFrameChallenge,
+    },
+    "*",
+  );
 }
 
 export function installEmbeddedExternalLinkHandler() {
   const handleClick = (event) => {
-    const link = event.target instanceof Element
-      ? event.target.closest('a[target="_blank"]')
-      : null;
+    const link =
+      event.target instanceof Element ? event.target.closest('a[target="_blank"]') : null;
     if (!link) return;
 
     const rawHref = link.getAttribute("href");

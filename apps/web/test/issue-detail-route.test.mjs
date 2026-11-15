@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import {
-  buildIssueUrl,
-  readIssueIdentifier,
-} from "../src/issueRoute.ts";
+import { buildIssueUrl, readIssueIdentifier } from "../src/issueRoute.ts";
 
 const appSource = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
@@ -39,7 +36,7 @@ test("closing issue detail removes only the issue route", () => {
 test("the app restores issue detail from the URL and follows browser history", () => {
   assert.match(
     appSource,
-    /useState<string \| null>\(\s*\(\) => readIssueIdentifier\(window\.location\.search\),?\s*\)/,
+    /useState<string \| null>\(\s*\(\) =>\s*readIssueIdentifier\(window\.location\.search\),?\s*\)/,
   );
   assert.match(appSource, /task\.identifier === detailTaskIdentifier/);
   assert.match(appSource, /window\.addEventListener\("popstate", syncRouteFromLocation\)/);

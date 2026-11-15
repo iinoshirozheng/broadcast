@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const styles = await readFile(
-  new URL("../src/styles.css", import.meta.url),
-  "utf8",
-);
+const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("view tabs expose a visible keyboard focus indicator", () => {
   assert.match(

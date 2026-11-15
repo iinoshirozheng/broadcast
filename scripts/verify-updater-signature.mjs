@@ -43,18 +43,15 @@ export async function verifyUpdaterSignature({ publicKey, artifactPath, signatur
     ["verify"],
   );
   const fileSignature = signatureRecord.subarray(10);
-  if (!await webcrypto.subtle.verify("Ed25519", verificationKey, fileSignature, digest)) {
+  if (!(await webcrypto.subtle.verify("Ed25519", verificationKey, fileSignature, digest))) {
     throw new Error("Updater archive signature verification failed");
   }
 
   const trustedComment = Buffer.from(signatureLines[2].slice("trusted comment: ".length));
   const globalMessage = Buffer.concat([fileSignature, trustedComment]);
-  if (!await webcrypto.subtle.verify(
-    "Ed25519",
-    verificationKey,
-    globalSignature,
-    globalMessage,
-  )) {
+  if (
+    !(await webcrypto.subtle.verify("Ed25519", verificationKey, globalSignature, globalMessage))
+  ) {
     throw new Error("Updater signature trusted comment verification failed");
   }
 }
@@ -65,9 +62,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const artifactPath = process.argv[3] ? path.resolve(process.argv[3]) : null;
   const signaturePath = process.argv[4] ? path.resolve(process.argv[4]) : null;
   if (!publicKeyPath || !artifactPath || !signaturePath) {
-    throw new Error(
-      "Usage: verify-updater-signature.mjs <public-key> <archive> <signature>",
-    );
+    throw new Error("Usage: verify-updater-signature.mjs <public-key> <archive> <signature>");
   }
   await verifyUpdaterSignature({
     publicKey: await readFile(publicKeyPath, "utf8"),

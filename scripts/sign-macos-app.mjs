@@ -9,10 +9,9 @@ const scriptPath = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(scriptPath), "..");
 const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
-const releasePolicy = JSON.parse(readFileSync(
-  path.join(projectRoot, "apps", "desktop", "release.json"),
-  "utf8",
-));
+const releasePolicy = JSON.parse(
+  readFileSync(path.join(projectRoot, "apps", "desktop", "release.json"), "utf8"),
+);
 
 if (!appPath) throw new Error("Usage: sign-macos-app.mjs <App.app>");
 if (!identity) throw new Error("APPLE_SIGNING_IDENTITY is required");

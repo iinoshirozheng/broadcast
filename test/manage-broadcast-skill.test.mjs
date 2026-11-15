@@ -46,10 +46,7 @@ test("the broadcast skill coordinates safe issue execution and review handoff", 
 });
 
 test("the broadcast skill requires complete thread bindings for claimed work", () => {
-  assert.match(
-    skillSource,
-    /This value alone is not a complete task binding/i,
-  );
+  assert.match(skillSource, /This value alone is not a complete task binding/i);
   assert.match(
     skillSource,
     /must store a complete `threadBinding`:[\s\S]*`threadId`[\s\S]*`codexProjectId`[\s\S]*`codexProjectKind`[\s\S]*`codexHostId`[\s\S]*`workspacePath`/i,

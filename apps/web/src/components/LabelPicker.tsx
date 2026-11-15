@@ -45,15 +45,22 @@ export function LabelPicker({
   const [search, setSearch] = useState("");
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const normalizedSearch = search.trim();
-  const filteredLabels = availableLabels.filter((label) => (
-    !normalizedSearch
-    || label.toLocaleLowerCase().includes(normalizedSearch.toLocaleLowerCase())
-    || labelDisplayName(label, language).toLocaleLowerCase().includes(normalizedSearch.toLocaleLowerCase())
-  ));
-  const canCreateLabel = Boolean(normalizedSearch) && !availableLabels.some((label) => (
-    label === normalizedSearch
-    || labelDisplayName(label, language).toLocaleLowerCase() === normalizedSearch.toLocaleLowerCase()
-  ));
+  const filteredLabels = availableLabels.filter(
+    (label) =>
+      !normalizedSearch ||
+      label.toLocaleLowerCase().includes(normalizedSearch.toLocaleLowerCase()) ||
+      labelDisplayName(label, language)
+        .toLocaleLowerCase()
+        .includes(normalizedSearch.toLocaleLowerCase()),
+  );
+  const canCreateLabel =
+    Boolean(normalizedSearch) &&
+    !availableLabels.some(
+      (label) =>
+        label === normalizedSearch ||
+        labelDisplayName(label, language).toLocaleLowerCase() ===
+          normalizedSearch.toLocaleLowerCase(),
+    );
 
   useEffect(() => {
     if (!open) {
@@ -79,9 +86,11 @@ export function LabelPicker({
 
   function toggleLabel(label: string) {
     if (disabled || pendingLabel) return;
-    onChange(selectedLabels.includes(label)
-      ? selectedLabels.filter((item) => item !== label)
-      : [...selectedLabels, label]);
+    onChange(
+      selectedLabels.includes(label)
+        ? selectedLabels.filter((item) => item !== label)
+        : [...selectedLabels, label],
+    );
   }
 
   async function createLabel() {
@@ -111,7 +120,10 @@ export function LabelPicker({
   }
 
   return (
-    <div ref={rootRef} className={`composer-menu-anchor label-picker${className ? ` ${className}` : ""}`}>
+    <div
+      ref={rootRef}
+      className={`composer-menu-anchor label-picker${className ? ` ${className}` : ""}`}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -122,29 +134,37 @@ export function LabelPicker({
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
       >
-        {triggerContent ?? <>
-          {showIcon && <LabelIcon color="currentColor" />}
-          {selectedLabels.length > 0 && showSelectedAsChips ? (
-            <span className="label-trigger-chips">
-              {selectedLabels.map((label) => {
-                const presentation = labelPresentation(label, language);
-                return (
-                  <span className="label-trigger-chip" key={label}>
-                    {presentation.tone && <i style={{ background: presentation.color }} />}
-                    {presentation.name}
-                  </span>
-                );
-              })}
-            </span>
-          ) : (
-            <span>{selectedLabels.length > 0
-              ? selectedLabels.map((label) => labelDisplayName(label, language)).join(", ")
-              : resolvedPlaceholder}</span>
-          )}
-        </>}
+        {triggerContent ?? (
+          <>
+            {showIcon && <LabelIcon color="currentColor" />}
+            {selectedLabels.length > 0 && showSelectedAsChips ? (
+              <span className="label-trigger-chips">
+                {selectedLabels.map((label) => {
+                  const presentation = labelPresentation(label, language);
+                  return (
+                    <span className="label-trigger-chip" key={label}>
+                      {presentation.tone && <i style={{ background: presentation.color }} />}
+                      {presentation.name}
+                    </span>
+                  );
+                })}
+              </span>
+            ) : (
+              <span>
+                {selectedLabels.length > 0
+                  ? selectedLabels.map((label) => labelDisplayName(label, language)).join(", ")
+                  : resolvedPlaceholder}
+              </span>
+            )}
+          </>
+        )}
       </button>
       {open && (
-        <div className="composer-popover label-popover" role="dialog" aria-label={text("选择或创建标签", "Select or create labels")}>
+        <div
+          className="composer-popover label-popover"
+          role="dialog"
+          aria-label={text("选择或创建标签", "Select or create labels")}
+        >
           <input
             autoFocus
             value={search}
@@ -152,7 +172,12 @@ export function LabelPicker({
             placeholder={text("添加标签…", "Add labels…")}
             aria-label={text("搜索标签", "Search labels")}
           />
-          <div className="label-options" role="listbox" aria-label={text("可用标签", "Available labels")} aria-multiselectable="true">
+          <div
+            className="label-options"
+            role="listbox"
+            aria-label={text("可用标签", "Available labels")}
+            aria-multiselectable="true"
+          >
             {filteredLabels.map((label) => {
               const presentation = labelPresentation(label, language);
               return (
@@ -164,16 +189,25 @@ export function LabelPicker({
                     disabled={disabled || pendingLabel !== null}
                     onClick={() => toggleLabel(label)}
                   >
-                    <i style={{ background: presentation.tone ? presentation.color : "transparent" }} />
+                    <i
+                      style={{ background: presentation.tone ? presentation.color : "transparent" }}
+                    />
                     <span>{presentation.name}</span>
-                    {selectedLabels.includes(label) && <b><LinearIcon name="check" /></b>}
+                    {selectedLabels.includes(label) && (
+                      <b>
+                        <LinearIcon name="check" />
+                      </b>
+                    )}
                   </button>
                   {onDeleteLabel && (
                     <button
                       type="button"
                       className="label-delete-button"
                       disabled={disabled || pendingLabel !== null}
-                      aria-label={text(`删除标签 ${presentation.name}`, `Delete label ${presentation.name}`)}
+                      aria-label={text(
+                        `删除标签 ${presentation.name}`,
+                        `Delete label ${presentation.name}`,
+                      )}
                       title={text("删除标签", "Delete label")}
                       onClick={() => void deleteLabel(label)}
                     >
@@ -189,11 +223,13 @@ export function LabelPicker({
                 disabled={disabled || pendingLabel !== null}
                 onClick={() => void createLabel()}
               >
-                <i style={{
-                  background: labelPresentation(normalizedSearch, language).tone
-                    ? labelPresentation(normalizedSearch, language).color
-                    : "transparent",
-                }} />
+                <i
+                  style={{
+                    background: labelPresentation(normalizedSearch, language).tone
+                      ? labelPresentation(normalizedSearch, language).color
+                      : "transparent",
+                  }}
+                />
                 <span>{text(`创建 “${normalizedSearch}”`, `Create “${normalizedSearch}”`)}</span>
               </button>
             )}

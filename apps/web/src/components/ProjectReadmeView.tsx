@@ -44,8 +44,8 @@ export function ProjectReadmeView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadRequest, setLoadRequest] = useState(0);
   const [editing, setEditing] = useState(false);
-  const [segments, setSegments] = useState<InlineMediaSegment[]>(
-    () => createInlineMediaSegments("", referenceTasks),
+  const [segments, setSegments] = useState<InlineMediaSegment[]>(() =>
+    createInlineMediaSegments("", referenceTasks),
   );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -114,21 +114,19 @@ export function ProjectReadmeView({
       const uploaded = await Promise.all(
         inlineImages.map((image) => uploadProjectReadmeAttachment(project.id, image.file)),
       );
-      const resolvedContent = resolveInlineAttachments(
-        draftContent,
-        inlineImages,
-        uploaded,
-      );
+      const resolvedContent = resolveInlineAttachments(draftContent, inlineImages, uploaded);
       const updated = await saveProjectReadme(project.id, resolvedContent, readme.version);
       setReadme(updated);
       setSegments(createInlineMediaSegments(updated.content, referenceTasks));
       setEditing(false);
     } catch (err) {
       if (err instanceof ApiError && err.code === "VERSION_CONFLICT") {
-        setSaveError(text(
-          "项目文档已被其他协作者或 Agent 更新，请刷新后重试。",
-          "Project Docs were modified elsewhere. Please refresh and try again.",
-        ));
+        setSaveError(
+          text(
+            "项目文档已被其他协作者或 Agent 更新，请刷新后重试。",
+            "Project Docs were modified elsewhere. Please refresh and try again.",
+          ),
+        );
       } else {
         const message = err instanceof Error ? err.message : String(err);
         setSaveError(message);
@@ -243,13 +241,15 @@ export function ProjectReadmeView({
               }
             }}
           >
-            {content
-              ? <DescriptionDocument
-                  value={content}
-                  referenceTasks={referenceTasks}
-                  onOpenTask={onOpenTask}
-                />
-              : text("添加说明...", "Add notes...")}
+            {content ? (
+              <DescriptionDocument
+                value={content}
+                referenceTasks={referenceTasks}
+                onOpenTask={onOpenTask}
+              />
+            ) : (
+              text("添加说明...", "Add notes...")
+            )}
           </div>
         )}
       </div>

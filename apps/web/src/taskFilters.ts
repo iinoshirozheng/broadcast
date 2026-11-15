@@ -73,14 +73,20 @@ export function writeTaskFilters(filters: TaskFilters) {
 }
 
 export function taskFilterCount(filters: TaskFilters): number {
-  return Number(filters.statuses.length > 0)
-    + Number(filters.priorities.length > 0)
-    + Number(filters.labels.length > 0)
-    + Number(filters.link !== "all")
-    + Number(Boolean(filters.content.trim()));
+  return (
+    Number(filters.statuses.length > 0) +
+    Number(filters.priorities.length > 0) +
+    Number(filters.labels.length > 0) +
+    Number(filters.link !== "all") +
+    Number(Boolean(filters.content.trim()))
+  );
 }
 
-export function matchesTaskSearch(task: Task, search: string, language: BroadcastLanguage): boolean {
+export function matchesTaskSearch(
+  task: Task,
+  search: string,
+  language: BroadcastLanguage,
+): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) return true;
   return [
@@ -104,13 +110,17 @@ export function matchesTaskFilters(
   if (omit !== "statuses" && filters.statuses.length && !filters.statuses.includes(task.status)) {
     return false;
   }
-  if (omit !== "priorities" && filters.priorities.length && !filters.priorities.includes(task.priority)) {
+  if (
+    omit !== "priorities" &&
+    filters.priorities.length &&
+    !filters.priorities.includes(task.priority)
+  ) {
     return false;
   }
   if (
-    omit !== "labels"
-    && filters.labels.length
-    && !filters.labels.some((label) => task.labels.includes(label))
+    omit !== "labels" &&
+    filters.labels.length &&
+    !filters.labels.some((label) => task.labels.includes(label))
   ) {
     return false;
   }

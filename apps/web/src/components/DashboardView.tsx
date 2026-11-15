@@ -8,10 +8,7 @@ import { getProjectSummary } from "../api";
 import { taskPriorityLabel, taskStatusLabel, useBroadcastI18n } from "../i18n";
 import { labelPresentation } from "../labels";
 import { actorKey } from "../actors";
-import type {
-  TaskCardPresentation,
-  TaskConversationItem,
-} from "../taskConversations";
+import type { TaskCardPresentation, TaskConversationItem } from "../taskConversations";
 import type { ActorIdentity, ProjectSummary, Task } from "../types";
 import { ActorAvatar } from "./ActorAvatar";
 import { PriorityIcon } from "./SemanticIcons";
@@ -32,23 +29,11 @@ interface DashboardViewProps {
 
 const PRIORITIES = ["urgent", "high", "medium", "low", "none"] satisfies Task["priority"][];
 
-const LABEL_COLORS = [
-  "#5e6ad2",
-  "#d25e5e",
-  "#5eccd2",
-  "#f9ac28",
-  "#85d254",
-  "#5482d2",
-  "#bf49d7",
-];
+const LABEL_COLORS = ["#5e6ad2", "#d25e5e", "#5eccd2", "#f9ac28", "#85d254", "#5482d2", "#bf49d7"];
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
-const STARTED_STATUSES = new Set<Task["status"]>([
-  "in_progress",
-  "in_review",
-  "blocked",
-]);
+const STARTED_STATUSES = new Set<Task["status"]>(["in_progress", "in_review", "blocked"]);
 
 interface ProgressPoint {
   timestamp: number;
@@ -72,9 +57,7 @@ interface ProjectCompletion {
 function calculateProjectCompletion(tasks: Task[]): ProjectCompletion {
   const activeTasks = tasks.filter((task) => task.status !== "canceled");
   const taskById = new Map(activeTasks.map((task) => [task.id, task]));
-  const parents = activeTasks.filter((task) => (
-    task.relations.parent === null
-  ));
+  const parents = activeTasks.filter((task) => task.relations.parent === null);
 
   if (parents.length === 0) {
     return { parentCount: 0, completedParents: 0, percentage: 0 };
@@ -100,8 +83,9 @@ function calculateProjectCompletion(tasks: Task[]): ProjectCompletion {
 }
 
 function chartDate(value: number, locale: string, referenceValue?: number) {
-  const includeYear = referenceValue !== undefined
-    && new Date(value).getFullYear() !== new Date(referenceValue).getFullYear();
+  const includeYear =
+    referenceValue !== undefined &&
+    new Date(value).getFullYear() !== new Date(referenceValue).getFullYear();
   return new Intl.DateTimeFormat(locale, {
     year: includeYear ? "numeric" : undefined,
     month: "short",
@@ -120,22 +104,22 @@ function buildProgressData(tasks: Task[], todayValue: number, projectCreatedAt: 
   const scopeTasks = tasks.filter((task) => task.status !== "canceled");
   const completedTasks = scopeTasks.filter((task) => task.status === "done");
   const activeStartedTasks = scopeTasks.filter((task) => STARTED_STATUSES.has(task.status));
-  const startedTasks = scopeTasks.filter((task) => (
-    task.status === "done" || STARTED_STATUSES.has(task.status)
-  ));
-  const projectStart = projectCreatedAt
-    ? new Date(projectCreatedAt).getTime()
-    : todayValue;
+  const startedTasks = scopeTasks.filter(
+    (task) => task.status === "done" || STARTED_STATUSES.has(task.status),
+  );
+  const projectStart = projectCreatedAt ? new Date(projectCreatedAt).getTime() : todayValue;
   const historyStart = Math.min(projectStart, todayValue);
   const interval = (todayValue - historyStart) / 12;
   const points = Array.from({ length: 13 }, (_, index): ProgressPoint => {
     const timestamp = index === 12 ? todayValue : historyStart + interval * index;
-    const previousTimestamp = index === 0 ? historyStart - 1 : historyStart + interval * (index - 1);
+    const previousTimestamp =
+      index === 0 ? historyStart - 1 : historyStart + interval * (index - 1);
     return {
       timestamp,
       scope: scopeTasks.filter((task) => new Date(task.createdAt).getTime() <= timestamp).length,
       started: startedTasks.filter((task) => taskStartValue(task) <= timestamp).length,
-      completed: completedTasks.filter((task) => new Date(task.updatedAt).getTime() <= timestamp).length,
+      completed: completedTasks.filter((task) => new Date(task.updatedAt).getTime() <= timestamp)
+        .length,
       completions: completedTasks.filter((task) => {
         const completedAt = new Date(task.updatedAt).getTime();
         return completedAt > previousTimestamp && completedAt <= timestamp;
@@ -152,20 +136,20 @@ function buildProgressData(tasks: Task[], todayValue: number, projectCreatedAt: 
 
   const remaining = scopeTasks.length - completedTasks.length;
   const recentStart = Math.max(historyStart, todayValue - 28 * DAY_MS);
-  const recentCompletions = completedTasks.filter((task) => (
-    new Date(task.updatedAt).getTime() >= recentStart
-  )).length;
+  const recentCompletions = completedTasks.filter(
+    (task) => new Date(task.updatedAt).getTime() >= recentStart,
+  ).length;
   const recentWeeks = Math.max(1, (todayValue - recentStart) / WEEK_MS);
   const elapsedWeeks = Math.max(1, (todayValue - historyStart) / WEEK_MS);
-  const weeklyVelocity = recentCompletions > 0
-    ? recentCompletions / recentWeeks
-    : completedTasks.length / elapsedWeeks;
-  const forecast = remaining > 0 && weeklyVelocity > 0
-    ? {
-        optimisticAt: todayValue + (remaining / (weeklyVelocity * 1.4)) * WEEK_MS,
-        conservativeAt: todayValue + (remaining / (weeklyVelocity * .6)) * WEEK_MS,
-      }
-    : null;
+  const weeklyVelocity =
+    recentCompletions > 0 ? recentCompletions / recentWeeks : completedTasks.length / elapsedWeeks;
+  const forecast =
+    remaining > 0 && weeklyVelocity > 0
+      ? {
+          optimisticAt: todayValue + (remaining / (weeklyVelocity * 1.4)) * WEEK_MS,
+          conservativeAt: todayValue + (remaining / (weeklyVelocity * 0.6)) * WEEK_MS,
+        }
+      : null;
 
   return {
     scope: scopeTasks.length,
@@ -196,8 +180,9 @@ function dayValue(value: string) {
 }
 
 function shortDate(value: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" })
-    .format(new Date(`${value}T12:00:00`));
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(
+    new Date(`${value}T12:00:00`),
+  );
 }
 
 function DashboardSummary({
@@ -267,19 +252,31 @@ function DashboardSummary({
   }, [animateSummaryOnMount, projectId, summary, summaryReady]);
 
   return (
-    <section className="dashboard-codex-summary" aria-label={text("Codex 项目总结", "Codex project summary")}>
+    <section
+      className="dashboard-codex-summary"
+      aria-label={text("Codex 项目总结", "Codex project summary")}
+    >
       <div className="dashboard-summary-bubble">
         <p
           className={summaryTyping ? "is-typing" : undefined}
-          aria-label={summaryReady ? summary : text("Codex 正在整理项目总结", "Codex is preparing the project summary")}
-        >{displayedSummary}</p>
+          aria-label={
+            summaryReady
+              ? summary
+              : text("Codex 正在整理项目总结", "Codex is preparing the project summary")
+          }
+        >
+          {displayedSummary}
+        </p>
       </div>
       <img className="dashboard-codex-mark" src="codex-agent-logo.png" alt="" aria-hidden="true" />
     </section>
   );
 }
 
-function DashboardProgressChart({ progressData, todayValue }: {
+function DashboardProgressChart({
+  progressData,
+  todayValue,
+}: {
   progressData: ReturnType<typeof buildProgressData>;
   todayValue: number;
 }) {
@@ -300,18 +297,24 @@ function DashboardProgressChart({ progressData, todayValue }: {
       ...point,
       x: left + ((currentX - left) * index) / (progressData.points.length - 1),
     }));
-    const path = (key: "scope" | "started" | "completed") => points
-      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${y(point[key]).toFixed(2)}`)
-      .join(" ");
+    const path = (key: "scope" | "started" | "completed") =>
+      points
+        .map(
+          (point, index) =>
+            `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${y(point[key]).toFixed(2)}`,
+        )
+        .join(" ");
     const completedPath = path("completed");
     const forecast = progressData.forecast
       ? {
-          optimisticX: currentX + ((right - currentX)
-            * (progressData.forecast.optimisticAt - todayValue))
-            / (rangeEndValue - todayValue),
-          conservativeX: currentX + ((right - currentX)
-            * (progressData.forecast.conservativeAt - todayValue))
-            / (rangeEndValue - todayValue),
+          optimisticX:
+            currentX +
+            ((right - currentX) * (progressData.forecast.optimisticAt - todayValue)) /
+              (rangeEndValue - todayValue),
+          conservativeX:
+            currentX +
+            ((right - currentX) * (progressData.forecast.conservativeAt - todayValue)) /
+              (rangeEndValue - todayValue),
         }
       : null;
     return {
@@ -330,9 +333,8 @@ function DashboardProgressChart({ progressData, todayValue }: {
       maximumCompletions: Math.max(1, ...progressData.points.map((point) => point.completions)),
     };
   }, [progressData, rangeEndValue, todayValue]);
-  const hoveredProgressPoint = progressHoverIndex === null
-    ? null
-    : progressChart.points[progressHoverIndex];
+  const hoveredProgressPoint =
+    progressHoverIndex === null ? null : progressChart.points[progressHoverIndex];
 
   return (
     <section className="dashboard-panel dashboard-tertiary-panel dashboard-progress-panel">
@@ -341,9 +343,18 @@ function DashboardProgressChart({ progressData, todayValue }: {
           <span>{text("累计进度", "Cumulative progress")}</span>
         </div>
         <div className="dashboard-progress-legend">
-          <span className="tone-scope"><i />{text("范围", "Scope")} <strong>{progressData.scope}</strong></span>
-          <span className="tone-started"><i />{text("已开始", "Started")} <strong>{progressData.started}</strong></span>
-          <span className="tone-completed"><i />{text("已完成", "Completed")} <strong>{progressData.completed}</strong></span>
+          <span className="tone-scope">
+            <i />
+            {text("范围", "Scope")} <strong>{progressData.scope}</strong>
+          </span>
+          <span className="tone-started">
+            <i />
+            {text("已开始", "Started")} <strong>{progressData.started}</strong>
+          </span>
+          <span className="tone-completed">
+            <i />
+            {text("已完成", "Completed")} <strong>{progressData.completed}</strong>
+          </span>
         </div>
       </header>
       <div className="dashboard-progress-body">
@@ -383,7 +394,10 @@ function DashboardProgressChart({ progressData, todayValue }: {
           ) : null}
           <path className="dashboard-progress-line tone-scope" d={progressChart.scopePath} />
           <path className="dashboard-progress-line tone-started" d={progressChart.startedPath} />
-          <path className="dashboard-progress-line tone-completed" d={progressChart.completedPath} />
+          <path
+            className="dashboard-progress-line tone-completed"
+            d={progressChart.completedPath}
+          />
           {progressChart.forecast ? (
             <>
               <path
@@ -421,9 +435,24 @@ function DashboardProgressChart({ progressData, todayValue }: {
             x2={progressChart.currentX}
             y2={progressChart.bottom + 7}
           />
-          <circle className="dashboard-progress-point tone-scope" cx={progressChart.currentX} cy={progressChart.y(progressData.scope)} r="4" />
-          <circle className="dashboard-progress-point tone-started" cx={progressChart.currentX} cy={progressChart.y(progressData.completed + progressData.started)} r="4" />
-          <circle className="dashboard-progress-point tone-completed" cx={progressChart.currentX} cy={progressChart.y(progressData.completed)} r="4" />
+          <circle
+            className="dashboard-progress-point tone-scope"
+            cx={progressChart.currentX}
+            cy={progressChart.y(progressData.scope)}
+            r="4"
+          />
+          <circle
+            className="dashboard-progress-point tone-started"
+            cx={progressChart.currentX}
+            cy={progressChart.y(progressData.completed + progressData.started)}
+            r="4"
+          />
+          <circle
+            className="dashboard-progress-point tone-completed"
+            cx={progressChart.currentX}
+            cy={progressChart.y(progressData.completed)}
+            r="4"
+          />
 
           {hoveredProgressPoint ? (
             <>
@@ -442,24 +471,37 @@ function DashboardProgressChart({ progressData, todayValue }: {
                 <text className="dashboard-progress-tooltip-date" x="12" y="20">
                   {chartDate(hoveredProgressPoint.timestamp, locale)}
                 </text>
-                <text x="12" y="40">{text("范围", "Scope")} {hoveredProgressPoint.scope}</text>
-                <text x="12" y="58">{text("已开始", "Started")} {Math.max(0, hoveredProgressPoint.started - hoveredProgressPoint.completed)}</text>
-                <text x="88" y="58">{text("已完成", "Completed")} {hoveredProgressPoint.completed}</text>
+                <text x="12" y="40">
+                  {text("范围", "Scope")} {hoveredProgressPoint.scope}
+                </text>
+                <text x="12" y="58">
+                  {text("已开始", "Started")}{" "}
+                  {Math.max(0, hoveredProgressPoint.started - hoveredProgressPoint.completed)}
+                </text>
+                <text x="88" y="58">
+                  {text("已完成", "Completed")} {hoveredProgressPoint.completed}
+                </text>
                 <text className="dashboard-progress-tooltip-delta" x="88" y="40">
-                  Δ {hoveredProgressPoint.scope - (progressChart.points[Math.max(0, progressHoverIndex! - 1)]?.scope ?? hoveredProgressPoint.scope)}
+                  Δ{" "}
+                  {hoveredProgressPoint.scope -
+                    (progressChart.points[Math.max(0, progressHoverIndex! - 1)]?.scope ??
+                      hoveredProgressPoint.scope)}
                 </text>
               </g>
             </>
           ) : null}
 
           {progressChart.points.map((point, index) => {
-            const hitWidth = (progressChart.currentX - progressChart.left) / (progressChart.points.length - 1);
+            const hitWidth =
+              (progressChart.currentX - progressChart.left) / (progressChart.points.length - 1);
             return (
               <rect
                 className="dashboard-progress-hitbox"
                 x={Math.max(progressChart.left, point.x - hitWidth / 2)}
                 y={progressChart.top - 6}
-                width={index === 0 || index === progressChart.points.length - 1 ? hitWidth / 2 : hitWidth}
+                width={
+                  index === 0 || index === progressChart.points.length - 1 ? hitWidth / 2 : hitWidth
+                }
                 height={progressChart.bottom - progressChart.top + 16}
                 fill="transparent"
                 role="button"
@@ -484,10 +526,20 @@ function DashboardProgressChart({ progressData, todayValue }: {
           <text className="dashboard-progress-axis-label" x={progressChart.left} y="260">
             {chartDate(progressChart.points[0].timestamp, locale)}
           </text>
-          <text className="dashboard-progress-axis-label is-current" x={progressChart.currentX} y="260" textAnchor="middle">
+          <text
+            className="dashboard-progress-axis-label is-current"
+            x={progressChart.currentX}
+            y="260"
+            textAnchor="middle"
+          >
             {chartDate(todayValue, locale)}
           </text>
-          <text className="dashboard-progress-axis-label" x={progressChart.right} y="260" textAnchor="end">
+          <text
+            className="dashboard-progress-axis-label"
+            x={progressChart.right}
+            y="260"
+            textAnchor="end"
+          >
             {chartDate(rangeEndValue, locale, todayValue)}
           </text>
         </svg>
@@ -551,15 +603,32 @@ export function DashboardView({
   const todayValue = today.getTime();
 
   const {
-    activeTasks, completedTasks, overdueTasks, upcomingTasks, projectCompletion,
-    roleContributions, completedTotal, priorityCounts, labelCounts, totalLabelAssignments,
-    visibleLabelCounts, maximumVisibleLabelCount, contributionWeeks, contributionMaximum,
-    contributionDateFormatter, monthMarkers, metrics,
+    activeTasks,
+    completedTasks,
+    overdueTasks,
+    upcomingTasks,
+    projectCompletion,
+    roleContributions,
+    completedTotal,
+    priorityCounts,
+    labelCounts,
+    totalLabelAssignments,
+    visibleLabelCounts,
+    maximumVisibleLabelCount,
+    contributionWeeks,
+    contributionMaximum,
+    contributionDateFormatter,
+    monthMarkers,
+    metrics,
   } = useMemo(() => {
     const upcomingEnd = todayValue + 14 * 86_400_000;
-    const activeTasks = tasks.filter((task) => task.status !== "done" && task.status !== "canceled");
+    const activeTasks = tasks.filter(
+      (task) => task.status !== "done" && task.status !== "canceled",
+    );
     const completedTasks = tasks.filter((task) => task.status === "done");
-    const overdueTasks = activeTasks.filter((task) => task.dueDate && dayValue(task.dueDate) < todayValue);
+    const overdueTasks = activeTasks.filter(
+      (task) => task.dueDate && dayValue(task.dueDate) < todayValue,
+    );
     const upcomingTasks = activeTasks
       .filter((task) => task.dueDate && dayValue(task.dueDate) <= upcomingEnd)
       .sort((left, right) => (left.dueDate ?? "").localeCompare(right.dueDate ?? ""))
@@ -574,8 +643,9 @@ export function DashboardView({
         count: (current?.count ?? 0) + (task.status === "done" ? 1 : 0),
       });
     }
-    const roleContributions = [...roleContributionMap.values()]
-      .sort((left, right) => right.count - left.count);
+    const roleContributions = [...roleContributionMap.values()].sort(
+      (left, right) => right.count - left.count,
+    );
     const completedTotal = Math.max(1, completedTasks.length);
 
     const priorityCounts = PRIORITIES.map((priority) => ({
@@ -597,30 +667,36 @@ export function DashboardView({
         sortName: labelPresentation(label).name,
         presentation: labelPresentation(label, language),
       }))
-      .sort((left, right) => (
-        right.count - left.count
-        || left.sortName.localeCompare(right.sortName)
-      ));
+      .sort(
+        (left, right) => right.count - left.count || left.sortName.localeCompare(right.sortName),
+      );
     const totalLabelAssignments = Math.max(
       1,
       labelCounts.reduce((total, item) => total + item.count, 0),
     );
-    const visibleLabelCounts = (labelCounts.length > 12
-      ? [
-          ...labelCounts.slice(0, 11),
-          {
-            label: "__other__",
-            count: labelCounts.slice(11).reduce((total, item) => total + item.count, 0),
-            presentation: {
-              ...labelPresentation("其他"),
-              name: text(`其他（${labelCounts.length - 11}个）`, `Other (${labelCounts.length - 11})`),
+    const visibleLabelCounts = (
+      labelCounts.length > 12
+        ? [
+            ...labelCounts.slice(0, 11),
+            {
+              label: "__other__",
+              count: labelCounts.slice(11).reduce((total, item) => total + item.count, 0),
+              presentation: {
+                ...labelPresentation("其他"),
+                name: text(
+                  `其他（${labelCounts.length - 11}个）`,
+                  `Other (${labelCounts.length - 11})`,
+                ),
+              },
             },
-          },
-        ]
-      : labelCounts
+          ]
+        : labelCounts
     ).map((item, index) => ({
       ...item,
-      color: item.label === "__other__" ? "var(--dashboard-other-label-color)" : LABEL_COLORS[index % LABEL_COLORS.length],
+      color:
+        item.label === "__other__"
+          ? "var(--dashboard-other-label-color)"
+          : LABEL_COLORS[index % LABEL_COLORS.length],
     }));
     const maximumVisibleLabelCount = Math.max(1, ...visibleLabelCounts.map((item) => item.count));
 
@@ -631,7 +707,7 @@ export function DashboardView({
     }
     const contributionStart = new Date(todayValue);
     contributionStart.setDate(contributionStart.getDate() - contributionStart.getDay() - 51 * 7);
-    const contributionWeeks = Array.from({ length: 52 }, (_, weekIndex) => (
+    const contributionWeeks = Array.from({ length: 52 }, (_, weekIndex) =>
       Array.from({ length: 7 }, (_, dayIndex) => {
         const date = new Date(contributionStart);
         date.setDate(date.getDate() + weekIndex * 7 + dayIndex);
@@ -642,8 +718,8 @@ export function DashboardView({
           count: activityByDay.get(key) ?? 0,
           future: date.getTime() > todayValue,
         };
-      })
-    ));
+      }),
+    );
     const contributionMaximum = Math.max(1, ...contributionWeeks.flat().map((day) => day.count));
     const monthFormatter = new Intl.DateTimeFormat(locale, { month: "short" });
     const contributionDateFormatter = new Intl.DateTimeFormat(locale, {
@@ -684,47 +760,64 @@ export function DashboardView({
     ];
 
     return {
-      activeTasks, completedTasks, overdueTasks, upcomingTasks, projectCompletion,
-      roleContributions, completedTotal, priorityCounts, labelCounts, totalLabelAssignments,
-      visibleLabelCounts, maximumVisibleLabelCount, contributionWeeks, contributionMaximum,
-      contributionDateFormatter, monthMarkers, metrics,
+      activeTasks,
+      completedTasks,
+      overdueTasks,
+      upcomingTasks,
+      projectCompletion,
+      roleContributions,
+      completedTotal,
+      priorityCounts,
+      labelCounts,
+      totalLabelAssignments,
+      visibleLabelCounts,
+      maximumVisibleLabelCount,
+      contributionWeeks,
+      contributionMaximum,
+      contributionDateFormatter,
+      monthMarkers,
+      metrics,
     };
   }, [language, locale, tasks, text, todayValue]);
 
   const progressData = useMemo(() => {
     const aggregateCreatedAt = isAllProjects
-      ? tasks.reduce<string | null>((earliest, task) => (
-          !earliest || task.createdAt < earliest ? task.createdAt : earliest
-        ), null)
+      ? tasks.reduce<string | null>(
+          (earliest, task) => (!earliest || task.createdAt < earliest ? task.createdAt : earliest),
+          null,
+        )
       : null;
-    return buildProgressData(
-      tasks,
-      todayValue,
-      projectCreatedAt ?? aggregateCreatedAt,
-    );
+    return buildProgressData(tasks, todayValue, projectCreatedAt ?? aggregateCreatedAt);
   }, [isAllProjects, projectCreatedAt, tasks, todayValue]);
 
-  const runningTasks = useMemo(() => tasks.filter(
-    (task) => presentations[task.id]?.processing.running,
-  ), [presentations, tasks]);
+  const runningTasks = useMemo(
+    () => tasks.filter((task) => presentations[task.id]?.processing.running),
+    [presentations, tasks],
+  );
 
-  const attentionItems = useMemo(() => activeTasks
-    .filter((task) => task.status === "blocked" || presentations[task.id]?.unread)
-    .sort((left, right) => {
-      const leftUnread = presentations[left.id]?.unread ? 1 : 0;
-      const rightUnread = presentations[right.id]?.unread ? 1 : 0;
-      return rightUnread - leftUnread
-        || right.activityUpdatedAt.localeCompare(left.activityUpdatedAt);
-    })
-    .slice(0, 5), [activeTasks, presentations]);
+  const attentionItems = useMemo(
+    () =>
+      activeTasks
+        .filter((task) => task.status === "blocked" || presentations[task.id]?.unread)
+        .sort((left, right) => {
+          const leftUnread = presentations[left.id]?.unread ? 1 : 0;
+          const rightUnread = presentations[right.id]?.unread ? 1 : 0;
+          return (
+            rightUnread - leftUnread ||
+            right.activityUpdatedAt.localeCompare(left.activityUpdatedAt)
+          );
+        })
+        .slice(0, 5),
+    [activeTasks, presentations],
+  );
 
   const summaryBody = isAllProjects
     ? text(
         `所有项目共有 ${tasks.length} 个议题，${completedTasks.length} 个已完成，${activeTasks.length} 个尚未结束；当前 ${tasks.filter((task) => task.status === "blocked").length} 个遇到阻碍，${overdueTasks.length} 个已逾期。`,
         `Across all projects, ${tasks.length} issues are tracked: ${completedTasks.length} completed and ${activeTasks.length} still open; ${tasks.filter((task) => task.status === "blocked").length} are blocked and ${overdueTasks.length} overdue.`,
       )
-    : projectSummary?.summary
-      ?? (projectSummary?.refreshing
+    : (projectSummary?.summary ??
+      (projectSummary?.refreshing
         ? text(
             "Codex 正在整理当前项目的进展、风险和下一步重点…",
             "Codex is reviewing the project's progress, risks, and next steps…",
@@ -734,14 +827,17 @@ export function DashboardView({
           : text(
               "Codex 正在整理当前项目的进展、风险和下一步重点…",
               "Codex is reviewing the project's progress, risks, and next steps…",
-            ));
+            )));
   const hour = new Date().getHours();
-  const greeting = hour < 12
-    ? text("上午好", "Good morning")
-    : hour < 18
-      ? text("下午好", "Good afternoon")
-      : text("晚上好", "Good evening");
-  const summaryDate = new Intl.DateTimeFormat(locale, { month: "long", day: "numeric" }).format(today);
+  const greeting =
+    hour < 12
+      ? text("上午好", "Good morning")
+      : hour < 18
+        ? text("下午好", "Good afternoon")
+        : text("晚上好", "Good evening");
+  const summaryDate = new Intl.DateTimeFormat(locale, { month: "long", day: "numeric" }).format(
+    today,
+  );
   const summary = text(
     `${greeting}，${currentUser.name}，今天是${summaryDate}，${summaryBody}`,
     `${greeting}, ${currentUser.name}. Today is ${summaryDate}. ${summaryBody}`,
@@ -756,14 +852,16 @@ export function DashboardView({
             <h1>{text("项目完成度", "Project completion")}</h1>
             <div className="dashboard-hero-value">
               <strong>{projectCompletion.percentage}%</strong>
-              <span>{text(
-                projectCompletion.parentCount > 0
-                  ? `${projectCompletion.completedParents}/${projectCompletion.parentCount} 个顶层议题完成 · ${completedTasks.length} 个议题已完成`
-                  : "暂无可计算的议题",
-                projectCompletion.parentCount > 0
-                  ? `${projectCompletion.completedParents}/${projectCompletion.parentCount} top-level issues complete · ${completedTasks.length} issues complete`
-                  : "No issues to calculate",
-              )}</span>
+              <span>
+                {text(
+                  projectCompletion.parentCount > 0
+                    ? `${projectCompletion.completedParents}/${projectCompletion.parentCount} 个顶层议题完成 · ${completedTasks.length} 个议题已完成`
+                    : "暂无可计算的议题",
+                  projectCompletion.parentCount > 0
+                    ? `${projectCompletion.completedParents}/${projectCompletion.parentCount} top-level issues complete · ${completedTasks.length} issues complete`
+                    : "No issues to calculate",
+                )}
+              </span>
             </div>
           </header>
 
@@ -778,7 +876,9 @@ export function DashboardView({
 
         <div className="dashboard-metrics">
           {metrics.map((metric) => {
-            const percent = activeTasks.length ? Math.round((metric.value / activeTasks.length) * 100) : 0;
+            const percent = activeTasks.length
+              ? Math.round((metric.value / activeTasks.length) * 100)
+              : 0;
             return (
               <article className={`dashboard-metric tone-${metric.tone}`} key={metric.label}>
                 <span className="dashboard-metric-label">{metric.label}</span>
@@ -800,16 +900,23 @@ export function DashboardView({
 
         <div className="dashboard-grid">
           <section className="dashboard-panel dashboard-primary-panel dashboard-priority-panel">
-            <header><span>{text("优先级", "Priority")}</span></header>
+            <header>
+              <span>{text("优先级", "Priority")}</span>
+            </header>
             <div className="dashboard-priority-list">
               {priorityCounts.map((item) => (
-                <div className={`dashboard-priority-row priority-${item.priority}`} key={item.priority}>
+                <div
+                  className={`dashboard-priority-row priority-${item.priority}`}
+                  key={item.priority}
+                >
                   <span className="dashboard-priority-name">
                     <PriorityIcon priority={item.priority} size={13} />
                     {item.label}
                   </span>
                   <span className="dashboard-priority-track">
-                    <i style={{ width: `${tasks.length ? (item.count / tasks.length) * 100 : 0}%` }} />
+                    <i
+                      style={{ width: `${tasks.length ? (item.count / tasks.length) * 100 : 0}%` }}
+                    />
                   </span>
                   <strong>{item.count}</strong>
                 </div>
@@ -818,87 +925,117 @@ export function DashboardView({
           </section>
 
           <section className="dashboard-panel dashboard-primary-panel dashboard-attention-panel">
-            <header><span>{text("需要关注（未读、阻塞）", "Needs attention (unread, blocked)")}</span></header>
+            <header>
+              <span>{text("需要关注（未读、阻塞）", "Needs attention (unread, blocked)")}</span>
+            </header>
             <div className="dashboard-task-list">
-              {attentionItems.length ? attentionItems.map((task) => (
-                <button
-                  type="button"
-                  className="dashboard-attention-row"
-                  onClick={() => onOpenTask(task)}
-                  key={task.id}
-                >
-                  <span className="dashboard-attention-mark" aria-hidden="true">
-                    {presentations[task.id]?.unread && <i />}
-                  </span>
-                  <strong>{task.title}</strong>
-                  <small>ID: {task.externalKey ?? task.identifier}</small>
-                </button>
-              )) : (
-                <div className="dashboard-empty">{text("当前没有需要关注的议题", "No issues need attention")}</div>
+              {attentionItems.length ? (
+                attentionItems.map((task) => (
+                  <button
+                    type="button"
+                    className="dashboard-attention-row"
+                    onClick={() => onOpenTask(task)}
+                    key={task.id}
+                  >
+                    <span className="dashboard-attention-mark" aria-hidden="true">
+                      {presentations[task.id]?.unread && <i />}
+                    </span>
+                    <strong>{task.title}</strong>
+                    <small>ID: {task.externalKey ?? task.identifier}</small>
+                  </button>
+                ))
+              ) : (
+                <div className="dashboard-empty">
+                  {text("当前没有需要关注的议题", "No issues need attention")}
+                </div>
               )}
             </div>
           </section>
 
           <section className="dashboard-panel dashboard-primary-panel dashboard-running-panel">
-            <header><span>{text("运行中对话", "Active conversations")}</span></header>
+            <header>
+              <span>{text("运行中对话", "Active conversations")}</span>
+            </header>
             <div className="dashboard-task-list">
-              {runningTasks.length ? runningTasks.map((task) => (
-                <article
-                  className="dashboard-running-card"
-                  key={task.id}
-                  onClick={() => onOpenTask(task)}
-                >
-                  <button
-                    type="button"
-                    className="dashboard-running-open"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpenTask(task);
-                    }}
+              {runningTasks.length ? (
+                runningTasks.map((task) => (
+                  <article
+                    className="dashboard-running-card"
+                    key={task.id}
+                    onClick={() => onOpenTask(task)}
                   >
-                    <small>ID: {task.externalKey ?? task.identifier}</small>
-                    <strong>{task.title}</strong>
-                  </button>
-                  <div className="dashboard-running-footer">
-                    <span className="task-processing is-running">
-                      <img className="task-processing-glyph" src={processingAnimation} alt="" aria-hidden="true" />
-                      <span className="task-processing-label">{text("正在处理…", "Processing…")}</span>
-                    </span>
-                    <TaskConversationMenu
-                      conversations={presentations[task.id].conversations}
-                      onOpenConversation={onOpenConversation}
-                    />
-                  </div>
-                </article>
-              )) : (
-                <div className="dashboard-empty">{text("当前没有运行中的对话", "No active conversations")}</div>
+                    <button
+                      type="button"
+                      className="dashboard-running-open"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenTask(task);
+                      }}
+                    >
+                      <small>ID: {task.externalKey ?? task.identifier}</small>
+                      <strong>{task.title}</strong>
+                    </button>
+                    <div className="dashboard-running-footer">
+                      <span className="task-processing is-running">
+                        <img
+                          className="task-processing-glyph"
+                          src={processingAnimation}
+                          alt=""
+                          aria-hidden="true"
+                        />
+                        <span className="task-processing-label">
+                          {text("正在处理…", "Processing…")}
+                        </span>
+                      </span>
+                      <TaskConversationMenu
+                        conversations={presentations[task.id].conversations}
+                        onOpenConversation={onOpenConversation}
+                      />
+                    </div>
+                  </article>
+                ))
+              ) : (
+                <div className="dashboard-empty">
+                  {text("当前没有运行中的对话", "No active conversations")}
+                </div>
               )}
             </div>
           </section>
 
           <section className="dashboard-panel dashboard-secondary-panel dashboard-role-panel">
-            <header><span>{text("角色贡献", "Role contributions")}</span><b>{roleContributions.length}</b></header>
+            <header>
+              <span>{text("角色贡献", "Role contributions")}</span>
+              <b>{roleContributions.length}</b>
+            </header>
             {roleContributions.length ? (
               <div className="dashboard-role-body">
                 <div className="dashboard-role-stack" aria-hidden="true">
-                  {roleContributions.filter((item) => item.count > 0).map((item, index) => (
-                    <i
-                      className={`tone-${index % 5}`}
-                      style={{ width: `${(item.count / completedTotal) * 100}%` }}
-                      key={`${item.actor.type}:${item.actor.id}`}
-                    />
-                  ))}
+                  {roleContributions
+                    .filter((item) => item.count > 0)
+                    .map((item, index) => (
+                      <i
+                        className={`tone-${index % 5}`}
+                        style={{ width: `${(item.count / completedTotal) * 100}%` }}
+                        key={`${item.actor.type}:${item.actor.id}`}
+                      />
+                    ))}
                 </div>
                 <div className="dashboard-role-list">
                   {roleContributions.map((item, index) => (
                     <div className="dashboard-role-row" key={`${item.actor.type}:${item.actor.id}`}>
-                      <ActorAvatar actor={actorKey(item.actor) === actorKey(currentUser) ? currentUser : item.actor} />
+                      <ActorAvatar
+                        actor={
+                          actorKey(item.actor) === actorKey(currentUser) ? currentUser : item.actor
+                        }
+                      />
                       <span className="dashboard-role-copy">
                         <strong>{item.actor.name}</strong>
-                        <small>{text(
-                          `${item.count} 个已完成议题`,
-                          `${item.count} completed ${item.count === 1 ? "issue" : "issues"}`,
-                        )}</small>
+                        <small>
+                          {text(
+                            `${item.count} 个已完成议题`,
+                            `${item.count} completed ${item.count === 1 ? "issue" : "issues"}`,
+                          )}
+                        </small>
                       </span>
                       <span className={`dashboard-role-share tone-${index % 5}`}>
                         {Math.round((item.count / completedTotal) * 100)}%
@@ -913,7 +1050,9 @@ export function DashboardView({
           </section>
 
           <section className="dashboard-panel dashboard-secondary-panel dashboard-contribution-panel">
-            <header><span>{text("贡献图", "Contribution chart")}</span></header>
+            <header>
+              <span>{text("贡献图", "Contribution chart")}</span>
+            </header>
             <div className="dashboard-contribution-body">
               <div className="dashboard-contribution-chart">
                 <div className="dashboard-contribution-months" aria-hidden="true">
@@ -932,25 +1071,39 @@ export function DashboardView({
                     <span style={{ gridRow: 4 }}>{text("三", "W")}</span>
                     <span style={{ gridRow: 6 }}>{text("五", "F")}</span>
                   </div>
-                  <div className="dashboard-contribution-grid" aria-label={text("过去一年议题贡献图", "Issue contributions over the past year")}>
+                  <div
+                    className="dashboard-contribution-grid"
+                    aria-label={text(
+                      "过去一年议题贡献图",
+                      "Issue contributions over the past year",
+                    )}
+                  >
                     {contributionWeeks.flat().map((day) => {
-                      const level = day.count === 0
-                        ? 0
-                        : Math.min(4, Math.ceil((day.count / contributionMaximum) * 4));
+                      const level =
+                        day.count === 0
+                          ? 0
+                          : Math.min(4, Math.ceil((day.count / contributionMaximum) * 4));
                       return (
                         <span
                           className={`dashboard-contribution-cell level-${level}${day.future ? " is-future" : ""}`}
-                          title={day.future ? undefined : text(
-                            `${contributionDateFormatter.format(day.date)} · ${day.count} 个议题更新`,
-                            `${contributionDateFormatter.format(day.date)} · ${day.count} issue ${day.count === 1 ? "update" : "updates"}`,
-                          )}
+                          title={
+                            day.future
+                              ? undefined
+                              : text(
+                                  `${contributionDateFormatter.format(day.date)} · ${day.count} 个议题更新`,
+                                  `${contributionDateFormatter.format(day.date)} · ${day.count} issue ${day.count === 1 ? "update" : "updates"}`,
+                                )
+                          }
                           key={day.key}
                         />
                       );
                     })}
                   </div>
                 </div>
-                <div className="dashboard-contribution-legend" aria-label={text("贡献强度图例", "Contribution intensity legend")}>
+                <div
+                  className="dashboard-contribution-legend"
+                  aria-label={text("贡献强度图例", "Contribution intensity legend")}
+                >
                   <span>{text("少", "Less")}</span>
                   {[0, 1, 2, 3, 4].map((level) => (
                     <i className={`dashboard-contribution-cell level-${level}`} key={level} />
@@ -962,37 +1115,52 @@ export function DashboardView({
           </section>
 
           <section className="dashboard-panel dashboard-tertiary-panel dashboard-upcoming-panel">
-            <header><span>{text("即将到期", "Due soon")}</span></header>
+            <header>
+              <span>{text("即将到期", "Due soon")}</span>
+            </header>
             <div className="dashboard-task-list">
-              {upcomingTasks.length ? upcomingTasks.map((task) => (
-                <button
-                  type="button"
-                  className="dashboard-upcoming-row"
-                  onClick={() => onOpenTask(task)}
-                  key={task.id}
-                >
-                  <img
-                    src={task.status === "in_review" ? dueDoneIcon : dueEditIcon}
-                    alt=""
-                    aria-hidden="true"
-                  />
-                  <strong>{task.title}</strong>
-                  <time>ID: {task.externalKey ?? task.identifier} | {shortDate(task.dueDate!, locale)}</time>
-                </button>
-              )) : (
-                <div className="dashboard-empty">{text("近期没有到期议题", "No issues are due soon")}</div>
+              {upcomingTasks.length ? (
+                upcomingTasks.map((task) => (
+                  <button
+                    type="button"
+                    className="dashboard-upcoming-row"
+                    onClick={() => onOpenTask(task)}
+                    key={task.id}
+                  >
+                    <img
+                      src={task.status === "in_review" ? dueDoneIcon : dueEditIcon}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <strong>{task.title}</strong>
+                    <time>
+                      ID: {task.externalKey ?? task.identifier} | {shortDate(task.dueDate!, locale)}
+                    </time>
+                  </button>
+                ))
+              ) : (
+                <div className="dashboard-empty">
+                  {text("近期没有到期议题", "No issues are due soon")}
+                </div>
               )}
             </div>
           </section>
 
           <section className="dashboard-panel dashboard-tertiary-panel dashboard-label-panel">
-            <header><span>{text("标签分布", "Label distribution")} {Math.min(12, labelCounts.length)}</span></header>
+            <header>
+              <span>
+                {text("标签分布", "Label distribution")} {Math.min(12, labelCounts.length)}
+              </span>
+            </header>
             {visibleLabelCounts.length ? (
               <div className="dashboard-label-chart">
                 {visibleLabelCounts.map((item) => (
                   <div className="dashboard-label-chart-row" key={item.label}>
                     <strong>{item.presentation.name}</strong>
-                    <span>{Math.round((item.count / totalLabelAssignments) * 100)}% | <b>{item.count}</b></span>
+                    <span>
+                      {Math.round((item.count / totalLabelAssignments) * 100)}% |{" "}
+                      <b>{item.count}</b>
+                    </span>
                     <i
                       aria-hidden="true"
                       style={{

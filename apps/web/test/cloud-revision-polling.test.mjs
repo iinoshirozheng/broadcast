@@ -188,9 +188,10 @@ test("does not invalidate after being stopped while a request is pending", async
   let invalidations = 0;
   let resolveRequest;
   const poller = createRevisionPoller({
-    fetchRevision: () => new Promise((resolve) => {
-      resolveRequest = resolve;
-    }),
+    fetchRevision: () =>
+      new Promise((resolve) => {
+        resolveRequest = resolve;
+      }),
     onInvalidate: () => {
       invalidations += 1;
     },
@@ -208,34 +209,46 @@ test("does not invalidate after being stopped while a request is pending", async
 });
 
 test("cloud metadata selects polling and local metadata does not", () => {
-  assert.equal(getRevisionPollingInterval({
-    mode: "cloud",
-    realtime: { transport: "poll", intervalMs: 2000 },
-  }), 2000);
-  assert.equal(getRevisionPollingInterval({
-    mode: "local",
-    realtime: { transport: "poll", intervalMs: 2000 },
-  }), null);
+  assert.equal(
+    getRevisionPollingInterval({
+      mode: "cloud",
+      realtime: { transport: "poll", intervalMs: 2000 },
+    }),
+    2000,
+  );
+  assert.equal(
+    getRevisionPollingInterval({
+      mode: "local",
+      realtime: { transport: "poll", intervalMs: 2000 },
+    }),
+    null,
+  );
   assert.equal(getRevisionPollingInterval({ mode: "cloud" }), null);
 });
 
 test("cloud metadata selects WebSocket push without periodic polling", () => {
-  assert.deepEqual(getRevisionWebSocketConfig({
-    mode: "cloud",
-    realtime: {
-      transport: "websocket",
+  assert.deepEqual(
+    getRevisionWebSocketConfig({
+      mode: "cloud",
+      realtime: {
+        transport: "websocket",
+        endpoint: "/api/events",
+      },
+    }),
+    {
       endpoint: "/api/events",
     },
-  }), {
-    endpoint: "/api/events",
-  });
-  assert.equal(getRevisionWebSocketConfig({
-    mode: "local",
-    realtime: {
-      transport: "websocket",
-      endpoint: "/api/events",
-    },
-  }), null);
+  );
+  assert.equal(
+    getRevisionWebSocketConfig({
+      mode: "local",
+      realtime: {
+        transport: "websocket",
+        endpoint: "/api/events",
+      },
+    }),
+    null,
+  );
 });
 
 test("WebSocket push invalidates on changes and checks revision once per connection", async () => {
@@ -365,13 +378,19 @@ test("the app connects the selected realtime transport without reloading the pag
   assert.match(appSource, /createRevisionWebSocketClient\(\{/);
   assert.doesNotMatch(appSource, /revisionFallbackInterval|fallbackIntervalMs/);
   assert.match(appSource, /controller\.abort\(\);\s*poller\.stop\(\)/);
-  assert.match(appSource, /const eventsUrl = resolveBroadcastUrl\("\/api\/events"\);[\s\S]*new EventSource\(eventsUrl\)/);
+  assert.match(
+    appSource,
+    /const eventsUrl = resolveBroadcastUrl\("\/api\/events"\);[\s\S]*new EventSource\(eventsUrl\)/,
+  );
   assert.doesNotMatch(appSource, /location\.reload\(/);
 
   const pollingEffect = appSource.slice(
     appSource.indexOf("if (revisionPollingInterval === null) return;"),
     appSource.indexOf("function pushUndo"),
   );
-  assert.doesNotMatch(pollingEffect, /\bdetailTaskId\b|\bbroadcastMetadata\b|\bselectedProjectId\b/);
+  assert.doesNotMatch(
+    pollingEffect,
+    /\bdetailTaskId\b|\bbroadcastMetadata\b|\bselectedProjectId\b/,
+  );
   assert.match(appSource, /const projectId = taskScopeProjectIdRef\.current/);
 });

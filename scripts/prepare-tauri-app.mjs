@@ -30,11 +30,12 @@ if (target !== windowsTarget && target !== linuxTarget && process.platform !== "
 }
 
 function parseTarget(argv) {
-  let selected = process.platform === "win32"
-    ? windowsTarget
-    : process.platform === "linux"
-      ? linuxTarget
-      : universalTarget;
+  let selected =
+    process.platform === "win32"
+      ? windowsTarget
+      : process.platform === "linux"
+        ? linuxTarget
+        : universalTarget;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--target") selected = argv[++index];
@@ -71,7 +72,10 @@ async function prepareCli() {
     return;
   }
   const suffix = target === windowsTarget ? ".exe" : "";
-  await copyFile(buildCli(target), path.join(binariesDirectory, `broadcast-cli-${target}${suffix}`));
+  await copyFile(
+    buildCli(target),
+    path.join(binariesDirectory, `broadcast-cli-${target}${suffix}`),
+  );
 }
 
 async function writeWrapper(name, content, executable) {
@@ -85,7 +89,9 @@ async function prepareResources() {
   await rm(resourcesDirectory, { recursive: true, force: true });
   await mkdir(resourcesDirectory, { recursive: true });
   await Promise.all([
-    cp(path.join(projectRoot, "apps", "web", "dist"), path.join(resourcesDirectory, "web"), { recursive: true }),
+    cp(path.join(projectRoot, "apps", "web", "dist"), path.join(resourcesDirectory, "web"), {
+      recursive: true,
+    }),
     cp(
       path.join(projectRoot, "skills", "manage-broadcast"),
       path.join(resourcesDirectory, "skills", "manage-broadcast"),
@@ -94,19 +100,25 @@ async function prepareResources() {
   ]);
 
   if (target === windowsTarget) {
-    await writeWrapper("broadcast.cmd", [
-      "@echo off",
-      "setlocal",
-      "set \"BROADCAST_RUNTIME_FILE=%APPDATA%\\Broadcast\\launcher-runtime.json\"",
-      "\"%~dp0..\\broadcast-cli.exe\" %*",
-      "exit /b %ERRORLEVEL%",
-      "",
-    ].join("\r\n"), false);
+    await writeWrapper(
+      "broadcast.cmd",
+      [
+        "@echo off",
+        "setlocal",
+        'set "BROADCAST_RUNTIME_FILE=%APPDATA%\\Broadcast\\launcher-runtime.json"',
+        '"%~dp0..\\broadcast-cli.exe" %*',
+        "exit /b %ERRORLEVEL%",
+        "",
+      ].join("\r\n"),
+      false,
+    );
     return;
   }
 
   if (target === linuxTarget) {
-    await writeWrapper("broadcast", `#!/bin/sh
+    await writeWrapper(
+      "broadcast",
+      `#!/bin/sh
 set -u
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -115,11 +127,15 @@ if [ -z "\${WSL_DISTRO_NAME-}" ] && [ -z "\${WSL_INTEROP-}" ] && [ -z "\${BROADC
   export BROADCAST_RUNTIME_FILE="\${XDG_DATA_HOME:-$HOME/.local/share}/Broadcast/launcher-runtime.json"
 fi
 exec "$RESOURCE_DIR/../../bin/broadcast-cli" "$@"
-`, true);
+`,
+      true,
+    );
     return;
   }
 
-  await writeWrapper("broadcast", `#!/bin/zsh
+  await writeWrapper(
+    "broadcast",
+    `#!/bin/zsh
 set -u
 
 SCRIPT_PATH="$0"
@@ -130,7 +146,9 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 CONTENTS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export BROADCAST_RUNTIME_FILE="$HOME/Library/Application Support/Broadcast/launcher-runtime.json"
 exec "$CONTENTS_DIR/MacOS/broadcast-cli" "$@"
-`, true);
+`,
+    true,
+  );
 }
 
 await prepareResources();

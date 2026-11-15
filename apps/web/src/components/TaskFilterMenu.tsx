@@ -64,7 +64,13 @@ function LabelGlyph({ label }: { label: string }) {
   const { language } = useBroadcastI18n();
   const presentation = labelPresentation(label, language);
   if (!presentation.tone) return null;
-  return <span className="filter-label-glyph" style={{ "--label-color": presentation.color } as CSSProperties} aria-hidden="true" />;
+  return (
+    <span
+      className="filter-label-glyph"
+      style={{ "--label-color": presentation.color } as CSSProperties}
+      aria-hidden="true"
+    />
+  );
 }
 
 function joinSummary(values: string[], noun: string, language: BroadcastLanguage): string | null {
@@ -73,7 +79,15 @@ function joinSummary(values: string[], noun: string, language: BroadcastLanguage
   return language === "zh" ? `${values.length} 个${noun}` : `${values.length} ${noun}`;
 }
 
-export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort, onSortChange }: TaskFilterMenuProps) {
+export function TaskFilterMenu({
+  tasks,
+  search,
+  labels,
+  filters,
+  onChange,
+  sort,
+  onSortChange,
+}: TaskFilterMenuProps) {
   const { language, text } = useBroadcastI18n();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -108,7 +122,9 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     setSubmenu(name);
     setSubmenuQuery("");
     if (focus) {
-      requestAnimationFrame(() => submenuRef.current?.querySelector<HTMLElement>("input, button")?.focus());
+      requestAnimationFrame(() =>
+        submenuRef.current?.querySelector<HTMLElement>("input, button")?.focus(),
+      );
     }
   }
 
@@ -120,8 +136,10 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
   const searchMatches = useMemo(() => {
     if (!open) return [];
     const contentFilters = { ...EMPTY_TASK_FILTERS, content: filters.content };
-    return tasks.filter((task) => matchesTaskSearch(task, search, language)
-      && matchesTaskFilters(task, contentFilters));
+    return tasks.filter(
+      (task) =>
+        matchesTaskSearch(task, search, language) && matchesTaskFilters(task, contentFilters),
+    );
   }, [filters.content, language, open, search, tasks]);
 
   const counts = useMemo(() => {
@@ -166,37 +184,53 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     onChange({ ...filters, labels: labels.filter((value) => selected.has(value)) });
   }
 
-  const statusOptions = useMemo<FilterOption[]>(() => TASK_STATUSES.map((status) => ({
-    id: `status-${status}`,
-    label: taskStatusLabel(language, status),
-    category: text("状态", "Status"),
-    keywords: status,
-    count: counts.statuses.get(status) ?? 0,
-    selected: filters.statuses.includes(status),
-    icon: <span className="filter-status-icon"><StatusIcon status={status} color="currentColor" /></span>,
-    toggle: () => toggleStatus(status),
-  })), [counts, filters, language, text]);
+  const statusOptions = useMemo<FilterOption[]>(
+    () =>
+      TASK_STATUSES.map((status) => ({
+        id: `status-${status}`,
+        label: taskStatusLabel(language, status),
+        category: text("状态", "Status"),
+        keywords: status,
+        count: counts.statuses.get(status) ?? 0,
+        selected: filters.statuses.includes(status),
+        icon: (
+          <span className="filter-status-icon">
+            <StatusIcon status={status} color="currentColor" />
+          </span>
+        ),
+        toggle: () => toggleStatus(status),
+      })),
+    [counts, filters, language, text],
+  );
 
-  const priorityOptions = useMemo<FilterOption[]>(() => TASK_PRIORITIES.map((priority) => ({
-    id: `priority-${priority}`,
-    label: taskPriorityLabel(language, priority),
-    category: text("优先级", "Priority"),
-    keywords: priority,
-    count: counts.priorities.get(priority) ?? 0,
-    selected: filters.priorities.includes(priority),
-    icon: <PriorityIcon priority={priority} />,
-    toggle: () => togglePriority(priority),
-  })), [counts, filters, language, text]);
+  const priorityOptions = useMemo<FilterOption[]>(
+    () =>
+      TASK_PRIORITIES.map((priority) => ({
+        id: `priority-${priority}`,
+        label: taskPriorityLabel(language, priority),
+        category: text("优先级", "Priority"),
+        keywords: priority,
+        count: counts.priorities.get(priority) ?? 0,
+        selected: filters.priorities.includes(priority),
+        icon: <PriorityIcon priority={priority} />,
+        toggle: () => togglePriority(priority),
+      })),
+    [counts, filters, language, text],
+  );
 
-  const labelOptions = useMemo<FilterOption[]>(() => labels.map((label) => ({
-    id: `label-${label}`,
-    label: labelDisplayName(label, language),
-    category: text("标签", "Label"),
-    count: counts.labels.get(label) ?? 0,
-    selected: filters.labels.includes(label),
-    icon: <LabelGlyph label={label} />,
-    toggle: () => toggleLabel(label),
-  })), [counts, filters, labels, language, text]);
+  const labelOptions = useMemo<FilterOption[]>(
+    () =>
+      labels.map((label) => ({
+        id: `label-${label}`,
+        label: labelDisplayName(label, language),
+        category: text("标签", "Label"),
+        count: counts.labels.get(label) ?? 0,
+        selected: filters.labels.includes(label),
+        icon: <LabelGlyph label={label} />,
+        toggle: () => toggleLabel(label),
+      })),
+    [counts, filters, labels, language, text],
+  );
 
   const optionsBySubmenu: Partial<Record<SubmenuName, FilterOption[]>> = {
     statuses: statusOptions,
@@ -260,8 +294,8 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
   });
   const quickOptions = normalizedRootQuery
     ? [...statusOptions, ...priorityOptions, ...labelOptions].filter((option) =>
-      `${option.label} ${option.keywords ?? ""}`.toLowerCase().includes(normalizedRootQuery),
-    )
+        `${option.label} ${option.keywords ?? ""}`.toLowerCase().includes(normalizedRootQuery),
+      )
     : [];
 
   useEffect(() => {
@@ -282,19 +316,19 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     if (!open || !triggerRef.current || !menuRef.current) return;
     const triggerRect = triggerRef.current.getBoundingClientRect();
     const menuRect = menuRef.current.getBoundingClientRect();
-    const left = Math.max(8, Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+    const left = Math.max(
+      8,
+      Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - 8),
+    );
     const below = triggerRect.bottom + 6;
-    const top = below + menuRect.height <= window.innerHeight - 8
-      ? below
-      : Math.max(8, triggerRect.top - menuRect.height - 6);
+    const top =
+      below + menuRect.height <= window.innerHeight - 8
+        ? below
+        : Math.max(8, triggerRect.top - menuRect.height - 6);
     const rightSpace = window.innerWidth - (left + menuRect.width);
     setPosition({ left, top, ready: true });
     setSubmenuSide(
-      rightSpace >= menuRect.width + 4
-        ? "right"
-        : left >= menuRect.width + 12
-          ? "left"
-          : "overlay",
+      rightSpace >= menuRect.width + 4 ? "right" : left >= menuRect.width + 12 ? "left" : "overlay",
     );
   }, [activeCount, open, normalizedRootQuery]);
 
@@ -304,17 +338,20 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
       return;
     }
     const rect = submenuRef.current.getBoundingClientRect();
-    const shift = rect.bottom > window.innerHeight - 8
-      ? window.innerHeight - 8 - rect.bottom
-      : rect.top < 8
-        ? 8 - rect.top
-        : 0;
+    const shift =
+      rect.bottom > window.innerHeight - 8
+        ? window.innerHeight - 8 - rect.bottom
+        : rect.top < 8
+          ? 8 - rect.top
+          : 0;
     setSubmenuShift(shift);
   }, [filters, submenu, submenuQuery]);
 
   useEffect(() => {
     if (!open) return;
-    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLInputElement>(".task-filter-search input")?.focus());
+    requestAnimationFrame(() =>
+      menuRef.current?.querySelector<HTMLInputElement>(".task-filter-search input")?.focus(),
+    );
 
     const stopOutside = listenForOutsidePointerDown([menuRef, triggerRef], closeMenu);
     const stopViewport = listenForMenuViewportChange(menuRef, closeMenu);
@@ -325,15 +362,20 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     };
   }, [open]);
 
-  useEffect(() => () => {
-    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    },
+    [],
+  );
 
   function focusSibling(button: HTMLButtonElement, direction: 1 | -1) {
     const level = button.dataset.filterLevel;
-    const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>(
-      `button[data-filter-level="${level}"]:not(:disabled)`,
-    ) ?? []);
+    const buttons = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        `button[data-filter-level="${level}"]:not(:disabled)`,
+      ) ?? [],
+    );
     const index = buttons.indexOf(button);
     buttons[(Math.max(0, index) + direction + buttons.length) % buttons.length]?.focus();
   }
@@ -345,7 +387,11 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
       if (submenu) {
         const owner = submenu;
         setSubmenu(null);
-        requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>(`[data-submenu-name="${owner}"]`)?.focus());
+        requestAnimationFrame(() =>
+          menuRef.current
+            ?.querySelector<HTMLButtonElement>(`[data-submenu-name="${owner}"]`)
+            ?.focus(),
+        );
       } else {
         closeMenu();
         triggerRef.current?.focus();
@@ -354,8 +400,11 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     }
 
     if (event.key === "Tab") {
-      const focusable = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)") ?? [])
-        .filter((element) => element.getClientRects().length > 0);
+      const focusable = Array.from(
+        menuRef.current?.querySelectorAll<HTMLElement>(
+          "input:not(:disabled), button:not(:disabled)",
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0);
       const index = focusable.indexOf(target);
       const direction = event.shiftKey ? -1 : 1;
       if (focusable.length) {
@@ -365,11 +414,16 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
       return;
     }
 
-    if (target instanceof HTMLInputElement && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (
+      target instanceof HTMLInputElement &&
+      (event.key === "ArrowDown" || event.key === "ArrowUp")
+    ) {
       const level = target.dataset.filterLevel;
-      const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>(
-        `button[data-filter-level="${level}"]:not(:disabled)`,
-      ) ?? []);
+      const buttons = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>(
+          `button[data-filter-level="${level}"]:not(:disabled)`,
+        ) ?? [],
+      );
       if (buttons.length) {
         event.preventDefault();
         (event.key === "ArrowDown" ? buttons[0] : buttons.at(-1))?.focus();
@@ -389,7 +443,11 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
       event.preventDefault();
       const owner = submenu;
       setSubmenu(null);
-      requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>(`[data-submenu-name="${owner}"]`)?.focus());
+      requestAnimationFrame(() =>
+        menuRef.current
+          ?.querySelector<HTMLButtonElement>(`[data-submenu-name="${owner}"]`)
+          ?.focus(),
+      );
     }
   }
 
@@ -411,7 +469,9 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
         <span className="task-filter-item-label">{option.label}</span>
         {level === "root" && <span className="task-filter-item-category">{option.category}</span>}
         <span className="task-filter-item-count">{option.count}</span>
-        <span className="task-filter-item-check">{option.selected && <LinearIcon name="check" />}</span>
+        <span className="task-filter-item-check">
+          {option.selected && <LinearIcon name="check" />}
+        </span>
       </button>
     );
   }
@@ -428,10 +488,15 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
               aria-checked={sort === option.value}
               className={`task-filter-item filter-value-item${sort === option.value ? " is-selected" : ""}`}
               data-filter-level="submenu"
-              onClick={() => { onSortChange(option.value); closeMenu(); }}
+              onClick={() => {
+                onSortChange(option.value);
+                closeMenu();
+              }}
             >
               <span className="task-filter-item-label">{option.label}</span>
-              <span className="task-filter-item-check">{sort === option.value && <LinearIcon name="check" />}</span>
+              <span className="task-filter-item-check">
+                {sort === option.value && <LinearIcon name="check" />}
+              </span>
             </button>
           ))}
         </div>
@@ -439,7 +504,9 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
     }
     const options = optionsBySubmenu[name] ?? [];
     const needle = submenuQuery.trim().toLowerCase();
-    const visible = options.filter((option) => `${option.label} ${option.keywords ?? ""}`.toLowerCase().includes(needle));
+    const visible = options.filter((option) =>
+      `${option.label} ${option.keywords ?? ""}`.toLowerCase().includes(needle),
+    );
     const matching = visible.filter((option) => option.count > 0 || option.selected);
     const unmatched = visible.filter((option) => option.count === 0 && !option.selected);
 
@@ -458,100 +525,124 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
           {matching.map((option) => renderOption(option, "submenu"))}
           {unmatched.length > 0 && (
             <>
-              <div className="task-filter-section-label">{text("当前视图中无匹配", "No matches in this view")}</div>
-              <div className="task-filter-unmatched">{unmatched.map((option) => renderOption(option, "submenu"))}</div>
+              <div className="task-filter-section-label">
+                {text("当前视图中无匹配", "No matches in this view")}
+              </div>
+              <div className="task-filter-unmatched">
+                {unmatched.map((option) => renderOption(option, "submenu"))}
+              </div>
             </>
           )}
-          {visible.length === 0 && <div className="task-filter-no-results">{text("没有匹配的筛选值", "No matching filter values")}</div>}
+          {visible.length === 0 && (
+            <div className="task-filter-no-results">
+              {text("没有匹配的筛选值", "No matching filter values")}
+            </div>
+          )}
         </div>
       </>
     );
   }
 
-  const menu = open ? createPortal(
-    <div
-      ref={menuRef}
-      className="task-filter-menu"
-      data-has-submenu={submenu ? "true" : undefined}
-      data-submenu-side={submenuSide}
-      style={{ left: position.left, top: position.top, visibility: position.ready ? "visible" : "hidden" }}
-      onKeyDown={handleMenuKeyDown}
-    >
-      <label className="task-filter-search root-filter-search">
-        <span className="sr-only">{text("添加筛选", "Add filter")}</span>
-        <input
-          data-filter-level="root"
-          value={rootQuery}
-          onChange={(event) => {
-            setRootQuery(event.target.value);
-            setSubmenu(null);
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="task-filter-menu"
+          data-has-submenu={submenu ? "true" : undefined}
+          data-submenu-side={submenuSide}
+          style={{
+            left: position.left,
+            top: position.top,
+            visibility: position.ready ? "visible" : "hidden",
           }}
-          placeholder={text("添加筛选…", "Add filter…")}
-        />
-        <kbd>F</kbd>
-      </label>
-
-      <div className="task-filter-root-list" role="menu">
-        {visibleCategories.map((category) => (
-          <div className="task-filter-anchor" key={category.id}>
-            <button
-              type="button"
-              role="menuitem"
-              aria-haspopup="menu"
-              aria-expanded={submenu === category.id}
-              className={`task-filter-item task-filter-category${submenu === category.id ? " is-open" : ""}${category.summary ? " is-active" : ""}`}
+          onKeyDown={handleMenuKeyDown}
+        >
+          <label className="task-filter-search root-filter-search">
+            <span className="sr-only">{text("添加筛选", "Add filter")}</span>
+            <input
               data-filter-level="root"
-              data-submenu-name={category.id}
-              onPointerEnter={() => scheduleSubmenu(category.id)}
-              onClick={() => submenu === category.id ? setSubmenu(null) : openSubmenu(category.id, true)}
-            >
-              <span className="task-filter-item-icon">{category.icon}</span>
-              <span className="task-filter-item-label">{category.label}</span>
-              {category.summary && <span className="task-filter-item-summary">{category.summary}</span>}
-              <span className="task-filter-chevron"><LinearIcon name="chevronRight" /></span>
-            </button>
+              value={rootQuery}
+              onChange={(event) => {
+                setRootQuery(event.target.value);
+                setSubmenu(null);
+              }}
+              placeholder={text("添加筛选…", "Add filter…")}
+            />
+            <kbd>F</kbd>
+          </label>
 
-            {submenu === category.id && (
-              <div
-                ref={submenuRef}
-                className="task-filter-submenu"
-                role="presentation"
-                style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
-              >
-                {renderValueSubmenu(category.id)}
+          <div className="task-filter-root-list" role="menu">
+            {visibleCategories.map((category) => (
+              <div className="task-filter-anchor" key={category.id}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={submenu === category.id}
+                  className={`task-filter-item task-filter-category${submenu === category.id ? " is-open" : ""}${category.summary ? " is-active" : ""}`}
+                  data-filter-level="root"
+                  data-submenu-name={category.id}
+                  onPointerEnter={() => scheduleSubmenu(category.id)}
+                  onClick={() =>
+                    submenu === category.id ? setSubmenu(null) : openSubmenu(category.id, true)
+                  }
+                >
+                  <span className="task-filter-item-icon">{category.icon}</span>
+                  <span className="task-filter-item-label">{category.label}</span>
+                  {category.summary && (
+                    <span className="task-filter-item-summary">{category.summary}</span>
+                  )}
+                  <span className="task-filter-chevron">
+                    <LinearIcon name="chevronRight" />
+                  </span>
+                </button>
+
+                {submenu === category.id && (
+                  <div
+                    ref={submenuRef}
+                    className="task-filter-submenu"
+                    role="presentation"
+                    style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
+                  >
+                    {renderValueSubmenu(category.id)}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {quickOptions.length > 0 && (
+              <>
+                {visibleCategories.length > 0 && (
+                  <div className="task-filter-section-label">{text("筛选值", "Filter values")}</div>
+                )}
+                {quickOptions.map((option) => renderOption(option, "root"))}
+              </>
+            )}
+
+            {visibleCategories.length === 0 && quickOptions.length === 0 && (
+              <div className="task-filter-no-results">
+                {text("没有匹配的筛选项", "No matching filters")}
               </div>
             )}
           </div>
-        ))}
 
-        {quickOptions.length > 0 && (
-          <>
-            {visibleCategories.length > 0 && <div className="task-filter-section-label">{text("筛选值", "Filter values")}</div>}
-            {quickOptions.map((option) => renderOption(option, "root"))}
-          </>
-        )}
-
-        {visibleCategories.length === 0 && quickOptions.length === 0 && (
-          <div className="task-filter-no-results">{text("没有匹配的筛选项", "No matching filters")}</div>
-        )}
-      </div>
-
-      {activeCount > 0 && (
-        <div className="task-filter-footer">
-          <button
-            type="button"
-            className="task-filter-clear-all"
-            data-filter-level="root"
-            onClick={() => onChange(EMPTY_TASK_FILTERS)}
-          >
-            {text("清除所有筛选", "Clear all filters")}
-            <span>{activeCount}</span>
-          </button>
-        </div>
-      )}
-    </div>,
-    document.body,
-  ) : null;
+          {activeCount > 0 && (
+            <div className="task-filter-footer">
+              <button
+                type="button"
+                className="task-filter-clear-all"
+                data-filter-level="root"
+                onClick={() => onChange(EMPTY_TASK_FILTERS)}
+              >
+                {text("清除所有筛选", "Clear all filters")}
+                <span>{activeCount}</span>
+              </button>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )
+    : null;
 
   return (
     <>
@@ -559,15 +650,19 @@ export function TaskFilterMenu({ tasks, search, labels, filters, onChange, sort,
         ref={triggerRef}
         type="button"
         className={`task-filter-trigger${activeCount ? " is-active" : ""}${open ? " is-open" : ""}`}
-        aria-label={activeCount
-          ? text(`筛选议题，已启用 ${activeCount} 个条件`, `Filter issues, ${activeCount} active`)
-          : text("筛选议题", "Filter issues")}
+        aria-label={
+          activeCount
+            ? text(`筛选议题，已启用 ${activeCount} 个条件`, `Filter issues, ${activeCount} active`)
+            : text("筛选议题", "Filter issues")
+        }
         aria-haspopup="menu"
         aria-expanded={open}
-        title={activeCount
-          ? text(`已启用 ${activeCount} 个筛选条件 (F)`, `${activeCount} active filters (F)`)
-          : text("筛选议题 (F)", "Filter issues (F)")}
-        onClick={() => open ? closeMenu() : openMenu()}
+        title={
+          activeCount
+            ? text(`已启用 ${activeCount} 个筛选条件 (F)`, `${activeCount} active filters (F)`)
+            : text("筛选议题 (F)", "Filter issues (F)")
+        }
+        onClick={() => (open ? closeMenu() : openMenu())}
       >
         <BroadcastIcon name="filter" className="filter-icon" />
         {activeCount > 0 && <span className="task-filter-active-dot" aria-hidden="true" />}

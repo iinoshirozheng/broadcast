@@ -1,15 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -72,10 +64,12 @@ function sqliteString(value) {
 }
 
 function projectRowsWithLabels(tables) {
-  const labelsByProject = new Map(tables.projects.map((project) => [
-    project.id,
-    project.labels == null ? [...DEFAULT_LABEL_NAMES] : JSON.parse(project.labels),
-  ]));
+  const labelsByProject = new Map(
+    tables.projects.map((project) => [
+      project.id,
+      project.labels == null ? [...DEFAULT_LABEL_NAMES] : JSON.parse(project.labels),
+    ]),
+  );
   for (const task of tables.tasks) {
     const labels = labelsByProject.get(task.project_id);
     for (const label of JSON.parse(task.labels)) {
@@ -118,22 +112,23 @@ function buildProjectCounts(tables) {
   }
   for (const comment of tables.comments) {
     const projectId = taskProjects.get(comment.task_id);
-    if (!projectId) throw new Error(`Comment '${comment.id}' references unknown task '${comment.task_id}'`);
+    if (!projectId)
+      throw new Error(`Comment '${comment.id}' references unknown task '${comment.task_id}'`);
     counts[projectId].comments += 1;
   }
   for (const attachment of tables.attachments) {
     const projectId = taskProjects.get(attachment.task_id);
     if (!projectId) {
-      throw new Error(`Attachment '${attachment.id}' references unknown task '${attachment.task_id}'`);
+      throw new Error(
+        `Attachment '${attachment.id}' references unknown task '${attachment.task_id}'`,
+      );
     }
     counts[projectId].attachments += 1;
   }
   for (const relation of tables.task_relations) {
     const projectId = taskProjects.get(relation.source_task_id);
     if (!projectId) {
-      throw new Error(
-        `Task relation references unknown source task '${relation.source_task_id}'`,
-      );
+      throw new Error(`Task relation references unknown source task '${relation.source_task_id}'`);
     }
     counts[projectId].task_relations += 1;
   }
@@ -144,13 +139,13 @@ function buildProjectCounts(tables) {
 
 function assertSafeAttachmentId(id) {
   if (
-    typeof id !== "string"
-    || id.length === 0
-    || id === "."
-    || id === ".."
-    || id.includes("/")
-    || id.includes("\\")
-    || id.includes("\0")
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id === "." ||
+    id === ".." ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\0")
   ) {
     throw new Error(`Attachment id '${id}' is not safe to migrate`);
   }
@@ -213,10 +208,7 @@ async function readSnapshot(databasePath) {
 
     snapshot = new DatabaseSync(snapshotPath, { readOnly: true });
     const integrity = snapshot.prepare("PRAGMA integrity_check").all();
-    if (
-      integrity.length !== 1
-      || String(Object.values(integrity[0])[0]).toLowerCase() !== "ok"
-    ) {
+    if (integrity.length !== 1 || String(Object.values(integrity[0])[0]).toLowerCase() !== "ok") {
       throw new Error("SQLite snapshot failed PRAGMA integrity_check");
     }
     const foreignKeyViolations = snapshot.prepare("PRAGMA foreign_key_check").all();
@@ -242,19 +234,17 @@ async function readSnapshot(databasePath) {
 }
 
 function fillMissingAttachmentKinds(tables) {
-  const taskDescriptions = new Map(
-    tables.tasks.map((task) => [task.id, task.description]),
-  );
-  const commentBodies = new Map(
-    tables.comments.map((comment) => [comment.id, comment.body]),
-  );
+  const taskDescriptions = new Map(tables.tasks.map((task) => [task.id, task.description]));
+  const commentBodies = new Map(tables.comments.map((comment) => [comment.id, comment.body]));
   tables.attachments = tables.attachments.map((attachment) => {
     if (attachment.kind != null) return attachment;
-    const body = attachment.comment_id == null
-      ? taskDescriptions.get(attachment.task_id)
-      : commentBodies.get(attachment.comment_id);
-    const inline = attachment.content_type.toLowerCase().startsWith("image/")
-      && body.includes(`api/attachments/${attachment.id}/content`);
+    const body =
+      attachment.comment_id == null
+        ? taskDescriptions.get(attachment.task_id)
+        : commentBodies.get(attachment.comment_id);
+    const inline =
+      attachment.content_type.toLowerCase().startsWith("image/") &&
+      body.includes(`api/attachments/${attachment.id}/content`);
     return { ...attachment, kind: inline ? "inline" : "attachment" };
   });
 }
@@ -300,15 +290,13 @@ function validateBundle(bundle) {
     bundle.attachments.map((attachment) => [attachment.id, attachment]),
   );
   if (
-    attachmentRows.size !== bundle.tables.attachments.length
-    || attachmentPayloads.size !== bundle.attachments.length
-    || attachmentRows.size !== attachmentPayloads.size
+    attachmentRows.size !== bundle.tables.attachments.length ||
+    attachmentPayloads.size !== bundle.attachments.length ||
+    attachmentRows.size !== attachmentPayloads.size
   ) {
     throw new Error("Cloud migration attachment metadata and payload counts do not match");
   }
-  const taskProjects = new Map(
-    bundle.tables.tasks.map((task) => [task.id, task.project_id]),
-  );
+  const taskProjects = new Map(bundle.tables.tasks.map((task) => [task.id, task.project_id]));
   for (const row of attachmentRows.values()) {
     const attachment = attachmentPayloads.get(row.id);
     if (!attachment) {
@@ -327,27 +315,22 @@ function validateBundle(bundle) {
     }
     const projectId = taskProjects.get(row.task_id);
     if (attachment.projectId !== projectId) {
-      throw new Error(
-        `Attachment '${attachment.id}' project does not match its task project`,
-      );
+      throw new Error(`Attachment '${attachment.id}' project does not match its task project`);
     }
     if (attachment.objectKey !== attachmentObjectKey(attachment.id)) {
       throw new Error(`Attachment '${attachment.id}' object key must match its id`);
     }
     if (
-      typeof attachment.objectKey !== "string"
-      || path.posix.isAbsolute(attachment.objectKey)
-      || attachment.objectKey.split("/").includes("..")
+      typeof attachment.objectKey !== "string" ||
+      path.posix.isAbsolute(attachment.objectKey) ||
+      attachment.objectKey.split("/").includes("..")
     ) {
       throw new Error(`Attachment '${attachment.id}' has an unsafe object key`);
     }
   }
 }
 
-export async function createCloudMigrationBundle({
-  databasePath,
-  attachmentsDirectory,
-}) {
+export async function createCloudMigrationBundle({ databasePath, attachmentsDirectory }) {
   const tables = await readSnapshot(databasePath);
   fillMissingAttachmentKinds(tables);
   tables.projects = projectRowsWithLabels(tables).map((project) => ({
@@ -371,27 +354,76 @@ export async function createCloudMigrationBundle({
 
 const CLOUD_COLUMNS = {
   projects: [
-    "id", "name", "workspace_path", "labels", "next_task_number", "created_at", "updated_at",
+    "id",
+    "name",
+    "workspace_path",
+    "labels",
+    "next_task_number",
+    "created_at",
+    "updated_at",
   ],
   project_readmes: ["project_id", "content", "version", "created_at", "updated_at"],
   tasks: [
-    "id", "identifier", "project_id", "title", "description", "status", "priority", "labels",
-    "sort_order", "thread_id", "thread_codex_project_id", "thread_codex_project_kind",
-    "thread_codex_host_id", "thread_workspace_path", "creator_type", "creator_id", "creator_name",
-    "creator_avatar_url", "assignee_type", "assignee_id", "assignee_name",
-    "assignee_avatar_url", "development_context_type", "development_branch",
-    "due_date", "recurrence_interval", "recurrence_unit", "archived_at", "version",
-    "created_at", "updated_at",
+    "id",
+    "identifier",
+    "project_id",
+    "title",
+    "description",
+    "status",
+    "priority",
+    "labels",
+    "sort_order",
+    "thread_id",
+    "thread_codex_project_id",
+    "thread_codex_project_kind",
+    "thread_codex_host_id",
+    "thread_workspace_path",
+    "creator_type",
+    "creator_id",
+    "creator_name",
+    "creator_avatar_url",
+    "assignee_type",
+    "assignee_id",
+    "assignee_name",
+    "assignee_avatar_url",
+    "development_context_type",
+    "development_branch",
+    "due_date",
+    "recurrence_interval",
+    "recurrence_unit",
+    "archived_at",
+    "version",
+    "created_at",
+    "updated_at",
   ],
   comments: [
-    "id", "task_id", "body", "thread_id", "thread_codex_project_id",
-    "thread_codex_project_kind", "thread_codex_host_id", "thread_workspace_path",
-    "author_type", "author_id", "author_name",
-    "author_avatar_url", "version", "created_at", "updated_at", "change_revision",
+    "id",
+    "task_id",
+    "body",
+    "thread_id",
+    "thread_codex_project_id",
+    "thread_codex_project_kind",
+    "thread_codex_host_id",
+    "thread_workspace_path",
+    "author_type",
+    "author_id",
+    "author_name",
+    "author_avatar_url",
+    "version",
+    "created_at",
+    "updated_at",
+    "change_revision",
   ],
   task_relations: ["relation_type", "source_task_id", "target_task_id", "created_at"],
   attachments: [
-    "id", "task_id", "comment_id", "kind", "filename", "content_type", "size", "created_at",
+    "id",
+    "task_id",
+    "comment_id",
+    "kind",
+    "filename",
+    "content_type",
+    "size",
+    "created_at",
     "change_revision",
   ],
 };
@@ -400,11 +432,7 @@ function cloudTaskRow(task) {
   const isWorktree = task.worktree_branch != null;
   return {
     ...task,
-    development_context_type: isWorktree
-      ? "worktree"
-      : task.git_branch != null
-        ? "branch"
-        : null,
+    development_context_type: isWorktree ? "worktree" : task.git_branch != null ? "branch" : null,
     development_branch: isWorktree ? task.worktree_branch : task.git_branch,
   };
 }
@@ -425,12 +453,14 @@ function insertTableSql(table) {
 export function createCloudD1ImportPlan(tables) {
   return TABLE_ORDER.map((table) => {
     const columns = CLOUD_COLUMNS[table];
-    const values = cloudRows(table, tables).map((row) => (
-      Object.fromEntries(columns.map((column) => [
-        column,
-        column === "change_revision" ? row[column] ?? 0 : row[column] ?? null,
-      ]))
-    ));
+    const values = cloudRows(table, tables).map((row) =>
+      Object.fromEntries(
+        columns.map((column) => [
+          column,
+          column === "change_revision" ? (row[column] ?? 0) : (row[column] ?? null),
+        ]),
+      ),
+    );
     return { table, sql: insertTableSql(table), json: JSON.stringify(values) };
   });
 }
@@ -449,7 +479,11 @@ export function createCloudD1ImportSql(tables) {
       for (const row of values) {
         statements.push(inlineD1InsertStatement(table, [{ ...row, content: "" }]));
         const characters = Array.from(row.content);
-        for (let offset = 0; offset < characters.length; offset += PROJECT_README_D1_CHUNK_CHARACTERS) {
+        for (
+          let offset = 0;
+          offset < characters.length;
+          offset += PROJECT_README_D1_CHUNK_CHARACTERS
+        ) {
           const content = characters
             .slice(offset, offset + PROJECT_README_D1_CHUNK_CHARACTERS)
             .join("");
@@ -457,7 +491,9 @@ export function createCloudD1ImportSql(tables) {
             SET "content" = "content" || json_extract(${sqliteString(JSON.stringify(content))}, '$')
             WHERE "project_id" = ${sqliteString(row.project_id)};`;
           if (Buffer.byteLength(statement, "utf8") >= WRANGLER_D1_STATEMENT_MAX_BYTES) {
-            throw new Error(`D1 import project Readme chunk '${row.project_id}' exceeds 90,000 bytes`);
+            throw new Error(
+              `D1 import project Readme chunk '${row.project_id}' exceeds 90,000 bytes`,
+            );
           }
           statements.push(statement);
         }
@@ -479,22 +515,16 @@ export function createCloudD1ImportSql(tables) {
       }
       if (chunk.length === 0) {
         const identity = row.id ?? row.project_id ?? "unknown";
-        throw new Error(
-          `D1 import single row '${table}:${identity}' exceeds 90,000 bytes`,
-        );
+        throw new Error(`D1 import single row '${table}:${identity}' exceeds 90,000 bytes`);
       }
       statements.push(inlineD1InsertStatement(table, chunk));
       chunk = [row];
       if (
-        Buffer.byteLength(
-          inlineD1InsertStatement(table, chunk),
-          "utf8",
-        ) >= WRANGLER_D1_STATEMENT_MAX_BYTES
+        Buffer.byteLength(inlineD1InsertStatement(table, chunk), "utf8") >=
+        WRANGLER_D1_STATEMENT_MAX_BYTES
       ) {
         const identity = row.id ?? row.project_id ?? "unknown";
-        throw new Error(
-          `D1 import single row '${table}:${identity}' exceeds 90,000 bytes`,
-        );
+        throw new Error(`D1 import single row '${table}:${identity}' exceeds 90,000 bytes`);
       }
     }
     statements.push(inlineD1InsertStatement(table, chunk));
@@ -522,13 +552,14 @@ export const CLOUD_PROJECT_READMES_SQL = `
 `;
 
 function assertProjectReadmesMatch(expected, actual) {
-  const normalize = (rows) => rows.map((row) => ({
-    project_id: row.project_id,
-    content: row.content,
-    version: Number(row.version),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  }));
+  const normalize = (rows) =>
+    rows.map((row) => ({
+      project_id: row.project_id,
+      content: row.content,
+      version: Number(row.version),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
   if (JSON.stringify(normalize(actual)) !== JSON.stringify(normalize(expected))) {
     throw new Error("Cloud project Readme content mismatch");
   }
@@ -550,27 +581,33 @@ export function createCloudBindingMigrationAdapters({ d1, r2 }) {
             continue;
           }
           for (const readme of readmes) {
-            statements.push(d1.prepare(`
+            statements.push(
+              d1
+                .prepare(`
               INSERT INTO project_readmes
                 (project_id, content, version, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?)
-            `).bind(
-              readme.project_id,
-              readme.content,
-              readme.version,
-              readme.created_at,
-              readme.updated_at,
-            ));
+            `)
+                .bind(
+                  readme.project_id,
+                  readme.content,
+                  readme.version,
+                  readme.created_at,
+                  readme.updated_at,
+                ),
+            );
           }
         }
         await d1.batch(statements);
       },
       async countByProject() {
         const result = await d1.prepare(CLOUD_PROJECT_COUNTS_SQL).all();
-        return Object.fromEntries(result.results.map((row) => [
-          row.project_id,
-          Object.fromEntries(TABLE_ORDER.map((table) => [table, Number(row[table])])),
-        ]));
+        return Object.fromEntries(
+          result.results.map((row) => [
+            row.project_id,
+            Object.fromEntries(TABLE_ORDER.map((table) => [table, Number(row[table])])),
+          ]),
+        );
       },
       async listProjectReadmes() {
         const result = await d1.prepare(CLOUD_PROJECT_READMES_SQL).all();
@@ -619,11 +656,10 @@ export async function importCloudMigrationBundle(bundle, { d1, r2 }) {
   const existingCounts = await d1.countByProject();
   const existingProjects = Object.keys(existingCounts);
   const localCounts = existingCounts.local;
-  const hasOnlyGlobalBaseline = existingProjects.length === 1
-    && existingProjects[0] === "local"
-    && TABLE_ORDER.every((table) => (
-      Number(localCounts?.[table]) === (table === "projects" ? 1 : 0)
-    ));
+  const hasOnlyGlobalBaseline =
+    existingProjects.length === 1 &&
+    existingProjects[0] === "local" &&
+    TABLE_ORDER.every((table) => Number(localCounts?.[table]) === (table === "projects" ? 1 : 0));
   if (existingProjects.length > 0 && !hasOnlyGlobalBaseline) {
     throw new Error("Cloud migration target D1 is not empty");
   }
@@ -765,10 +801,7 @@ export async function readCloudMigrationBundle(inputDirectory) {
   for (const table of TABLE_ORDER) {
     const entry = manifest.tables?.[table];
     if (!entry?.file) throw new Error(`Cloud migration manifest is missing table '${table}'`);
-    const rows = await readJsonFile(
-      bundleFile(inputDirectory, entry.file),
-      `table '${table}'`,
-    );
+    const rows = await readJsonFile(bundleFile(inputDirectory, entry.file), `table '${table}'`);
     if (!Array.isArray(rows) || rows.length !== entry.rows) {
       throw new Error(`Cloud migration row count mismatch for table '${table}'`);
     }
@@ -823,19 +856,14 @@ async function loadAdapterModule(modulePath, context) {
   const loaded = await import(pathToFileURL(path.resolve(modulePath)).href);
   const factory = loaded.createCloudMigrationAdapters ?? loaded.default;
   if (typeof factory !== "function") {
-    throw new Error(
-      "Adapter module must export createCloudMigrationAdapters or a default factory",
-    );
+    throw new Error("Adapter module must export createCloudMigrationAdapters or a default factory");
   }
   return factory(context);
 }
 
 export async function runCli(
   argv,
-  {
-    stdout = process.stdout,
-    loadAdapters = loadAdapterModule,
-  } = {},
+  { stdout = process.stdout, loadAdapters = loadAdapterModule } = {},
 ) {
   const [command, ...args] = argv;
   if (!command || command === "--help" || command === "help") {
@@ -844,11 +872,11 @@ export async function runCli(
   }
 
   if (command === "export") {
-    const options = parseOptions(
-      args,
-      new Set(["database", "attachments", "output"]),
-      ["database", "attachments", "output"],
-    );
+    const options = parseOptions(args, new Set(["database", "attachments", "output"]), [
+      "database",
+      "attachments",
+      "output",
+    ]);
     const bundle = await createCloudMigrationBundle({
       databasePath: options.database,
       attachmentsDirectory: options.attachments,
@@ -861,11 +889,7 @@ export async function runCli(
   if (command !== "import" && command !== "verify") {
     throw new Error(`Unknown command '${command}'`);
   }
-  const options = parseOptions(
-    args,
-    new Set(["bundle", "adapter"]),
-    ["bundle", "adapter"],
-  );
+  const options = parseOptions(args, new Set(["bundle", "adapter"]), ["bundle", "adapter"]);
   const bundle = await readCloudMigrationBundle(options.bundle);
   const adapters = await loadAdapters(options.adapter, { bundle, command });
   if (!adapters?.d1 || !adapters?.r2) {
@@ -878,9 +902,10 @@ export async function runCli(
     throw new Error("Import adapter must provide r2.delete for failed-migration cleanup");
   }
   try {
-    const result = command === "import"
-      ? await importCloudMigrationBundle(bundle, adapters)
-      : await verifyCloudMigrationBundle(bundle, adapters);
+    const result =
+      command === "import"
+        ? await importCloudMigrationBundle(bundle, adapters)
+        : await verifyCloudMigrationBundle(bundle, adapters);
     stdout.write(`${JSON.stringify(result)}\n`);
   } finally {
     await adapters.cleanup?.();

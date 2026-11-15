@@ -56,7 +56,9 @@ export function TaskPropertyPicker<Value extends string>({
   const portalTarget = triggerRef.current?.closest("dialog, [role='dialog']") ?? document.body;
 
   function optionElements(): HTMLButtonElement[] {
-    return Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='option']") ?? []);
+    return Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='option']") ?? [],
+    );
   }
 
   function selectOption(option: TaskPropertyOption<Value>) {
@@ -107,16 +109,23 @@ export function TaskPropertyPicker<Value extends string>({
     const menuRect = menu.getBoundingClientRect();
     const gap = 4;
     const edge = 8;
-    const openAbove = triggerRect.bottom + gap + menuRect.height > window.innerHeight - edge
-      && triggerRect.top - gap - menuRect.height >= edge;
-    const left = Math.max(edge, Math.min(triggerRect.left, window.innerWidth - menuRect.width - edge));
+    const openAbove =
+      triggerRect.bottom + gap + menuRect.height > window.innerHeight - edge &&
+      triggerRect.top - gap - menuRect.height >= edge;
+    const left = Math.max(
+      edge,
+      Math.min(triggerRect.left, window.innerWidth - menuRect.width - edge),
+    );
     const top = openAbove ? triggerRect.top - menuRect.height - gap : triggerRect.bottom + gap;
     setPosition({ left, top: Math.max(edge, top) });
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const nextIndex = Math.max(0, options.findIndex((option) => option.value === value));
+    const nextIndex = Math.max(
+      0,
+      options.findIndex((option) => option.value === value),
+    );
     setFocusedIndex(nextIndex);
     requestAnimationFrame(() => optionElements()[nextIndex]?.focus({ preventScroll: true }));
   }, [open]);
@@ -153,42 +162,50 @@ export function TaskPropertyPicker<Value extends string>({
     };
   }, [onOpenChange, open]);
 
-  const menu = open ? createPortal(
-    <div
-      ref={menuRef}
-      className={`composer-popover task-property-popover${popoverClassName ? ` ${popoverClassName}` : ""}`}
-      role="listbox"
-      aria-label={ariaLabel}
-      style={{ position: "fixed", left: position.left, top: position.top }}
-      onKeyDown={handleMenuKeyDown}
-      onBlur={closeFromFocusLeave}
-    >
-      <div className="task-property-options">
-        {options.map((option, index) => (
-          <button
-            type="button"
-            role="option"
-            aria-selected={option.value === value}
-            tabIndex={index === focusedIndex ? 0 : -1}
-            className={`task-property-option${option.className ? ` ${option.className}` : ""}`}
-            key={option.value}
-            onClick={() => selectOption(option)}
-            onFocus={() => setFocusedIndex(index)}
-          >
-            <span className="task-property-option-icon">{option.icon}</span>
-            <span className="task-property-option-label">{option.label}</span>
-            {option.value === value && (
-              <span className="task-property-option-check"><LinearIcon name="check" /></span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>,
-    portalTarget,
-  ) : null;
+  const menu = open
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className={`composer-popover task-property-popover${popoverClassName ? ` ${popoverClassName}` : ""}`}
+          role="listbox"
+          aria-label={ariaLabel}
+          style={{ position: "fixed", left: position.left, top: position.top }}
+          onKeyDown={handleMenuKeyDown}
+          onBlur={closeFromFocusLeave}
+        >
+          <div className="task-property-options">
+            {options.map((option, index) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                tabIndex={index === focusedIndex ? 0 : -1}
+                className={`task-property-option${option.className ? ` ${option.className}` : ""}`}
+                key={option.value}
+                onClick={() => selectOption(option)}
+                onFocus={() => setFocusedIndex(index)}
+              >
+                <span className="task-property-option-icon">{option.icon}</span>
+                <span className="task-property-option-label">{option.label}</span>
+                {option.value === value && (
+                  <span className="task-property-option-check">
+                    <LinearIcon name="check" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>,
+        portalTarget,
+      )
+    : null;
 
   return (
-    <div ref={rootRef} className={`task-property-picker${className ? ` ${className}` : ""}`} onBlur={closeFromFocusLeave}>
+    <div
+      ref={rootRef}
+      className={`task-property-picker${className ? ` ${className}` : ""}`}
+      onBlur={closeFromFocusLeave}
+    >
       <button
         ref={triggerRef}
         type="button"

@@ -212,7 +212,9 @@ export interface ComposerUnsupportedReferenceNode {
 
 export interface ComposerPersistedDocument {
   version: 1;
-  nodes: Array<ComposerTextNode | ComposerPersistedReferenceNode | ComposerUnsupportedReferenceNode>;
+  nodes: Array<
+    ComposerTextNode | ComposerPersistedReferenceNode | ComposerUnsupportedReferenceNode
+  >;
 }
 
 export interface ComposerDocument {
@@ -246,10 +248,7 @@ export type ComposerRebindResponse = {
   bindings: ComposerRebindBinding[];
   sources: ComposerSourceState[];
   diagnostics: unknown[];
-} & (
-  | { ready: true; document: ComposerDocument }
-  | { ready: false; document?: never }
-);
+} & ({ ready: true; document: ComposerDocument } | { ready: false; document?: never });
 
 export interface ComposerTurnInput {
   contractVersion: typeof COMPOSER_CONTRACT_VERSION;
@@ -416,11 +415,12 @@ interface TaskConversationRefBase {
   updatedAt: string;
 }
 
-export type TaskConversationRef = TaskConversationRefBase & (
-  | (CodexThreadBinding & { legacyLocal?: false; agentSession?: undefined })
-  | { threadId: string; legacyLocal: true; agentSession?: undefined }
-  | { agentSession: AgentSession }
-);
+export type TaskConversationRef = TaskConversationRefBase &
+  (
+    | (CodexThreadBinding & { legacyLocal?: false; agentSession?: undefined })
+    | { threadId: string; legacyLocal: true; agentSession?: undefined }
+    | { agentSession: AgentSession }
+  );
 
 export interface Task {
   id: string;

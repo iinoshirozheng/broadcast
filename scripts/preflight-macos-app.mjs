@@ -2,14 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  lstat,
-  mkdtemp,
-  readFile,
-  readdir,
-  readlink,
-  rm,
-} from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, readlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,10 +12,9 @@ import { verifyUpdaterSignature } from "./verify-updater-signature.mjs";
 const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!appPath) throw new Error("Usage: preflight-macos-app.mjs <App.app>");
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const releasePolicy = JSON.parse(await readFile(
-  path.join(projectRoot, "apps", "desktop", "release.json"),
-  "utf8",
-));
+const releasePolicy = JSON.parse(
+  await readFile(path.join(projectRoot, "apps", "desktop", "release.json"), "utf8"),
+);
 const entitlementsPath = path.join(projectRoot, "apps", "desktop", "Entitlements.plist");
 
 function run(command, args, options = {}) {
@@ -72,7 +64,7 @@ async function manifest(root, relative = "") {
     const details = await lstat(childPath);
     if (details.isDirectory()) {
       entries.push({ path: childRelative, type: "directory", mode: details.mode & 0o777 });
-      entries.push(...await manifest(root, childRelative));
+      entries.push(...(await manifest(root, childRelative)));
     } else if (details.isSymbolicLink()) {
       entries.push({ path: childRelative, type: "symlink", target: await readlink(childPath) });
     } else if (details.isFile()) {
@@ -81,7 +73,9 @@ async function manifest(root, relative = "") {
         type: "file",
         mode: details.mode & 0o777,
         size: details.size,
-        sha256: createHash("sha256").update(await readFile(childPath)).digest("hex"),
+        sha256: createHash("sha256")
+          .update(await readFile(childPath))
+          .digest("hex"),
       });
     }
   }
@@ -93,9 +87,12 @@ const launcherPath = path.join(appPath, "Contents", "MacOS", "broadcast-launcher
 for (const targetPath of [launcherPath, appPath]) {
   run("/usr/bin/codesign", [
     "--force",
-    "--options", "runtime",
-    "--entitlements", entitlementsPath,
-    "--sign", "-",
+    "--options",
+    "runtime",
+    "--entitlements",
+    entitlementsPath,
+    "--sign",
+    "-",
     targetPath,
   ]);
 }
@@ -111,10 +108,22 @@ try {
   });
   const keyPath = path.join(temporaryRoot, "updater.key");
   run(path.join(projectRoot, "node_modules", ".bin", "tauri"), [
-    "signer", "generate", "--ci", "--password", "", "--write-keys", keyPath,
+    "signer",
+    "generate",
+    "--ci",
+    "--password",
+    "",
+    "--write-keys",
+    keyPath,
   ]);
   run(path.join(projectRoot, "node_modules", ".bin", "tauri"), [
-    "signer", "sign", "--private-key-path", keyPath, "--password", "", archivePath,
+    "signer",
+    "sign",
+    "--private-key-path",
+    keyPath,
+    "--password",
+    "",
+    archivePath,
   ]);
   await verifyUpdaterSignature({
     publicKey: await readFile(`${keyPath}.pub`, "utf8"),
@@ -133,19 +142,13 @@ try {
   const dmgSource = path.join(temporaryRoot, "dmg-source");
   run("/bin/mkdir", ["-p", dmgSource]);
   run("/usr/bin/ditto", [appPath, path.join(dmgSource, path.basename(appPath))]);
-  run("/usr/bin/hdiutil", [
-    "create", "-quiet", "-fs", "HFS+", "-srcfolder", dmgSource, dmgPath,
-  ]);
+  run("/usr/bin/hdiutil", ["create", "-quiet", "-fs", "HFS+", "-srcfolder", dmgSource, dmgPath]);
   run("/usr/bin/hdiutil", ["verify", dmgPath]);
   const attach = run("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", "-plist", dmgPath]);
-  const attachJson = JSON.parse(run(
-    "/usr/bin/plutil",
-    ["-convert", "json", "-o", "-", "-"],
-    { input: attach.stdout },
-  ).stdout);
-  mountedDmg = attachJson["system-entities"]
-    .map((entry) => entry["mount-point"])
-    .find(Boolean);
+  const attachJson = JSON.parse(
+    run("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], { input: attach.stdout }).stdout,
+  );
+  mountedDmg = attachJson["system-entities"].map((entry) => entry["mount-point"]).find(Boolean);
   if (!mountedDmg) throw new Error("Preflight DMG did not expose a mount point");
   const dmgApp = path.join(mountedDmg, path.basename(appPath));
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", dmgApp]);

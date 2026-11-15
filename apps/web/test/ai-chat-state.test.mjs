@@ -59,13 +59,16 @@ test("PATCH results can update only the snapshot for the thread that started the
   const current = { thread: threadB, events: [], runs: [] };
 
   assert.equal(patchAiChatSnapshot(current, "thread-a", threadA), current);
-  assert.deepEqual(patchAiChatSnapshot(current, "thread-b", {
-    ...threadB,
-    title: "B updated",
-  }), {
-    ...current,
-    thread: { ...threadB, title: "B updated" },
-  });
+  assert.deepEqual(
+    patchAiChatSnapshot(current, "thread-b", {
+      ...threadB,
+      title: "B updated",
+    }),
+    {
+      ...current,
+      thread: { ...threadB, title: "B updated" },
+    },
+  );
 });
 
 test("model and effort selections are restricted to the real catalog", () => {
@@ -85,13 +88,19 @@ test("model and effort selections are restricted to the real catalog", () => {
 });
 
 test("skill composer fragments keep opaque markers aligned with selected real ids", () => {
-  assert.deepEqual(parseAiChatComposerFragment(JSON.stringify({
-    message: `请用 ${AI_CHAT_SKILL_MARKER} 检查`,
-    skillIds: ["cloudflare"],
-  }), ["cloudflare"]), {
-    message: `请用 ${AI_CHAT_SKILL_MARKER} 检查`,
-    skillIds: ["cloudflare"],
-  });
+  assert.deepEqual(
+    parseAiChatComposerFragment(
+      JSON.stringify({
+        message: `请用 ${AI_CHAT_SKILL_MARKER} 检查`,
+        skillIds: ["cloudflare"],
+      }),
+      ["cloudflare"],
+    ),
+    {
+      message: `请用 ${AI_CHAT_SKILL_MARKER} 检查`,
+      skillIds: ["cloudflare"],
+    },
+  );
 });
 
 test("turn input cannot contain cwd, hidden context, model overrides or arbitrary args", () => {
@@ -151,46 +160,64 @@ test("visible activity keeps only the latest lifecycle item without merging mess
     { id: "8", type: "user_message", role: "user", content: "第一条", data: { itemId: "user-1" } },
     { id: "9", type: "user_message", role: "user", content: "第二条", data: { itemId: "user-1" } },
     { id: "10", type: "reasoning", role: "activity", content: "private chain of thought" },
-    { id: "11", type: "raw_jsonl", role: "activity", content: "{\"secret\":true}" },
+    { id: "11", type: "raw_jsonl", role: "activity", content: '{"secret":true}' },
   ]);
-  assert.deepEqual(events.map((event) => event.id), ["1", "2", "5", "6", "7", "8", "9"]);
+  assert.deepEqual(
+    events.map((event) => event.id),
+    ["1", "2", "5", "6", "7", "8", "9"],
+  );
 });
 
 test("activity status treats started, running and in_progress as active and failures as failed", () => {
-  assert.equal(aiChatEventStatus({
-    id: "1",
-    type: "command_execution",
-    role: "activity",
-    content: "",
-    data: { status: "started" },
-  }), "running");
-  assert.equal(aiChatEventStatus({
-    id: "2",
-    type: "todo_list",
-    role: "activity",
-    content: "",
-    data: { status: "in_progress" },
-  }), "running");
-  assert.equal(aiChatEventStatus({
-    id: "3",
-    type: "turn.failed",
-    role: "error",
-    content: "failed",
-  }), "failed");
-  assert.equal(aiChatEventStatus({
-    id: "4",
-    type: "file_change",
-    role: "activity",
-    content: "",
-    data: { status: "completed" },
-  }), "completed");
-  assert.equal(aiChatEventStatus({
-    id: "5",
-    type: "error",
-    role: "activity",
-    content: "Skill descriptions were shortened",
-    data: { status: "warning" },
-  }), "completed");
+  assert.equal(
+    aiChatEventStatus({
+      id: "1",
+      type: "command_execution",
+      role: "activity",
+      content: "",
+      data: { status: "started" },
+    }),
+    "running",
+  );
+  assert.equal(
+    aiChatEventStatus({
+      id: "2",
+      type: "todo_list",
+      role: "activity",
+      content: "",
+      data: { status: "in_progress" },
+    }),
+    "running",
+  );
+  assert.equal(
+    aiChatEventStatus({
+      id: "3",
+      type: "turn.failed",
+      role: "error",
+      content: "failed",
+    }),
+    "failed",
+  );
+  assert.equal(
+    aiChatEventStatus({
+      id: "4",
+      type: "file_change",
+      role: "activity",
+      content: "",
+      data: { status: "completed" },
+    }),
+    "completed",
+  );
+  assert.equal(
+    aiChatEventStatus({
+      id: "5",
+      type: "error",
+      role: "activity",
+      content: "Skill descriptions were shortened",
+      data: { status: "warning" },
+    }),
+    "completed",
+  );
 });
 
 test("snapshot hint refreshes allow one in-flight request and one queued request", async () => {
@@ -202,11 +229,7 @@ test("snapshot hint refreshes allow one in-flight request and one queued request
   });
 
   const first = queue.request("thread-1");
-  const queued = [
-    queue.request("thread-1"),
-    queue.request("thread-1"),
-    queue.request("thread-1"),
-  ];
+  const queued = [queue.request("thread-1"), queue.request("thread-1"), queue.request("thread-1")];
   assert.deepEqual(calls, ["thread-1"]);
 
   releases.shift()();
@@ -223,8 +246,11 @@ test("reasoning and raw JSONL events are excluded from the visible timeline", ()
   const events = filterVisibleAiEvents([
     { id: "1", type: "agent_message", role: "assistant", content: "公开回复" },
     { id: "2", type: "reasoning", role: "activity", content: "private chain of thought" },
-    { id: "3", type: "raw_jsonl", role: "activity", content: "{\"secret\":true}" },
+    { id: "3", type: "raw_jsonl", role: "activity", content: '{"secret":true}' },
     { id: "4", type: "command", role: "activity", content: "npm test" },
   ]);
-  assert.deepEqual(events.map((event) => event.id), ["1", "4"]);
+  assert.deepEqual(
+    events.map((event) => event.id),
+    ["1", "4"],
+  );
 });

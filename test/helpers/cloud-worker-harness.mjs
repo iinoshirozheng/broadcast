@@ -24,9 +24,7 @@ async function requireCloudImplementation() {
   }
 }
 
-export async function createCloudWorkerHarness({
-  sharedSecret = "two-person-shared-secret",
-} = {}) {
+export async function createCloudWorkerHarness({ sharedSecret = "two-person-shared-secret" } = {}) {
   await requireCloudImplementation();
   const persistenceRoot = await mkdtemp(path.join(os.tmpdir(), "broadcast-cloud-worker-"));
   const miniflare = new Miniflare({
@@ -59,10 +57,9 @@ export async function createCloudWorkerHarness({
       const statements = [];
       let current = [];
       let trigger = false;
-      for (const sourceLine of (await readFile(
-        path.join(MIGRATIONS_PATH, migration),
-        "utf8",
-      )).split(/\r?\n/)) {
+      for (const sourceLine of (
+        await readFile(path.join(MIGRATIONS_PATH, migration), "utf8")
+      ).split(/\r?\n/)) {
         const line = sourceLine.trim();
         if (line === "") continue;
         if (current.length === 0) trigger = /^CREATE\s+TRIGGER\b/i.test(line);
@@ -77,13 +74,10 @@ export async function createCloudWorkerHarness({
     }
     const attachments = await miniflare.getR2Bucket("ATTACHMENTS");
 
-    async function request(pathname, {
-      actorName,
-      password = sharedSecret,
-      json,
-      headers: inputHeaders,
-      ...init
-    } = {}) {
+    async function request(
+      pathname,
+      { actorName, password = sharedSecret, json, headers: inputHeaders, ...init } = {},
+    ) {
       const headers = new Headers(inputHeaders);
       if (actorName !== undefined) {
         headers.set(
@@ -101,19 +95,19 @@ export async function createCloudWorkerHarness({
         },
       );
       const contentType = response.headers.get("content-type") ?? "";
-      const body = response.status === 204
-        ? undefined
-        : contentType.includes("application/json")
-          ? await response.clone().json()
-          : await response.clone().text();
+      const body =
+        response.status === 204
+          ? undefined
+          : contentType.includes("application/json")
+            ? await response.clone().json()
+            : await response.clone().text();
       return { response, body };
     }
 
-    async function connectWebSocket(pathname = "/api/events", {
-      actorName,
-      password = sharedSecret,
-      cookie,
-    } = {}) {
+    async function connectWebSocket(
+      pathname = "/api/events",
+      { actorName, password = sharedSecret, cookie } = {},
+    ) {
       const headers = new Headers({ upgrade: "websocket" });
       if (actorName !== undefined) {
         headers.set(

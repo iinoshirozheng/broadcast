@@ -1,5 +1,6 @@
 const memoryStorage = new Map<string, string>();
-export const PROJECT_BOARD_DISPLAY_SETTINGS_KEY_PREFIX = "broadcast.project-board-display-settings.v3.";
+export const PROJECT_BOARD_DISPLAY_SETTINGS_KEY_PREFIX =
+  "broadcast.project-board-display-settings.v3.";
 const RETRY_DELAY_MS = 250;
 const MAX_RETRY_DELAY_MS = 5_000;
 let localStorageBackend: Storage | null = null;
@@ -14,7 +15,7 @@ function isProjectBoardDisplaySettingsKey(key: string) {
 async function readServerStorage() {
   const response = await fetch(new URL("api/client-storage", document.baseURI));
   if (!response.ok) throw new Error(`Broadcast storage returned ${response.status}`);
-  const payload = await response.json() as { entries: Record<string, string> };
+  const payload = (await response.json()) as { entries: Record<string, string> };
   if (localStorageBackend) {
     for (const key of memoryStorage.keys()) {
       if (isProjectBoardDisplaySettingsKey(key)) memoryStorage.delete(key);

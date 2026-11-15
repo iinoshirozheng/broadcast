@@ -71,12 +71,12 @@ export function validatedLoopbackCdpWebSocketUrl(value, port) {
   }
   const debuggerUrl = new URL(value);
   if (
-    debuggerUrl.protocol !== "ws:"
-    || debuggerUrl.hostname !== "127.0.0.1"
-    || debuggerUrl.port !== String(port)
-    || !debuggerUrl.pathname.startsWith("/devtools/page/")
-    || debuggerUrl.username
-    || debuggerUrl.password
+    debuggerUrl.protocol !== "ws:" ||
+    debuggerUrl.hostname !== "127.0.0.1" ||
+    debuggerUrl.port !== String(port) ||
+    !debuggerUrl.pathname.startsWith("/devtools/page/") ||
+    debuggerUrl.username ||
+    debuggerUrl.password
   ) {
     throw new Error(`Rejected unexpected Codex CDP target URL: ${debuggerUrl.origin}`);
   }
@@ -130,7 +130,11 @@ export class CdpPipeBrowser extends CdpEventChannel {
 
   receive(chunk) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    for (let boundary = this.buffer.indexOf(0); boundary !== -1; boundary = this.buffer.indexOf(0)) {
+    for (
+      let boundary = this.buffer.indexOf(0);
+      boundary !== -1;
+      boundary = this.buffer.indexOf(0)
+    ) {
       const source = this.buffer.subarray(0, boundary).toString("utf8");
       this.buffer = this.buffer.subarray(boundary + 1);
       if (!source) continue;

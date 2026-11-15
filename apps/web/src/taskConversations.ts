@@ -95,13 +95,15 @@ export function taskConversations(task: Task, aiThreads: AiChatThread[]) {
       title: ref.title || task.title,
       source: ref.source,
       nativeThreadId: ref.threadId,
-      threadBinding: ref.legacyLocal ? null : {
-        threadId: ref.threadId,
-        codexProjectId: ref.codexProjectId,
-        codexProjectKind: ref.codexProjectKind,
-        codexHostId: ref.codexHostId,
-        workspacePath: ref.workspacePath,
-      },
+      threadBinding: ref.legacyLocal
+        ? null
+        : {
+            threadId: ref.threadId,
+            codexProjectId: ref.codexProjectId,
+            codexProjectKind: ref.codexProjectKind,
+            codexHostId: ref.codexHostId,
+            workspacePath: ref.workspacePath,
+          },
       legacyLocalThreadId: ref.legacyLocal ? ref.threadId : null,
       aiThreadId: null,
       updatedAt: ref.updatedAt,
@@ -131,9 +133,10 @@ export function taskConversations(task: Task, aiThreads: AiChatThread[]) {
       threadBinding: current?.threadBinding ?? null,
       legacyLocalThreadId: current?.legacyLocalThreadId ?? null,
       aiThreadId: thread.id,
-      updatedAt: current?.kind === "native"
-        ? newerTimestamp(current.updatedAt, threadActivityUpdatedAt)
-        : threadActivityUpdatedAt,
+      updatedAt:
+        current?.kind === "native"
+          ? newerTimestamp(current.updatedAt, threadActivityUpdatedAt)
+          : threadActivityUpdatedAt,
       currentRun: thread.currentRun ?? null,
       latestTodo: thread.latestTodo ?? null,
     };
@@ -141,7 +144,8 @@ export function taskConversations(task: Task, aiThreads: AiChatThread[]) {
       const currentRunning = current.currentRun?.status === "running";
       const candidateRunning = candidate.currentRun?.status === "running";
       if (currentRunning && !candidateRunning) continue;
-      if (currentRunning === candidateRunning && current.updatedAt > threadActivityUpdatedAt) continue;
+      if (currentRunning === candidateRunning && current.updatedAt > threadActivityUpdatedAt)
+        continue;
     }
     items.set(key, candidate);
   }
@@ -161,45 +165,53 @@ export function taskCardPresentation(
   unread: boolean,
   runningNativeThreadId: string | null = null,
   runningNativeTodoProgress: { completed: number; total: number } | null = null,
-  taskNativeSession: {
-    completed: number | null;
-    total: number | null;
-    running: boolean;
-  } | null | undefined = undefined,
+  taskNativeSession:
+    | {
+        completed: number | null;
+        total: number | null;
+        running: boolean;
+      }
+    | null
+    | undefined = undefined,
 ): TaskCardPresentation {
   const conversations = taskConversations(task, aiThreads);
   let runningAi: TaskConversationItem | undefined;
   for (const conversation of conversations) {
     if (conversation.currentRun?.status !== "running") continue;
-    if (!runningAi || (conversation.currentRun.startedAt ?? "").localeCompare(
-      runningAi.currentRun?.startedAt ?? "",
-    ) > 0) runningAi = conversation;
+    if (
+      !runningAi ||
+      (conversation.currentRun.startedAt ?? "").localeCompare(
+        runningAi.currentRun?.startedAt ?? "",
+      ) > 0
+    )
+      runningAi = conversation;
   }
   const normalizedRunningNativeThreadId = normalizeCodexThreadId(runningNativeThreadId);
-  const runningNative = task.status === "in_progress" && normalizedRunningNativeThreadId
-    ? conversations.find((conversation) => (
-        normalizeCodexThreadId(conversation.nativeThreadId) === normalizedRunningNativeThreadId
-      ))
-    : undefined;
+  const runningNative =
+    task.status === "in_progress" && normalizedRunningNativeThreadId
+      ? conversations.find(
+          (conversation) =>
+            normalizeCodexThreadId(conversation.nativeThreadId) === normalizedRunningNativeThreadId,
+        )
+      : undefined;
   const running = runningAi ?? runningNative;
-  const taskNativeTodoProgress = taskNativeSession
-    && taskNativeSession.completed !== null
-    && taskNativeSession.total !== null
-    ? { completed: taskNativeSession.completed, total: taskNativeSession.total }
-    : null;
+  const taskNativeTodoProgress =
+    taskNativeSession && taskNativeSession.completed !== null && taskNativeSession.total !== null
+      ? { completed: taskNativeSession.completed, total: taskNativeSession.total }
+      : null;
   const latestTodo = runningAi
     ? runningAi.latestTodo
     : runningNative
-      ? taskNativeTodoProgress ?? runningNativeTodoProgress ?? null
+      ? (taskNativeTodoProgress ?? runningNativeTodoProgress ?? null)
       : taskNativeSession !== undefined
         ? taskNativeTodoProgress
-        : conversations.find((conversation) => conversation.latestTodo)?.latestTodo ?? null;
+        : (conversations.find((conversation) => conversation.latestTodo)?.latestTodo ?? null);
   return {
     conversations,
     unread,
     processing: {
-      running: task.status === "in_progress"
-        && (Boolean(running) || taskNativeSession?.running === true),
+      running:
+        task.status === "in_progress" && (Boolean(running) || taskNativeSession?.running === true),
       completed: latestTodo?.completed ?? null,
       total: latestTodo?.total ?? null,
       startedAt: runningAi?.currentRun?.startedAt ?? null,

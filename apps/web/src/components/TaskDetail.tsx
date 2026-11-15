@@ -54,12 +54,7 @@ import type {
   TaskRelationSummary,
   TaskStatus,
 } from "../types";
-import {
-  AGENT_ACTORS,
-  MENTIONABLE_AGENTS,
-  actorKey,
-  assigneeTargetForActor,
-} from "../actors";
+import { AGENT_ACTORS, MENTIONABLE_AGENTS, actorKey, assigneeTargetForActor } from "../actors";
 import { ActorAvatar } from "./ActorAvatar";
 import { STATUS_DETAILS } from "./BoardColumn";
 import { LabelPicker } from "./LabelPicker";
@@ -174,7 +169,9 @@ function relativeTime(value: string, locale: string): string {
   if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
   const days = Math.round(hours / 24);
   if (Math.abs(days) < 30) return formatter.format(days, "day");
-  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(value));
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(
+    new Date(value),
+  );
 }
 
 function resizeTextarea(element: HTMLTextAreaElement | null) {
@@ -262,7 +259,11 @@ function activityValue(
   if (field === "status" && typeof value === "string" && value in STATUS_DETAILS) {
     return taskStatusLabel(language, value as TaskStatus);
   }
-  if (field === "priority" && typeof value === "string" && TASK_PRIORITIES.includes(value as TaskPriority)) {
+  if (
+    field === "priority" &&
+    typeof value === "string" &&
+    TASK_PRIORITIES.includes(value as TaskPriority)
+  ) {
     return taskPriorityLabel(language, value as TaskPriority);
   }
   if (field === "labels" && Array.isArray(value)) {
@@ -309,7 +310,11 @@ function activityValue(
   return String(value);
 }
 
-function ActivityChangeIcon({ field, before, after }: {
+function ActivityChangeIcon({
+  field,
+  before,
+  after,
+}: {
   field: string;
   before: unknown;
   after: unknown;
@@ -318,7 +323,11 @@ function ActivityChangeIcon({ field, before, after }: {
   if (field === "status" && typeof value === "string" && value in STATUS_DETAILS) {
     return <StatusIcon status={value as TaskStatus} color="currentColor" size={14} />;
   }
-  if (field === "priority" && typeof value === "string" && TASK_PRIORITIES.includes(value as TaskPriority)) {
+  if (
+    field === "priority" &&
+    typeof value === "string" &&
+    TASK_PRIORITIES.includes(value as TaskPriority)
+  ) {
     return <PriorityIcon priority={value as TaskPriority} color="currentColor" size={14} />;
   }
   if (field === "relation" && typeof value === "object") {
@@ -377,17 +386,18 @@ function ConversationLink({
         className="issue-conversation-copy"
         type="button"
         title={`${text("复制恢复命令（POSIX shell）", "Copy resume command (POSIX shell)")}: ${command}`}
-        aria-label={agentPlatform
-          ? text(`复制 ${label} 恢复命令`, `Copy ${label} resume command`)
-          : undefined}
-        onClick={() => onCopy(
-          command,
-          text(`${label} 恢复命令已复制。`, `${label} resume command copied.`),
-        )}
+        aria-label={
+          agentPlatform ? text(`复制 ${label} 恢复命令`, `Copy ${label} resume command`) : undefined
+        }
+        onClick={() =>
+          onCopy(command, text(`${label} 恢复命令已复制。`, `${label} resume command copied.`))
+        }
       >
-        {agentPlatform
-          ? <img src={copyIdIcon} width={16} height={16} alt="" />
-          : <CodexResumeIcon />}
+        {agentPlatform ? (
+          <img src={copyIdIcon} width={16} height={16} alt="" />
+        ) : (
+          <CodexResumeIcon />
+        )}
         <span>{text("复制终端命令", "Copy terminal command")}</span>
       </button>
     </div>
@@ -422,8 +432,8 @@ export function TaskDetail({
   const [currentTask, setCurrentTask] = useState(task);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
-  const [descriptionSegments, setDescriptionSegments] = useState<InlineMediaSegment[]>(
-    () => createInlineMediaSegments(task.description, referenceTasks),
+  const [descriptionSegments, setDescriptionSegments] = useState<InlineMediaSegment[]>(() =>
+    createInlineMediaSegments(task.description, referenceTasks),
   );
   const [editingDescription, setEditingDescription] = useState(false);
   const [propertyMenu, setPropertyMenu] = useState<
@@ -444,8 +454,8 @@ export function TaskDetail({
   const [taskActivities, setTaskActivities] = useState<TaskChangeActivity[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentsError, setCommentsError] = useState<TaskDetailError | null>(null);
-  const [commentSegments, setCommentSegments] = useState<InlineMediaSegment[]>(
-    () => createInlineMediaSegments(
+  const [commentSegments, setCommentSegments] = useState<InlineMediaSegment[]>(() =>
+    createInlineMediaSegments(
       broadcastStorage.getItem(`broadcast.comment-draft.${task.id}`) ?? "",
       referenceTasks,
     ),
@@ -454,8 +464,8 @@ export function TaskDetail({
   const [submitting, setSubmitting] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingSegments, setEditingSegments] = useState<InlineMediaSegment[]>(
-    () => createInlineMediaSegments(),
+  const [editingSegments, setEditingSegments] = useState<InlineMediaSegment[]>(() =>
+    createInlineMediaSegments(),
   );
   const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Comment | null>(null);
@@ -463,10 +473,14 @@ export function TaskDetail({
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionComposerRef = useRef<InlineMediaComposerHandle>(null);
   const descriptionScrollPositionRef = useRef<{ element: HTMLElement; top: number } | null>(null);
-  const descriptionCaretRef = useRef<{ text: string; offset: number; occurrence: number } | null>(null);
+  const descriptionCaretRef = useRef<{ text: string; offset: number; occurrence: number } | null>(
+    null,
+  );
   const composerRef = useRef<InlineMediaComposerHandle>(null);
   const editingComposerRef = useRef<InlineMediaComposerHandle>(null);
-  const editingCommentScrollPositionRef = useRef<{ element: HTMLElement; top: number } | null>(null);
+  const editingCommentScrollPositionRef = useRef<{ element: HTMLElement; top: number } | null>(
+    null,
+  );
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const descriptionAttachmentPickerOpenRef = useRef(false);
   const commentAttachmentInputRef = useRef<HTMLInputElement>(null);
@@ -578,9 +592,11 @@ export function TaskDetail({
     function receiveAttachmentOpenError(event: MessageEvent) {
       if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
       if (event.data.type !== "broadcast:attachment-open-error") return;
-      setAttachmentsError(typeof event.data.payload?.error === "string"
-        ? event.data.payload.error
-        : ["无法打开附件，请重试。", "Could not open the attachment. Try again."]);
+      setAttachmentsError(
+        typeof event.data.payload?.error === "string"
+          ? event.data.payload.error
+          : ["无法打开附件，请重试。", "Could not open the attachment. Try again."],
+      );
     }
     window.addEventListener("message", receiveAttachmentOpenError);
     return () => window.removeEventListener("message", receiveAttachmentOpenError);
@@ -641,14 +657,14 @@ export function TaskDetail({
     }
   }
 
-  function openDatePicker(
-    field: "startDate" | "dueDate",
-    event: MouseEvent<HTMLLabelElement>,
-  ) {
+  function openDatePicker(field: "startDate" | "dueDate", event: MouseEvent<HTMLLabelElement>) {
     const input = event.currentTarget.querySelector("input");
     if (!input || input.disabled) return;
     event.preventDefault();
-    if (new URL(document.baseURI).searchParams.get("host") !== "codex" || window.parent === window) {
+    if (
+      new URL(document.baseURI).searchParams.get("host") !== "codex" ||
+      window.parent === window
+    ) {
       input.showPicker();
       return;
     }
@@ -656,7 +672,8 @@ export function TaskDetail({
     const requestId = crypto.randomUUID();
     const rect = input.getBoundingClientRect();
     function receiveDate(event: MessageEvent) {
-      if (event.source !== window.parent || event.data?.type !== "broadcast:date-picker-response") return;
+      if (event.source !== window.parent || event.data?.type !== "broadcast:date-picker-response")
+        return;
       const payload = event.data.payload;
       if (payload?.requestId !== requestId || typeof payload.value !== "string") return;
       window.removeEventListener("message", receiveDate);
@@ -685,11 +702,12 @@ export function TaskDetail({
     onError(null);
     try {
       const result = await mutation();
-      const nextCurrent = result.task.id === currentTask.id
-        ? result.task
-        : result.relatedTask.id === currentTask.id
-          ? result.relatedTask
-          : null;
+      const nextCurrent =
+        result.task.id === currentTask.id
+          ? result.task
+          : result.relatedTask.id === currentTask.id
+            ? result.relatedTask
+            : null;
       if (nextCurrent) setCurrentTask(nextCurrent);
       return result;
     } catch (error) {
@@ -698,22 +716,20 @@ export function TaskDetail({
     }
   }
 
-  async function addMentionRelations(
-    anchor: Task,
-    segments: InlineMediaSegment[],
-  ): Promise<Task> {
+  async function addMentionRelations(anchor: Task, segments: InlineMediaSegment[]): Promise<Task> {
     let current = anchor;
     const relatedIds = new Set(current.relations.related.map((relation) => relation.id));
     for (const segment of segments) {
       if (segment.type !== "issue-reference" || !segment.taskId) continue;
       const relatedTaskId = segment.taskId;
       if (
-        relatedTaskId === current.id
-        || segment.projectId !== current.projectId
-        || relatedIds.has(relatedTaskId)
-      ) continue;
-      const result = await applyRelationMutation(
-        () => onAddRelation(current, "related", relatedTaskId, "mention"),
+        relatedTaskId === current.id ||
+        segment.projectId !== current.projectId ||
+        relatedIds.has(relatedTaskId)
+      )
+        continue;
+      const result = await applyRelationMutation(() =>
+        onAddRelation(current, "related", relatedTaskId, "mention"),
       );
       current = result.task;
       relatedIds.add(relatedTaskId);
@@ -722,9 +738,11 @@ export function TaskDetail({
   }
 
   function mentionTaskIds(segments: InlineMediaSegment[]): Set<string> {
-    return new Set(segments.flatMap((segment) => (
-      segment.type === "issue-reference" && segment.taskId ? [segment.taskId] : []
-    )));
+    return new Set(
+      segments.flatMap((segment) =>
+        segment.type === "issue-reference" && segment.taskId ? [segment.taskId] : [],
+      ),
+    );
   }
 
   function removedMentionTaskIds(
@@ -741,9 +759,13 @@ export function TaskDetail({
   ): Promise<Task> {
     if (candidates.size === 0) return anchor;
     const savedComments = await listComments(anchor.id);
-    const referencedIds = mentionTaskIds(createInlineMediaSegments(anchor.description, referenceTasks));
+    const referencedIds = mentionTaskIds(
+      createInlineMediaSegments(anchor.description, referenceTasks),
+    );
     for (const comment of savedComments) {
-      for (const taskId of mentionTaskIds(createInlineMediaSegments(comment.body, referenceTasks))) {
+      for (const taskId of mentionTaskIds(
+        createInlineMediaSegments(comment.body, referenceTasks),
+      )) {
         referencedIds.add(taskId);
       }
     }
@@ -751,20 +773,26 @@ export function TaskDetail({
     let current = anchor;
     for (const relatedTaskId of candidates) {
       if (
-        referencedIds.has(relatedTaskId)
-        || !current.relations.related.some((relation) => relation.id === relatedTaskId)
-      ) continue;
+        referencedIds.has(relatedTaskId) ||
+        !current.relations.related.some((relation) => relation.id === relatedTaskId)
+      )
+        continue;
       const relatedTask = await getTask(relatedTaskId);
       if (
-        mentionTaskIds(createInlineMediaSegments(relatedTask.description, referenceTasks))
-          .has(anchor.id)
-      ) continue;
+        mentionTaskIds(createInlineMediaSegments(relatedTask.description, referenceTasks)).has(
+          anchor.id,
+        )
+      )
+        continue;
       const relatedComments = await listComments(relatedTaskId);
-      if (relatedComments.some((comment) => (
-        mentionTaskIds(createInlineMediaSegments(comment.body, referenceTasks)).has(anchor.id)
-      ))) continue;
-      const result = await applyRelationMutation(
-        () => onRemoveRelation(current, "related", relatedTaskId, "mention"),
+      if (
+        relatedComments.some((comment) =>
+          mentionTaskIds(createInlineMediaSegments(comment.body, referenceTasks)).has(anchor.id),
+        )
+      )
+        continue;
+      const result = await applyRelationMutation(() =>
+        onRemoveRelation(current, "related", relatedTaskId, "mention"),
       );
       current = result.task;
     }
@@ -798,7 +826,9 @@ export function TaskDetail({
 
   function beginDescriptionEdit() {
     const segments = createInlineMediaSegments(
-      descriptionDocument, referenceTasks, descriptionAttachments,
+      descriptionDocument,
+      referenceTasks,
+      descriptionAttachments,
     );
     descriptionEditValueRef.current = serializeInlineMedia(segments).trim();
     setDescriptionSegments(segments);
@@ -811,10 +841,10 @@ export function TaskDetail({
     const inlineImages = inlineMediaImages(descriptionSegments);
     const inlineFiles = inlineMediaFiles(descriptionSegments);
     if (
-      draftDescription === currentTask.description
-      && draftDescription === descriptionEditValueRef.current
-      && inlineImages.length === 0
-      && inlineFiles.length === 0
+      draftDescription === currentTask.description &&
+      draftDescription === descriptionEditValueRef.current &&
+      inlineImages.length === 0 &&
+      inlineFiles.length === 0
     ) {
       setEditingDescription(false);
       return;
@@ -827,7 +857,8 @@ export function TaskDetail({
     setSavingProperty("description");
     onError(null);
     try {
-      const upload = (file: File, kind: Attachment["kind"]) => uploadAttachment(currentTask.id, file, kind);
+      const upload = (file: File, kind: Attachment["kind"]) =>
+        uploadAttachment(currentTask.id, file, kind);
       const uploadedImages = await uploadInlineAttachments(inlineImages, upload);
       const uploadedFiles = await uploadInlineAttachments(inlineFiles, upload);
       const resolvedDescription = resolveInlineAttachments(
@@ -835,10 +866,12 @@ export function TaskDetail({
         [...inlineImages, ...inlineFiles],
         [...uploadedImages, ...uploadedFiles],
       ).trim();
-      const saved = await onUpdate(currentTask, { description: resolvedDescription }).catch((error) => {
-        onError(issueMessageFor(error));
-        return null;
-      });
+      const saved = await onUpdate(currentTask, { description: resolvedDescription }).catch(
+        (error) => {
+          onError(issueMessageFor(error));
+          return null;
+        },
+      );
       if (!saved) return;
       setCurrentTask(saved);
       setDescription(saved.description);
@@ -851,11 +884,9 @@ export function TaskDetail({
       );
       setCurrentTask(savedWithRelations);
       setDescription(savedWithRelations.description);
-      setDescriptionSegments(createInlineMediaSegments(
-        savedWithRelations.description,
-        referenceTasks,
-        nextAttachments,
-      ));
+      setDescriptionSegments(
+        createInlineMediaSegments(savedWithRelations.description, referenceTasks, nextAttachments),
+      );
       setEditingDescription(false);
     } catch (error) {
       onError(messageFor(error));
@@ -866,7 +897,11 @@ export function TaskDetail({
 
   async function submitComment() {
     const body = draft.trim();
-    if ((!body && commentInlineImages.length === 0 && commentInlineFiles.length === 0) || submitting) return;
+    if (
+      (!body && commentInlineImages.length === 0 && commentInlineFiles.length === 0) ||
+      submitting
+    )
+      return;
     setSubmitting(true);
     setCommentsError(null);
     try {
@@ -883,21 +918,24 @@ export function TaskDetail({
         let attachment = uploadedAttachments.get(item.id);
         if (!attachment) {
           attachment = await uploadCommentAttachment(
-            comment.id, item.file, item.type === "pending-image" ? "inline" : "attachment",
+            comment.id,
+            item.file,
+            item.type === "pending-image" ? "inline" : "attachment",
           );
           uploadedAttachments.set(item.id, attachment);
         }
         uploaded.push(attachment);
       }
       const resolvedBody = resolveInlineAttachments(body, pending, uploaded);
-      const nextComment = resolvedBody !== comment.body
-        ? await updateComment(comment, resolvedBody)
-        : comment;
+      const nextComment =
+        resolvedBody !== comment.body ? await updateComment(comment, resolvedBody) : comment;
       // This submission is complete before the existing status/mention work.
       pendingCommentRef.current = null;
-      setComments((current) => current.some((item) => item.id === nextComment.id)
-        ? current.map((item) => item.id === nextComment.id ? nextComment : item)
-        : [...current, nextComment]);
+      setComments((current) =>
+        current.some((item) => item.id === nextComment.id)
+          ? current.map((item) => (item.id === nextComment.id ? nextComment : item))
+          : [...current, nextComment],
+      );
       setCommentSegments(createInlineMediaSegments());
       if (commentAttachmentInputRef.current) commentAttachmentInputRef.current.value = "";
       let relationAnchor = await getTask(currentTask.id);
@@ -950,10 +988,10 @@ export function TaskDetail({
   async function saveComment(comment: Comment) {
     const body = editingDraft.trim();
     if (
-      body === comment.body
-      && body === commentEditValueRef.current
-      && editingInlineImages.length === 0
-      && editingInlineFiles.length === 0
+      body === comment.body &&
+      body === commentEditValueRef.current &&
+      editingInlineImages.length === 0 &&
+      editingInlineFiles.length === 0
     ) {
       endCommentEdit();
       return;
@@ -971,7 +1009,9 @@ export function TaskDetail({
         let attachment = editingUploadedAttachmentsRef.current.get(item.id);
         if (!attachment) {
           attachment = await uploadCommentAttachment(
-            comment.id, item.file, item.type === "pending-image" ? "inline" : "attachment",
+            comment.id,
+            item.file,
+            item.type === "pending-image" ? "inline" : "attachment",
           );
           editingUploadedAttachmentsRef.current.set(item.id, attachment);
         }
@@ -979,7 +1019,7 @@ export function TaskDetail({
       }
       const resolvedBody = resolveInlineAttachments(body, pending, uploaded).trim();
       const updated = await updateComment(comment, resolvedBody);
-      setComments((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setComments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       const relationAnchor = await getTask(currentTask.id);
       const savedWithAddedRelations = await addMentionRelations(relationAnchor, editingSegments);
       const savedWithRelations = await removeUnreferencedMentionRelations(
@@ -1018,50 +1058,55 @@ export function TaskDetail({
     }
   }
 
-  const handleAttachmentDownload = useCallback((
-    event: MouseEvent<HTMLAnchorElement>,
-    attachment: Attachment,
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setAttachmentsError(null);
-    void downloadAttachmentFile(attachment).catch((error) => {
-      setAttachmentsError(messageFor(error));
-    });
-  }, []);
+  const handleAttachmentDownload = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>, attachment: Attachment) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setAttachmentsError(null);
+      void downloadAttachmentFile(attachment).catch((error) => {
+        setAttachmentsError(messageFor(error));
+      });
+    },
+    [],
+  );
 
   const developmentOptions = [...developmentScan.contexts];
   if (
-    currentTask.developmentContext
-    && !developmentOptions.some((context) => contextValue(context) === contextValue(currentTask.developmentContext))
+    currentTask.developmentContext &&
+    !developmentOptions.some(
+      (context) => contextValue(context) === contextValue(currentTask.developmentContext),
+    )
   ) {
     developmentOptions.unshift(currentTask.developmentContext);
   }
-  const displayAssignee = currentTask.assignee.type === currentUser.type
-    && currentTask.assignee.id === currentUser.id
-    ? currentUser
-    : currentTask.assignee;
-  const assigneeOptions = [displayAssignee, currentUser, ...AGENT_ACTORS]
-    .filter((actor, index, actors) => (
-      actors.findIndex((candidate) => actorKey(candidate) === actorKey(actor)) === index
-    ));
+  const displayAssignee =
+    currentTask.assignee.type === currentUser.type && currentTask.assignee.id === currentUser.id
+      ? currentUser
+      : currentTask.assignee;
+  const assigneeOptions = [displayAssignee, currentUser, ...AGENT_ACTORS].filter(
+    (actor, index, actors) =>
+      actors.findIndex((candidate) => actorKey(candidate) === actorKey(actor)) === index,
+  );
   const activityTimeline = [
-    ...taskActivities.flatMap((activity) => activity.changes.map((change, index) => ({
-      kind: "change" as const,
-      id: `${activity.id}-${index}`,
-      createdAt: activity.createdAt,
-      activity,
-      change,
-    }))),
+    ...taskActivities.flatMap((activity) =>
+      activity.changes.map((change, index) => ({
+        kind: "change" as const,
+        id: `${activity.id}-${index}`,
+        createdAt: activity.createdAt,
+        activity,
+        change,
+      })),
+    ),
     ...comments.map((comment) => ({
       kind: "comment" as const,
       id: comment.id,
       createdAt: comment.createdAt,
       comment,
     })),
-  ].sort((left, right) => (
-    left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
-  ));
+  ].sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+  );
 
   return (
     <section
@@ -1091,23 +1136,24 @@ export function TaskDetail({
                   task={currentTask}
                   tasks={tasks}
                   onOpenTask={onOpenTask}
-                  onAddRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                    () => onAddRelation(anchor, type, relatedTaskId),
-                  )}
-                  onRemoveRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                    () => onRemoveRelation(anchor, type, relatedTaskId),
-                  )}
+                  onAddRelation={(anchor, type, relatedTaskId) =>
+                    applyRelationMutation(() => onAddRelation(anchor, type, relatedTaskId))
+                  }
+                  onRemoveRelation={(anchor, type, relatedTaskId) =>
+                    applyRelationMutation(() => onRemoveRelation(anchor, type, relatedTaskId))
+                  }
                 />
                 {editingDescription ? (
                   <div
                     className="issue-description-composer"
                     onMouseDownCapture={(event) => {
                       if (
-                        event.target instanceof Element
-                        && event.target.closest(
+                        event.target instanceof Element &&
+                        event.target.closest(
                           ".inline-media-image > button, .inline-media-attachment > button, .issue-description-attach-button",
                         )
-                      ) event.preventDefault();
+                      )
+                        event.preventDefault();
                     }}
                     onBlur={(event) => {
                       if (descriptionAttachmentPickerOpenRef.current) return;
@@ -1134,11 +1180,13 @@ export function TaskDetail({
                         if (event.key === "Escape") {
                           event.preventDefault();
                           event.stopPropagation();
-                          setDescriptionSegments(createInlineMediaSegments(
-                            currentTask.description,
-                            referenceTasks,
-                            attachments,
-                          ));
+                          setDescriptionSegments(
+                            createInlineMediaSegments(
+                              currentTask.description,
+                              referenceTasks,
+                              attachments,
+                            ),
+                          );
                           setEditingDescription(false);
                         }
                       }}
@@ -1187,7 +1235,11 @@ export function TaskDetail({
                     tabIndex={0}
                     aria-label={text("编辑议题描述", "Edit issue description")}
                     onClick={(event) => {
-                      if (event.target instanceof Element && event.target.closest("a, button, video")) return;
+                      if (
+                        event.target instanceof Element &&
+                        event.target.closest("a, button, video")
+                      )
+                        return;
                       if (window.getSelection()?.isCollapsed === false) return;
                       descriptionCaretRef.current = null;
                       const range = event.currentTarget.ownerDocument.caretRangeFromPoint(
@@ -1195,7 +1247,11 @@ export function TaskDetail({
                         event.clientY,
                       );
                       const node = range?.startContainer;
-                      if (range && node?.nodeType === Node.TEXT_NODE && event.currentTarget.contains(node)) {
+                      if (
+                        range &&
+                        node?.nodeType === Node.TEXT_NODE &&
+                        event.currentTarget.contains(node)
+                      ) {
                         const value = node.textContent ?? "";
                         const walker = event.currentTarget.ownerDocument.createTreeWalker(
                           event.currentTarget,
@@ -1211,7 +1267,8 @@ export function TaskDetail({
                           occurrence,
                         };
                       }
-                      const scrollContainer = event.currentTarget.closest<HTMLElement>(".issue-detail-scroll");
+                      const scrollContainer =
+                        event.currentTarget.closest<HTMLElement>(".issue-detail-scroll");
                       descriptionScrollPositionRef.current = scrollContainer
                         ? { element: scrollContainer, top: scrollContainer.scrollTop }
                         : null;
@@ -1222,7 +1279,8 @@ export function TaskDetail({
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         descriptionCaretRef.current = null;
-                        const scrollContainer = event.currentTarget.closest<HTMLElement>(".issue-detail-scroll");
+                        const scrollContainer =
+                          event.currentTarget.closest<HTMLElement>(".issue-detail-scroll");
                         descriptionScrollPositionRef.current = scrollContainer
                           ? { element: scrollContainer, top: scrollContainer.scrollTop }
                           : null;
@@ -1230,20 +1288,24 @@ export function TaskDetail({
                       }
                     }}
                   >
-                    {descriptionDocument
-                      ? <DescriptionDocument
-                          value={descriptionDocument}
-                          referenceTasks={referenceTasks}
-                          onOpenTask={onOpenTask}
-                          attachments={descriptionAttachments}
-                          enableImagePreview
-                          onOpenAttachment={handleAttachmentDownload}
-                          onCopyAttachmentPath={onCopy}
-                        />
-                      : text("添加描述…", "Add description…")}
+                    {descriptionDocument ? (
+                      <DescriptionDocument
+                        value={descriptionDocument}
+                        referenceTasks={referenceTasks}
+                        onOpenTask={onOpenTask}
+                        attachments={descriptionAttachments}
+                        enableImagePreview
+                        onOpenAttachment={handleAttachmentDownload}
+                        onCopyAttachmentPath={onCopy}
+                      />
+                    ) : (
+                      text("添加描述…", "Add description…")
+                    )}
                   </div>
                 )}
-                {(currentTask.agentSession || currentTask.threadBinding || currentTask.legacyLocalThreadId) && (
+                {(currentTask.agentSession ||
+                  currentTask.threadBinding ||
+                  currentTask.legacyLocalThreadId) && (
                   <div
                     className="issue-conversation-list"
                     aria-label={text("处理此议题的对话", "Conversations for this issue")}
@@ -1257,10 +1319,14 @@ export function TaskDetail({
                     )}
                     {(currentTask.threadBinding || currentTask.legacyLocalThreadId) && (
                       <ConversationLink
-                        threadId={currentTask.threadBinding?.threadId ?? currentTask.legacyLocalThreadId!}
-                        onOpen={() => currentTask.threadBinding
-                          ? onOpenThread(currentTask.threadBinding)
-                          : onOpenLegacyLocalThread(currentTask.legacyLocalThreadId!)}
+                        threadId={
+                          currentTask.threadBinding?.threadId ?? currentTask.legacyLocalThreadId!
+                        }
+                        onOpen={() =>
+                          currentTask.threadBinding
+                            ? onOpenThread(currentTask.threadBinding)
+                            : onOpenLegacyLocalThread(currentTask.legacyLocalThreadId!)
+                        }
                         onCopy={onCopy}
                       />
                     )}
@@ -1281,12 +1347,12 @@ export function TaskDetail({
               tasks={tasks}
               onCreateChild={() => onCreateChild(currentTask)}
               onOpenTask={onOpenTask}
-              onAddRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                () => onAddRelation(anchor, type, relatedTaskId),
-              )}
-              onRemoveRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                () => onRemoveRelation(anchor, type, relatedTaskId),
-              )}
+              onAddRelation={(anchor, type, relatedTaskId) =>
+                applyRelationMutation(() => onAddRelation(anchor, type, relatedTaskId))
+              }
+              onRemoveRelation={(anchor, type, relatedTaskId) =>
+                applyRelationMutation(() => onRemoveRelation(anchor, type, relatedTaskId))
+              }
             />
 
             <section className="activity-section" aria-labelledby="activity-heading">
@@ -1311,265 +1377,300 @@ export function TaskDetail({
                   <p>
                     <strong>{currentTask.creatorName}</strong>
                     {text(" 创建了此议题", " created this issue")}
-                    <time title={exactTime(currentTask.createdAt, locale)}>{relativeTime(currentTask.createdAt, locale)}</time>
+                    <time title={exactTime(currentTask.createdAt, locale)}>
+                      {relativeTime(currentTask.createdAt, locale)}
+                    </time>
                   </p>
                 </div>
 
                 {commentsLoading ? (
-                  <div className="comments-loading" aria-label={text("正在加载活动", "Loading activity")} aria-busy="true"><i /><i /></div>
-                ) : activityTimeline.map((item) => {
-                  if (item.kind === "change") {
-                    const { activity, change } = item;
-                    const fieldLabels = ACTIVITY_FIELD_LABELS[change.field];
-                    const fieldLabel = fieldLabels
-                      ? text(fieldLabels[0], fieldLabels[1])
-                      : change.field;
-                    const beforeValue = activityValue(
-                      change.field,
-                      change.before,
-                      language,
-                      locale,
-                      text,
+                  <div
+                    className="comments-loading"
+                    aria-label={text("正在加载活动", "Loading activity")}
+                    aria-busy="true"
+                  >
+                    <i />
+                    <i />
+                  </div>
+                ) : (
+                  activityTimeline.map((item) => {
+                    if (item.kind === "change") {
+                      const { activity, change } = item;
+                      const fieldLabels = ACTIVITY_FIELD_LABELS[change.field];
+                      const fieldLabel = fieldLabels
+                        ? text(fieldLabels[0], fieldLabels[1])
+                        : change.field;
+                      const beforeValue = activityValue(
+                        change.field,
+                        change.before,
+                        language,
+                        locale,
+                        text,
+                      );
+                      const afterValue = activityValue(
+                        change.field,
+                        change.after,
+                        language,
+                        locale,
+                        text,
+                      );
+                      return (
+                        <article
+                          className={`activity-entry activity-change is-${activity.actorType}`}
+                          key={item.id}
+                        >
+                          <span className="activity-rail-icon" aria-hidden="true">
+                            <ActivityChangeIcon
+                              field={change.field}
+                              before={change.before}
+                              after={change.after}
+                            />
+                          </span>
+                          <p>
+                            <strong>{activity.actorName}</strong>{" "}
+                            {change.field === "description" ? (
+                              text("更新了描述", "updated the description")
+                            ) : change.field === "relation" && change.before === null ? (
+                              <>
+                                {text("添加了 ", "added ")}
+                                <span className="activity-change-value">{afterValue}</span>
+                              </>
+                            ) : change.field === "relation" && change.after === null ? (
+                              <>
+                                {text("移除了 ", "removed ")}
+                                <span className="activity-change-value">{beforeValue}</span>
+                              </>
+                            ) : language === "zh" ? (
+                              <>
+                                將{fieldLabel}從
+                                <span className="activity-change-value">{beforeValue}</span>
+                                改為
+                                <span className="activity-change-value">{afterValue}</span>
+                              </>
+                            ) : (
+                              <>
+                                {`changed ${fieldLabel} from `}
+                                <span className="activity-change-value">{beforeValue}</span>
+                                {" to "}
+                                <span className="activity-change-value">{afterValue}</span>
+                              </>
+                            )}
+                            <time title={exactTime(activity.createdAt, locale)}>
+                              {relativeTime(activity.createdAt, locale)}
+                            </time>
+                          </p>
+                        </article>
+                      );
+                    }
+                    const comment = item.comment;
+                    const commentBody = appendUnreferencedAttachments(
+                      comment.body,
+                      comment.attachments,
                     );
-                    const afterValue = activityValue(
-                      change.field,
-                      change.after,
-                      language,
-                      locale,
-                      text,
-                    );
+                    const commentActor: ActorIdentity =
+                      comment.authorType === currentUser.type && comment.authorId === currentUser.id
+                        ? currentUser
+                        : {
+                            type: comment.authorType,
+                            id: comment.authorId,
+                            name: comment.authorName,
+                            avatarUrl: comment.authorAvatarUrl,
+                          };
                     return (
                       <article
-                        className={`activity-entry activity-change is-${activity.actorType}`}
-                        key={item.id}
+                        className={`comment-entry is-${comment.authorType}`}
+                        key={comment.id}
+                        id={`comment-${comment.id}`}
                       >
-                        <span className="activity-rail-icon" aria-hidden="true">
-                          <ActivityChangeIcon
-                            field={change.field}
-                            before={change.before}
-                            after={change.after}
-                          />
-                        </span>
-                        <p>
-                          <strong>{activity.actorName}</strong>
-                          {" "}
-                          {change.field === "description" ? (
-                            text("更新了描述", "updated the description")
-                          ) : change.field === "relation" && change.before === null ? (
-                            <>{text("添加了 ", "added ")}<span className="activity-change-value">{afterValue}</span></>
-                          ) : change.field === "relation" && change.after === null ? (
-                            <>{text("移除了 ", "removed ")}<span className="activity-change-value">{beforeValue}</span></>
-                          ) : language === "zh" ? (
-                            <>
-                              將{fieldLabel}從
-                              <span className="activity-change-value">{beforeValue}</span>
-                              改為
-                              <span className="activity-change-value">{afterValue}</span>
-                            </>
-                          ) : (
-                            <>
-                              {`changed ${fieldLabel} from `}
-                              <span className="activity-change-value">{beforeValue}</span>
-                              {" to "}
-                              <span className="activity-change-value">{afterValue}</span>
-                            </>
-                          )}
-                          <time title={exactTime(activity.createdAt, locale)}>{relativeTime(activity.createdAt, locale)}</time>
-                        </p>
-                      </article>
-                    );
-                  }
-                  const comment = item.comment;
-                  const commentBody = appendUnreferencedAttachments(comment.body, comment.attachments);
-                  const commentActor: ActorIdentity = comment.authorType === currentUser.type
-                    && comment.authorId === currentUser.id
-                    ? currentUser
-                    : {
-                        type: comment.authorType,
-                        id: comment.authorId,
-                        name: comment.authorName,
-                        avatarUrl: comment.authorAvatarUrl,
-                      };
-                  return (
-                  <article
-                    className={`comment-entry is-${comment.authorType}`}
-                    key={comment.id}
-                    id={`comment-${comment.id}`}
-                  >
-                    <div className="comment-card">
-                      <header className="comment-header">
-                        <ActorAvatar
-                          className="comment-avatar"
-                          actor={commentActor}
-                        />
-                        <strong>{commentActor.name}</strong>
-                        <time title={exactTime(comment.createdAt, locale)}>{relativeTime(comment.createdAt, locale)}</time>
-                        {comment.version > 1 && (
-                          <span
-                            className="comment-edited"
-                            title={text(
-                              `编辑于 ${exactTime(comment.updatedAt, locale)}`,
-                              `Edited ${exactTime(comment.updatedAt, locale)}`,
+                        <div className="comment-card">
+                          <header className="comment-header">
+                            <ActorAvatar className="comment-avatar" actor={commentActor} />
+                            <strong>{commentActor.name}</strong>
+                            <time title={exactTime(comment.createdAt, locale)}>
+                              {relativeTime(comment.createdAt, locale)}
+                            </time>
+                            {comment.version > 1 && (
+                              <span
+                                className="comment-edited"
+                                title={text(
+                                  `编辑于 ${exactTime(comment.updatedAt, locale)}`,
+                                  `Edited ${exactTime(comment.updatedAt, locale)}`,
+                                )}
+                              >
+                                {text("已编辑", "Edited")}
+                              </span>
                             )}
-                          >
-                            {text("已编辑", "Edited")}
-                          </span>
-                        )}
-                        {editingId !== comment.id && (
-                          <div className="comment-actions" data-comment-menu-root={comment.id}>
-                            <button
-                              type="button"
-                              className="comment-menu-trigger"
-                              aria-label={text("评论操作", "Comment actions")}
-                              aria-haspopup="menu"
-                              aria-expanded={activeMenuId === comment.id}
-                              onClick={() => setActiveMenuId((current) => current === comment.id ? null : comment.id)}
-                            >
-                              <MoreIcon color="currentColor" />
-                            </button>
-                            {activeMenuId === comment.id && (
-                              <div className="comment-action-menu" role="menu">
+                            {editingId !== comment.id && (
+                              <div className="comment-actions" data-comment-menu-root={comment.id}>
                                 <button
                                   type="button"
-                                  role="menuitem"
-                                  disabled={savingCommentId !== null}
-                                  onClick={(event) => beginEdit(comment, event.currentTarget)}
+                                  className="comment-menu-trigger"
+                                  aria-label={text("评论操作", "Comment actions")}
+                                  aria-haspopup="menu"
+                                  aria-expanded={activeMenuId === comment.id}
+                                  onClick={() =>
+                                    setActiveMenuId((current) =>
+                                      current === comment.id ? null : comment.id,
+                                    )
+                                  }
                                 >
-                                  <EditIcon color="currentColor" />
-                                  {text("编辑评论", "Edit comment")}
+                                  <MoreIcon color="currentColor" />
                                 </button>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  className="danger"
-                                  onClick={() => { setPendingDelete(comment); setActiveMenuId(null); }}
-                                >
-                                  <DeleteIcon color="currentColor" />
-                                  {text("删除评论", "Delete comment")}
-                                </button>
+                                {activeMenuId === comment.id && (
+                                  <div className="comment-action-menu" role="menu">
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      disabled={savingCommentId !== null}
+                                      onClick={(event) => beginEdit(comment, event.currentTarget)}
+                                    >
+                                      <EditIcon color="currentColor" />
+                                      {text("编辑评论", "Edit comment")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="danger"
+                                      onClick={() => {
+                                        setPendingDelete(comment);
+                                        setActiveMenuId(null);
+                                      }}
+                                    >
+                                      <DeleteIcon color="currentColor" />
+                                      {text("删除评论", "Delete comment")}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
-                          </div>
-                        )}
-                      </header>
+                          </header>
 
-                      {editingId === comment.id ? (
-                        <div className="comment-edit-form">
-                          <InlineMediaComposer
-                            ref={editingComposerRef}
-                            className="comment-inline-media"
-                            segments={editingSegments}
-                            mentionTasks={tasks}
-                            referenceTasks={referenceTasks}
-                            completionContext={{
-                              projectId: currentTask.projectId,
-                              surface: "comment",
-                            }}
-                            placeholder={text("编辑评论", "Edit comment")}
-                            ariaLabel={text("编辑评论", "Edit comment")}
-                            disabled={savingCommentId === comment.id}
-                            allowAttachments
-                            onChange={setEditingSegments}
-                            onError={setCommentsError}
-                            onKeyDown={(event) => {
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                endCommentEdit();
-                                return;
-                              }
-                              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                                event.preventDefault();
-                                void saveComment(comment);
-                              }
-                            }}
-                          />
-                          <div className="comment-edit-actions">
-                            <div className="composer-footer-leading">
-                              <button
-                                className="comment-attach-button"
-                                type="button"
+                          {editingId === comment.id ? (
+                            <div className="comment-edit-form">
+                              <InlineMediaComposer
+                                ref={editingComposerRef}
+                                className="comment-inline-media"
+                                segments={editingSegments}
+                                mentionTasks={tasks}
+                                referenceTasks={referenceTasks}
+                                completionContext={{
+                                  projectId: currentTask.projectId,
+                                  surface: "comment",
+                                }}
+                                placeholder={text("编辑评论", "Edit comment")}
+                                ariaLabel={text("编辑评论", "Edit comment")}
                                 disabled={savingCommentId === comment.id}
-                                aria-label={text("添加评论附件", "Add comment attachments")}
-                                title={text("添加附件", "Add attachments")}
-                                onClick={() => editCommentAttachmentInputRef.current?.click()}
-                              >
-                                <AttachmentIcon color="currentColor" />
-                              </button>
-                              <input
-                                ref={editCommentAttachmentInputRef}
-                                type="file"
-                                multiple
-                                hidden
-                                onChange={(event) => {
-                                  if (event.currentTarget.files) {
-                                    editingComposerRef.current?.addFiles(event.currentTarget.files);
+                                allowAttachments
+                                onChange={setEditingSegments}
+                                onError={setCommentsError}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    endCommentEdit();
+                                    return;
                                   }
-                                  event.currentTarget.value = "";
+                                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                    event.preventDefault();
+                                    void saveComment(comment);
+                                  }
                                 }}
                               />
+                              <div className="comment-edit-actions">
+                                <div className="composer-footer-leading">
+                                  <button
+                                    className="comment-attach-button"
+                                    type="button"
+                                    disabled={savingCommentId === comment.id}
+                                    aria-label={text("添加评论附件", "Add comment attachments")}
+                                    title={text("添加附件", "Add attachments")}
+                                    onClick={() => editCommentAttachmentInputRef.current?.click()}
+                                  >
+                                    <AttachmentIcon color="currentColor" />
+                                  </button>
+                                  <input
+                                    ref={editCommentAttachmentInputRef}
+                                    type="file"
+                                    multiple
+                                    hidden
+                                    onChange={(event) => {
+                                      if (event.currentTarget.files) {
+                                        editingComposerRef.current?.addFiles(
+                                          event.currentTarget.files,
+                                        );
+                                      }
+                                      event.currentTarget.value = "";
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <button
+                                    className="button secondary"
+                                    type="button"
+                                    disabled={savingCommentId === comment.id}
+                                    onClick={endCommentEdit}
+                                  >
+                                    {text("取消", "Cancel")}
+                                  </button>
+                                  <button
+                                    className="button primary"
+                                    type="button"
+                                    disabled={savingCommentId === comment.id}
+                                    onClick={() => void saveComment(comment)}
+                                  >
+                                    {savingCommentId === comment.id
+                                      ? text("保存中…", "Saving…")
+                                      : text("保存", "Save")}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <button
-                                className="button secondary"
-                                type="button"
-                                disabled={savingCommentId === comment.id}
-                                onClick={endCommentEdit}
-                              >
-                                {text("取消", "Cancel")}
-                              </button>
-                              <button
-                                className="button primary"
-                                type="button"
-                                disabled={savingCommentId === comment.id}
-                                onClick={() => void saveComment(comment)}
-                              >
-                                {savingCommentId === comment.id
-                                  ? text("保存中…", "Saving…")
-                                  : text("保存", "Save")}
-                              </button>
+                          ) : (
+                            commentBody && (
+                              <div className="comment-body">
+                                <DescriptionDocument
+                                  value={commentBody}
+                                  referenceTasks={referenceTasks}
+                                  onOpenTask={onOpenTask}
+                                  attachments={comment.attachments}
+                                  enableImagePreview
+                                  onOpenAttachment={handleAttachmentDownload}
+                                  onCopyAttachmentPath={onCopy}
+                                />
+                              </div>
+                            )
+                          )}
+                          {(comment.agentSession ||
+                            comment.threadBinding ||
+                            comment.legacyLocalThreadId) && (
+                            <div className="comment-conversation-link">
+                              {comment.agentSession && (
+                                <ConversationLink
+                                  agentPlatform={comment.agentSession.platform}
+                                  threadId={comment.agentSession.sessionId}
+                                  onCopy={onCopy}
+                                />
+                              )}
+                              {(comment.threadBinding || comment.legacyLocalThreadId) && (
+                                <ConversationLink
+                                  threadId={
+                                    comment.threadBinding?.threadId ?? comment.legacyLocalThreadId!
+                                  }
+                                  onOpen={() =>
+                                    comment.threadBinding
+                                      ? onOpenThread(comment.threadBinding)
+                                      : onOpenLegacyLocalThread(comment.legacyLocalThreadId!)
+                                  }
+                                  onCopy={onCopy}
+                                />
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      ) : (
-                        commentBody && (
-                          <div className="comment-body">
-                            <DescriptionDocument
-                              value={commentBody}
-                              referenceTasks={referenceTasks}
-                              onOpenTask={onOpenTask}
-                              attachments={comment.attachments}
-                              enableImagePreview
-                              onOpenAttachment={handleAttachmentDownload}
-                              onCopyAttachmentPath={onCopy}
-                            />
-                          </div>
-                        )
-                      )}
-                      {(comment.agentSession || comment.threadBinding || comment.legacyLocalThreadId) && (
-                        <div className="comment-conversation-link">
-                          {comment.agentSession && (
-                            <ConversationLink
-                              agentPlatform={comment.agentSession.platform}
-                              threadId={comment.agentSession.sessionId}
-                              onCopy={onCopy}
-                            />
-                          )}
-                          {(comment.threadBinding || comment.legacyLocalThreadId) && (
-                            <ConversationLink
-                              threadId={comment.threadBinding?.threadId ?? comment.legacyLocalThreadId!}
-                              onOpen={() => comment.threadBinding
-                                ? onOpenThread(comment.threadBinding)
-                                : onOpenLegacyLocalThread(comment.legacyLocalThreadId!)}
-                              onCopy={onCopy}
-                            />
                           )}
                         </div>
-                      )}
-                    </div>
-                  </article>
-                  );
-                })}
+                      </article>
+                    );
+                  })
+                )}
               </div>
 
               {commentsError && (
@@ -1580,12 +1681,15 @@ export function TaskDetail({
                 </div>
               )}
 
-              <form className="comment-composer" onSubmit={(event) => { event.preventDefault(); void submitComment(); }}>
+              <form
+                className="comment-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitComment();
+                }}
+              >
                 <div className="composer-author">
-                  <ActorAvatar
-                    className="comment-avatar"
-                    actor={currentUser}
-                  />
+                  <ActorAvatar className="comment-avatar" actor={currentUser} />
                   <strong>{currentUser.name}</strong>
                 </div>
                 <InlineMediaComposer
@@ -1633,27 +1737,30 @@ export function TaskDetail({
                     />
                   </div>
                   <div>
-                    {currentTask.status !== "todo" && <div className="comment-status-action">
-                      <span>{text("改变状态为-等待认领", "Change status to Todo")}</span>
-                      <button
-                        type="button"
-                        className={`board-setting-switch${changeStatusToTodo ? " is-on" : ""}`}
-                        role="switch"
-                        aria-checked={changeStatusToTodo}
-                        disabled={submitting}
-                        onClick={() => setChangeStatusToTodo((current) => !current)}
-                      >
-                        <span aria-hidden="true" />
-                      </button>
-                    </div>}
+                    {currentTask.status !== "todo" && (
+                      <div className="comment-status-action">
+                        <span>{text("改变状态为-等待认领", "Change status to Todo")}</span>
+                        <button
+                          type="button"
+                          className={`board-setting-switch${changeStatusToTodo ? " is-on" : ""}`}
+                          role="switch"
+                          aria-checked={changeStatusToTodo}
+                          disabled={submitting}
+                          onClick={() => setChangeStatusToTodo((current) => !current)}
+                        >
+                          <span aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
                     <button
                       className="button primary"
                       type="submit"
-                      disabled={(
-                        !draft.trim()
-                        && commentInlineImages.length === 0
-                        && commentInlineFiles.length === 0
-                      ) || submitting}
+                      disabled={
+                        (!draft.trim() &&
+                          commentInlineImages.length === 0 &&
+                          commentInlineFiles.length === 0) ||
+                        submitting
+                      }
                     >
                       {submitting ? text("发布中…", "Posting…") : text("评论", "Comment")}
                     </button>
@@ -1672,9 +1779,11 @@ export function TaskDetail({
                 onClick={() => onOpenInThread(currentTask)}
               >
                 <NewConversationIcon color="currentColor" />
-                <span>{openingThread
-                  ? text("正在打开…", "Opening…")
-                  : text("在新对话打开", "Open in new conversation")}</span>
+                <span>
+                  {openingThread
+                    ? text("正在打开…", "Opening…")
+                    : text("在新对话打开", "Open in new conversation")}
+                </span>
               </button>
               {currentTask.externalUrl && (
                 <a
@@ -1696,28 +1805,33 @@ export function TaskDetail({
                   `复制议题 ID ${displayIdentifier}`,
                   `Copy issue ID ${displayIdentifier}`,
                 )}
-                onClick={() => onCopy(
-                  displayIdentifier,
-                  text(`${displayIdentifier} 已复制。`, `${displayIdentifier} copied.`),
-                )}
+                onClick={() =>
+                  onCopy(
+                    displayIdentifier,
+                    text(`${displayIdentifier} 已复制。`, `${displayIdentifier} copied.`),
+                  )
+                }
               >
-                <span className="detail-copy-action-icon" aria-hidden="true"><img src={copyIdIcon} alt="" /></span>
+                <span className="detail-copy-action-icon" aria-hidden="true">
+                  <img src={copyIdIcon} alt="" />
+                </span>
                 <span className="detail-copy-action-label">{text("复制 ID", "Copy ID")}</span>
                 <span className="detail-copy-identifier">{displayIdentifier}</span>
               </button>
               <button
                 className="detail-copy-action"
                 type="button"
-                onClick={() => onCopy(
-                  buildIssueUrl(
-                    document.baseURI,
-                    currentTask.projectId,
-                    currentTask.identifier,
-                  ).href,
-                  text("议题链接已复制。", "Issue link copied."),
-                )}
+                onClick={() =>
+                  onCopy(
+                    buildIssueUrl(document.baseURI, currentTask.projectId, currentTask.identifier)
+                      .href,
+                    text("议题链接已复制。", "Issue link copied."),
+                  )
+                }
               >
-                <span className="detail-copy-action-icon" aria-hidden="true"><img src={copyLinkIcon} alt="" /></span>
+                <span className="detail-copy-action-icon" aria-hidden="true">
+                  <img src={copyLinkIcon} alt="" />
+                </span>
                 <span className="detail-copy-action-label">{text("复制链接", "Copy link")}</span>
               </button>
             </div>
@@ -1735,7 +1849,7 @@ export function TaskDetail({
                 disabled={savingProperty === "status"}
                 className="detail-property-picker"
                 triggerClassName="detail-property-trigger"
-                triggerContent={(
+                triggerContent={
                   <>
                     <span className="task-property-trigger-icon">
                       <StatusIcon status={currentTask.status} color="currentColor" size={14} />
@@ -1744,7 +1858,7 @@ export function TaskDetail({
                       {taskStatusLabel(language, currentTask.status)}
                     </span>
                   </>
-                )}
+                }
                 ariaLabel={text("状态", "Status")}
                 onOpenChange={(open) => setPropertyMenu(open ? "status" : null)}
                 onChange={(status) => void saveTask({ status }, "status")}
@@ -1775,9 +1889,10 @@ export function TaskDetail({
                 value={actorKey(displayAssignee)}
                 options={assigneeOptions.map((actor) => ({
                   value: actorKey(actor),
-                  label: actorKey(actor) === actorKey(currentUser)
-                    ? `${actor.name}${text("（我）", " (me)")}`
-                    : actor.name,
+                  label:
+                    actorKey(actor) === actorKey(currentUser)
+                      ? `${actor.name}${text("（我）", " (me)")}`
+                      : actor.name,
                   icon: <ActorAvatar actor={actor} className="task-property-assignee-avatar" />,
                 }))}
                 open={propertyMenu === "assignee"}
@@ -1816,7 +1931,9 @@ export function TaskDetail({
               />
             </div>
             <div className="detail-property-row development-property">
-              <span className="detail-property-label">{text("开发上下文", "Development context")}</span>
+              <span className="detail-property-label">
+                {text("开发上下文", "Development context")}
+              </span>
               <TaskPropertyPicker
                 value={contextValue(currentTask.developmentContext)}
                 options={[
@@ -1830,9 +1947,12 @@ export function TaskDetail({
                   ...developmentOptions.map((context) => ({
                     value: contextValue(context),
                     label: contextLabel(context, text),
-                    icon: context.type === "branch"
-                      ? <BranchIcon color="currentColor" size={14} />
-                      : <LinearIcon name="folder" />,
+                    icon:
+                      context.type === "branch" ? (
+                        <BranchIcon color="currentColor" size={14} />
+                      ) : (
+                        <LinearIcon name="folder" />
+                      ),
                   })),
                 ]}
                 open={propertyMenu === "development"}
@@ -1841,42 +1961,65 @@ export function TaskDetail({
                 popoverClassName="development-context-popover"
                 triggerClassName="detail-property-trigger"
                 ariaLabel={text("开发上下文", "Development context")}
-                title={currentTask.developmentContext?.type === "worktree" ? currentTask.developmentContext.path : undefined}
+                title={
+                  currentTask.developmentContext?.type === "worktree"
+                    ? currentTask.developmentContext.path
+                    : undefined
+                }
                 onOpenChange={(open) => setPropertyMenu(open ? "development" : null)}
-                onChange={(value) => void saveTask({
-                  developmentContext: value ? JSON.parse(value) as DevelopmentContext : null,
-                }, "developmentContext")}
+                onChange={(value) =>
+                  void saveTask(
+                    {
+                      developmentContext: value ? (JSON.parse(value) as DevelopmentContext) : null,
+                    },
+                    "developmentContext",
+                  )
+                }
               />
             </div>
             <label
               className="detail-property-row detail-date-property-row"
               onClick={(event) => openDatePicker("startDate", event)}
             >
-              <span className="detail-property-icon" aria-hidden="true"><DueDateIcon color="currentColor" size={14} /></span>
+              <span className="detail-property-icon" aria-hidden="true">
+                <DueDateIcon color="currentColor" size={14} />
+              </span>
               <span className="detail-property-label">{text("开始日期", "Start date")}</span>
               <input
                 type="date"
                 value={currentTask.startDate ?? ""}
                 disabled={savingProperty === "startDate"}
-                onChange={(event) => void saveTask({
-                  startDate: event.target.value || null,
-                }, "startDate")}
+                onChange={(event) =>
+                  void saveTask(
+                    {
+                      startDate: event.target.value || null,
+                    },
+                    "startDate",
+                  )
+                }
               />
             </label>
             <label
               className="detail-property-row detail-date-property-row"
               onClick={(event) => openDatePicker("dueDate", event)}
             >
-              <span className="detail-property-icon" aria-hidden="true"><DueDateIcon color="currentColor" size={14} /></span>
+              <span className="detail-property-icon" aria-hidden="true">
+                <DueDateIcon color="currentColor" size={14} />
+              </span>
               <span className="detail-property-label">{text("截止日期", "Due date")}</span>
               <input
                 type="date"
                 value={currentTask.dueDate ?? ""}
                 disabled={savingProperty === "dueDate"}
-                onChange={(event) => void saveTask({
-                  dueDate: event.target.value || null,
-                  ...(event.target.value ? {} : { recurrence: null }),
-                }, "dueDate")}
+                onChange={(event) =>
+                  void saveTask(
+                    {
+                      dueDate: event.target.value || null,
+                      ...(event.target.value ? {} : { recurrence: null }),
+                    },
+                    "dueDate",
+                  )
+                }
               />
             </label>
             <div className="detail-property-row">
@@ -1884,11 +2027,31 @@ export function TaskDetail({
               <TaskPropertyPicker
                 value={currentTask.recurrence?.unit ?? ""}
                 options={[
-                  { value: "", label: text("不重复", "Does not repeat"), icon: <RecurrenceIcon color="currentColor" size={14} /> },
-                  { value: "day", label: text("每天", "Daily"), icon: <RecurrenceIcon color="currentColor" size={14} /> },
-                  { value: "week", label: text("每周", "Weekly"), icon: <RecurrenceIcon color="currentColor" size={14} /> },
-                  { value: "month", label: text("每月", "Monthly"), icon: <RecurrenceIcon color="currentColor" size={14} /> },
-                  { value: "year", label: text("每年", "Yearly"), icon: <RecurrenceIcon color="currentColor" size={14} /> },
+                  {
+                    value: "",
+                    label: text("不重复", "Does not repeat"),
+                    icon: <RecurrenceIcon color="currentColor" size={14} />,
+                  },
+                  {
+                    value: "day",
+                    label: text("每天", "Daily"),
+                    icon: <RecurrenceIcon color="currentColor" size={14} />,
+                  },
+                  {
+                    value: "week",
+                    label: text("每周", "Weekly"),
+                    icon: <RecurrenceIcon color="currentColor" size={14} />,
+                  },
+                  {
+                    value: "month",
+                    label: text("每月", "Monthly"),
+                    icon: <RecurrenceIcon color="currentColor" size={14} />,
+                  },
+                  {
+                    value: "year",
+                    label: text("每年", "Yearly"),
+                    icon: <RecurrenceIcon color="currentColor" size={14} />,
+                  },
                 ]}
                 open={propertyMenu === "recurrence"}
                 disabled={savingProperty === "recurrence"}
@@ -1904,8 +2067,11 @@ export function TaskDetail({
                   if (unit && !currentTask.dueDate) {
                     const dueDate = new Date();
                     dueDate.setDate(dueDate.getDate() + 7);
-                    changes.dueDate = new Date(dueDate.getTime() - dueDate.getTimezoneOffset() * 60_000)
-                      .toISOString().slice(0, 10);
+                    changes.dueDate = new Date(
+                      dueDate.getTime() - dueDate.getTimezoneOffset() * 60_000,
+                    )
+                      .toISOString()
+                      .slice(0, 10);
                   }
                   void saveTask(changes, "recurrence");
                 }}
@@ -1915,42 +2081,70 @@ export function TaskDetail({
               task={currentTask}
               tasks={tasks}
               onOpenTask={onOpenTask}
-              onAddRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                () => onAddRelation(anchor, type, relatedTaskId),
-              )}
-              onRemoveRelation={(anchor, type, relatedTaskId) => applyRelationMutation(
-                () => onRemoveRelation(anchor, type, relatedTaskId),
-              )}
+              onAddRelation={(anchor, type, relatedTaskId) =>
+                applyRelationMutation(() => onAddRelation(anchor, type, relatedTaskId))
+              }
+              onRemoveRelation={(anchor, type, relatedTaskId) =>
+                applyRelationMutation(() => onRemoveRelation(anchor, type, relatedTaskId))
+              }
             />
             <div className="detail-timestamps">
-              <span>{text(
-                `创建于 ${exactTime(currentTask.createdAt, locale)}`,
-                `Created ${exactTime(currentTask.createdAt, locale)}`,
-              )}</span>
-              {currentTask.updatedAt !== currentTask.createdAt && <span>{text(
-                `更新于 ${exactTime(currentTask.updatedAt, locale)}`,
-                `Updated ${exactTime(currentTask.updatedAt, locale)}`,
-              )}</span>}
+              <span>
+                {text(
+                  `创建于 ${exactTime(currentTask.createdAt, locale)}`,
+                  `Created ${exactTime(currentTask.createdAt, locale)}`,
+                )}
+              </span>
+              {currentTask.updatedAt !== currentTask.createdAt && (
+                <span>
+                  {text(
+                    `更新于 ${exactTime(currentTask.updatedAt, locale)}`,
+                    `Updated ${exactTime(currentTask.updatedAt, locale)}`,
+                  )}
+                </span>
+              )}
             </div>
           </aside>
         </div>
       </div>
 
       {pendingDelete && (
-        <div className="delete-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !deleting) setPendingDelete(null);
-        }}>
-          <div className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-comment-title">
+        <div
+          className="delete-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleting) setPendingDelete(null);
+          }}
+        >
+          <div
+            className="delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-comment-title"
+          >
             <h2 id="delete-comment-title">{text("删除这条评论？", "Delete this comment?")}</h2>
             <p>{text("此操作无法撤销。", "This action cannot be undone.")}</p>
             <div>
-              <button className="button secondary" type="button" disabled={deleting} onClick={() => setPendingDelete(null)}>{text("取消", "Cancel")}</button>
-              <button className="button danger" type="button" disabled={deleting} onClick={() => void confirmDelete()}>{deleting ? text("删除中…", "Deleting…") : text("删除评论", "Delete comment")}</button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={deleting}
+                onClick={() => setPendingDelete(null)}
+              >
+                {text("取消", "Cancel")}
+              </button>
+              <button
+                className="button danger"
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDelete()}
+              >
+                {deleting ? text("删除中…", "Deleting…") : text("删除评论", "Delete comment")}
+              </button>
             </div>
           </div>
         </div>
       )}
-
     </section>
   );
 }

@@ -90,13 +90,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("X-Broadcast-User-Id", currentUserActor.id);
     headers.set("X-Broadcast-User-Name", encodeURIComponent(currentUserActor.name));
     if (
-      currentUserActor.avatarUrl
-      && currentUserActor.avatarUrl.length <= 2048
-      && (
-        currentUserActor.avatarUrl.startsWith("https://")
-        || currentUserActor.avatarUrl.startsWith("http://")
-        || /^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(currentUserActor.avatarUrl)
-      )
+      currentUserActor.avatarUrl &&
+      currentUserActor.avatarUrl.length <= 2048 &&
+      (currentUserActor.avatarUrl.startsWith("https://") ||
+        currentUserActor.avatarUrl.startsWith("http://") ||
+        /^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(currentUserActor.avatarUrl))
     ) {
       headers.set("X-Broadcast-User-Avatar", currentUserActor.avatarUrl);
     }
@@ -114,11 +112,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
         continue;
       }
-      const failure = error instanceof Error && error.name === "TimeoutError"
-        ? "timeout"
-        : error instanceof TypeError
-          ? "browser-network"
-          : "network";
+      const failure =
+        error instanceof Error && error.name === "TimeoutError"
+          ? "timeout"
+          : error instanceof TypeError
+            ? "browser-network"
+            : "network";
       throw new ApiError(0, {
         error: {
           code: readRequest ? "READ_FAILED" : "SERVICE_UNAVAILABLE",
@@ -155,16 +154,16 @@ export async function listProjects(signal?: AbortSignal): Promise<Project[]> {
 
 export async function getJiraConnection(signal?: AbortSignal): Promise<JiraConnection> {
   try {
-    const data = await request<{ connection: JiraConnection }>("/api/local/jira-connection", { signal });
+    const data = await request<{ connection: JiraConnection }>("/api/local/jira-connection", {
+      signal,
+    });
     return data.connection;
   } catch (error) {
     if (
-      error instanceof ApiError
-      && (
-        error.code === "LOCAL_COMPANION_REQUIRED"
-        || (error.status === 403 && error.code === "LOCAL_ONLY")
-        || error.status === 404
-      )
+      error instanceof ApiError &&
+      (error.code === "LOCAL_COMPANION_REQUIRED" ||
+        (error.status === 403 && error.code === "LOCAL_ONLY") ||
+        error.status === 404)
     ) {
       return {
         configured: false,
@@ -205,10 +204,9 @@ export async function getProjectSummary(
   projectId: string,
   signal?: AbortSignal,
 ): Promise<ProjectSummary> {
-  return request<ProjectSummary>(
-    `/api/local/projects/${encodeURIComponent(projectId)}/summary`,
-    { signal },
-  );
+  return request<ProjectSummary>(`/api/local/projects/${encodeURIComponent(projectId)}/summary`, {
+    signal,
+  });
 }
 
 export async function getBroadcastMetadata(signal?: AbortSignal): Promise<BroadcastMetadata> {
@@ -226,15 +224,20 @@ export async function getBroadcastRevision(
 export async function getCodexThreadProgress(
   threadIds: string[],
   signal?: AbortSignal,
-): Promise<Record<string, { completed: number | null; total: number | null; running: boolean } | null>> {
+): Promise<
+  Record<string, { completed: number | null; total: number | null; running: boolean } | null>
+> {
   const query = new URLSearchParams();
   for (const threadId of threadIds) query.append("threadId", threadId);
   const data = await request<{
-    progress: Record<string, {
-      completed: number | null;
-      total: number | null;
-      running: boolean;
-    } | null>;
+    progress: Record<
+      string,
+      {
+        completed: number | null;
+        total: number | null;
+        running: boolean;
+      } | null
+    >;
   }>(`/api/local/codex-thread-progress?${query}`, { signal });
   return data.progress;
 }
@@ -289,7 +292,9 @@ export async function getAiChatComposerCandidates(
   if (input.codexProjectKind) query.set("codexProjectKind", input.codexProjectKind);
   if (input.codexHostId) query.set("codexHostId", input.codexHostId);
   if (input.workspacePath) query.set("workspacePath", input.workspacePath);
-  return request<ComposerCandidatesResponse>(`/api/local/ai/composer/candidates?${query}`, { signal });
+  return request<ComposerCandidatesResponse>(`/api/local/ai/composer/candidates?${query}`, {
+    signal,
+  });
 }
 
 export async function rebindAiChatComposerReferences(
@@ -306,14 +311,16 @@ export async function listAiChatThreads(signal?: AbortSignal): Promise<AiChatThr
   return data.threads;
 }
 
-export async function createAiChatThread(input: {
-  projectId: string;
-  issueId?: string;
-  title?: string;
-  model?: string;
-  reasoningEffort?: string;
-  sandbox?: AiChatSandbox;
-} & Partial<CodexProjectIdentity>): Promise<AiChatThread> {
+export async function createAiChatThread(
+  input: {
+    projectId: string;
+    issueId?: string;
+    title?: string;
+    model?: string;
+    reasoningEffort?: string;
+    sandbox?: AiChatSandbox;
+  } & Partial<CodexProjectIdentity>,
+): Promise<AiChatThread> {
   const data = await request<{ thread: AiChatThread }>("/api/local/ai/threads", {
     method: "POST",
     body: JSON.stringify(input),
@@ -335,10 +342,9 @@ export async function getAiChatThread(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<AiChatThreadSnapshot> {
-  return request<AiChatThreadSnapshot>(
-    `/api/local/ai/threads/${encodeURIComponent(threadId)}`,
-    { signal },
-  );
+  return request<AiChatThreadSnapshot>(`/api/local/ai/threads/${encodeURIComponent(threadId)}`, {
+    signal,
+  });
 }
 
 export async function updateAiChatThread(
@@ -361,10 +367,9 @@ export async function updateAiChatThread(
 }
 
 export async function deleteAiChatThread(threadId: string): Promise<void> {
-  await request<void>(
-    `/api/local/ai/threads/${encodeURIComponent(threadId)}`,
-    { method: "DELETE" },
-  );
+  await request<void>(`/api/local/ai/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function startAiChatTurn(
@@ -432,7 +437,9 @@ export function subscribeAiChatThread(
 
 export async function listDeviceWorkspaces(signal?: AbortSignal): Promise<Record<string, string>> {
   try {
-    const data = await request<{ workspaces: Record<string, string> }>("/api/device-workspaces", { signal });
+    const data = await request<{ workspaces: Record<string, string> }>("/api/device-workspaces", {
+      signal,
+    });
     return data.workspaces;
   } catch (error) {
     if (error instanceof ApiError && error.code === "LOCAL_COMPANION_REQUIRED") return {};
@@ -559,10 +566,9 @@ export function listTasks(projectId?: string, signal?: AbortSignal): Promise<Tas
 }
 
 export async function getTask(taskId: string, signal?: AbortSignal): Promise<Task> {
-  const data = await request<{ task: Task }>(
-    `/api/tasks/${encodeURIComponent(taskId)}`,
-    { signal },
-  );
+  const data = await request<{ task: Task }>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    signal,
+  });
   return data.task;
 }
 
@@ -570,7 +576,11 @@ export function listArchivedTasks(projectId?: string, signal?: AbortSignal): Pro
   return listTasksByArchive(projectId, "true", signal);
 }
 
-export async function createTask(projectId: string, draft: TaskDraft, threadId?: string): Promise<Task> {
+export async function createTask(
+  projectId: string,
+  draft: TaskDraft,
+  threadId?: string,
+): Promise<Task> {
   const data = await request<{ task: Task }>("/api/tasks", {
     method: "POST",
     body: JSON.stringify({ projectId, ...draft, ...(threadId ? { threadId } : {}) }),
@@ -593,41 +603,32 @@ export async function moveTask(
   threadBinding?: CodexThreadBinding | null,
   threadId?: string,
 ): Promise<Task> {
-  const data = await request<{ task: Task }>(
-    `/api/tasks/${encodeURIComponent(task.id)}/move`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        version: task.version,
-        status,
-        ...(sortOrder === undefined ? {} : { sortOrder }),
-        ...(threadBinding === undefined ? {} : { threadBinding }),
-        ...(threadId ? { threadId } : {}),
-      }),
-    },
-  );
+  const data = await request<{ task: Task }>(`/api/tasks/${encodeURIComponent(task.id)}/move`, {
+    method: "POST",
+    body: JSON.stringify({
+      version: task.version,
+      status,
+      ...(sortOrder === undefined ? {} : { sortOrder }),
+      ...(threadBinding === undefined ? {} : { threadBinding }),
+      ...(threadId ? { threadId } : {}),
+    }),
+  });
   return data.task;
 }
 
 export async function archiveTask(task: Task, threadId?: string): Promise<Task> {
-  const data = await request<{ task: Task }>(
-    `/api/tasks/${encodeURIComponent(task.id)}/archive`,
-    {
-      method: "POST",
-      body: JSON.stringify({ version: task.version, ...(threadId ? { threadId } : {}) }),
-    },
-  );
+  const data = await request<{ task: Task }>(`/api/tasks/${encodeURIComponent(task.id)}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ version: task.version, ...(threadId ? { threadId } : {}) }),
+  });
   return data.task;
 }
 
 export async function restoreTask(task: Task, threadId?: string): Promise<Task> {
-  const data = await request<{ task: Task }>(
-    `/api/tasks/${encodeURIComponent(task.id)}/restore`,
-    {
-      method: "POST",
-      body: JSON.stringify({ version: task.version, ...(threadId ? { threadId } : {}) }),
-    },
-  );
+  const data = await request<{ task: Task }>(`/api/tasks/${encodeURIComponent(task.id)}/restore`, {
+    method: "POST",
+    body: JSON.stringify({ version: task.version, ...(threadId ? { threadId } : {}) }),
+  });
   return data.task;
 }
 
@@ -717,7 +718,11 @@ export async function createComment(
   return data.comment;
 }
 
-export async function updateComment(comment: Comment, body: string, threadId?: string): Promise<Comment> {
+export async function updateComment(
+  comment: Comment,
+  body: string,
+  threadId?: string,
+): Promise<Comment> {
   const data = await request<{ comment: Comment }>(
     `/api/comments/${encodeURIComponent(comment.id)}`,
     {

@@ -7,10 +7,12 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 // `pixi run test` builds this binary first; BROADCAST_SERVER_BIN points at another build.
-export const SERVER_BIN = process.env.BROADCAST_SERVER_BIN
-  ?? fileURLToPath(new URL("../../target/debug/broadcast-server", import.meta.url));
-export const CLI_BIN = process.env.BROADCAST_CLI_BIN
-  ?? fileURLToPath(new URL("../../target/debug/broadcast", import.meta.url));
+export const SERVER_BIN =
+  process.env.BROADCAST_SERVER_BIN ??
+  fileURLToPath(new URL("../../target/debug/broadcast-server", import.meta.url));
+export const CLI_BIN =
+  process.env.BROADCAST_CLI_BIN ??
+  fileURLToPath(new URL("../../target/debug/broadcast", import.meta.url));
 
 // Starts the server binary on an ephemeral loopback port with its data in `directory`.
 // Options map to the environment the server reads.
@@ -40,7 +42,10 @@ export async function startNativeServer(directory, options = {}, listenOptions =
       await symlink(options.codexStatePath, path.join(codexHome, ".codex-global-state.json"));
     }
     if (options.codexProcessesPath) {
-      await symlink(options.codexProcessesPath, path.join(codexHome, "process_manager", "chat_processes.json"));
+      await symlink(
+        options.codexProcessesPath,
+        path.join(codexHome, "process_manager", "chat_processes.json"),
+      );
     }
     env.CODEX_HOME = codexHome;
   }
@@ -76,32 +81,33 @@ export async function startNativeServer(directory, options = {}, listenOptions =
       // Seeds a thread row the way the in-process database API does.
       createAiChatThread(input) {
         const timestamp = new Date().toISOString();
-        this.database.prepare(`
+        this.database
+          .prepare(`
           INSERT INTO ai_chat_threads (
             id, title, status, origin_project_id, origin_project_name, origin_workspace_path,
             origin_issue_id, origin_issue_identifier, model, reasoning_effort, sandbox, created_at, updated_at
           ) VALUES (?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          input.id,
-          input.title,
-          input.origin.projectId,
-          input.origin.projectName,
-          input.origin.workspacePath,
-          input.origin.issueId ?? null,
-          input.origin.issueIdentifier ?? null,
-          input.model,
-          input.reasoningEffort,
-          input.sandbox,
-          timestamp,
-          timestamp,
-        );
+        `)
+          .run(
+            input.id,
+            input.title,
+            input.origin.projectId,
+            input.origin.projectName,
+            input.origin.workspacePath,
+            input.origin.issueId ?? null,
+            input.origin.issueIdentifier ?? null,
+            input.model,
+            input.reasoningEffort,
+            input.sandbox,
+            timestamp,
+            timestamp,
+          );
         return { id: input.id };
       },
     },
   };
   return { app, port };
 }
-
 
 // The native server reads cloud settings from its data directory. A `remoteFetch` stub is served
 // from a loopback upstream that hands it the request as addressed to the configured remote origin.
@@ -114,8 +120,12 @@ async function writeCloudConfig(directory, options) {
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const body = chunks.length ? Buffer.concat(chunks) : undefined;
-      const headers = Object.entries(request.headers).flatMap(([name, value]) => [value].flat().map((item) => [name, item]));
-      const reply = await options.remoteFetch(new Request(`${remoteOrigin}${request.url}`, { method: request.method, headers, body }));
+      const headers = Object.entries(request.headers).flatMap(([name, value]) =>
+        [value].flat().map((item) => [name, item]),
+      );
+      const reply = await options.remoteFetch(
+        new Request(`${remoteOrigin}${request.url}`, { method: request.method, headers, body }),
+      );
       response.writeHead(reply.status, Object.fromEntries(reply.headers));
       response.end(Buffer.from(await reply.arrayBuffer()));
     });

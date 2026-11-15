@@ -1,9 +1,7 @@
 export function releaseMetadata(packageVersion, releaseTag, stableProductName = "Broadcast") {
   const stableTag = `v${packageVersion}`;
   const betaPrefix = `${stableTag}-beta.`;
-  const betaNumber = releaseTag.startsWith(betaPrefix)
-    ? releaseTag.slice(betaPrefix.length)
-    : "";
+  const betaNumber = releaseTag.startsWith(betaPrefix) ? releaseTag.slice(betaPrefix.length) : "";
   if (releaseTag !== stableTag && betaNumber.match(/^[1-9]\d*/)?.[0] !== betaNumber) {
     throw new Error("Release tag does not match package.json version");
   }

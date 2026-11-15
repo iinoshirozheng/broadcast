@@ -182,10 +182,12 @@ test("PATCH moves an issue to an existing project and records the change", async
     threadId: "thread-to-preserve",
   });
   assert.equal(sourceTask.response.status, 201);
-  await cloud.db.prepare(`
+  await cloud.db
+    .prepare(`
     UPDATE projects SET updated_at = '2000-01-01T00:00:00.000Z'
     WHERE id IN ('move-source', 'move-target')
-  `).run();
+  `)
+    .run();
 
   const moved = await cloud.request(`/api/tasks/${sourceTask.body.task.id}`, {
     method: "PATCH",
@@ -204,28 +206,31 @@ test("PATCH moves an issue to an existing project and records the change", async
   assert.equal(moved.body.task.sortOrder, sourceTask.body.task.sortOrder);
   assert.equal(moved.body.task.threadId, "thread-to-preserve");
   assert.equal(moved.body.task.version, sourceTask.body.task.version + 1);
-  const projects = await cloud.db.prepare(`
+  const projects = await cloud.db
+    .prepare(`
     SELECT id, updated_at FROM projects
     WHERE id IN ('move-source', 'move-target')
     ORDER BY id
-  `).all();
+  `)
+    .all();
   assert.deepEqual(
     projects.results.map((project) => project.updated_at),
     [moved.body.task.updatedAt, moved.body.task.updatedAt],
   );
 
-  const activity = await cloud.request(
-    `/api/tasks/${sourceTask.body.task.id}/activities`,
-    { actorName: alice },
-  );
+  const activity = await cloud.request(`/api/tasks/${sourceTask.body.task.id}/activities`, {
+    actorName: alice,
+  });
   assert.equal(activity.response.status, 200);
   assert.equal(activity.body.activities.at(-1).actorType, "agent");
   assert.match(activity.body.activities.at(-1).actorName, /Bob/);
-  assert.deepEqual(activity.body.activities.at(-1).changes, [{
-    field: "projectId",
-    before: "move-source",
-    after: "move-target",
-  }]);
+  assert.deepEqual(activity.body.activities.at(-1).changes, [
+    {
+      field: "projectId",
+      before: "move-source",
+      after: "move-target",
+    },
+  ]);
 
   const stale = await cloud.request(`/api/tasks/${sourceTask.body.task.id}`, {
     method: "PATCH",
@@ -285,10 +290,10 @@ test("remote thread identity survives controller moves and clears after create f
   });
   assert.equal(blocked.response.status, 200, JSON.stringify(blocked.body));
   assert.deepEqual(blocked.body.task.threadBinding, binding);
-  assert.deepEqual(blocked.body.task.conversationRefs.map((ref) => ref.threadId), [
-    binding.threadId,
-    "controller-thread",
-  ]);
+  assert.deepEqual(
+    blocked.body.task.conversationRefs.map((ref) => ref.threadId),
+    [binding.threadId, "controller-thread"],
+  );
 
   const todo = await cloud.request(`/api/tasks/${created.body.task.id}/move`, {
     method: "POST",
@@ -304,20 +309,17 @@ test("remote thread identity survives controller moves and clears after create f
   assert.equal(todo.response.status, 200, JSON.stringify(todo.body));
   assert.equal(todo.body.task.threadId, null);
   assert.equal(todo.body.task.threadBinding, null);
-  assert.deepEqual(todo.body.task.conversationRefs.map((ref) => ref.threadId), ["controller-thread"]);
+  assert.deepEqual(
+    todo.body.task.conversationRefs.map((ref) => ref.threadId),
+    ["controller-thread"],
+  );
 });
 
 test("PATCH rejects moving an issue that still has relations", async () => {
   await createProject("move-related-cloud-source");
   await createProject("move-related-cloud-target");
-  const sourceTask = await createTask(
-    "move-related-cloud-source",
-    "Cloud related source",
-  );
-  const relatedTask = await createTask(
-    "move-related-cloud-source",
-    "Cloud related peer",
-  );
+  const sourceTask = await createTask("move-related-cloud-source", "Cloud related source");
+  const relatedTask = await createTask("move-related-cloud-source", "Cloud related peer");
   const linked = await cloud.request(
     `/api/tasks/${sourceTask.body.task.id}/relations/related/${relatedTask.body.task.id}`,
     {
@@ -361,12 +363,10 @@ test("PATCH project and status updates use the target status ordering", async ()
     status: "done",
     sortOrder: 7000,
   });
-  const sourceTask = await createTask(
-    "move-sort-source-cloud",
-    "Cloud move and complete",
-    alice,
-    { status: "todo", sortOrder: 9000 },
-  );
+  const sourceTask = await createTask("move-sort-source-cloud", "Cloud move and complete", alice, {
+    status: "todo",
+    sortOrder: 9000,
+  });
 
   const moved = await cloud.request(`/api/tasks/${sourceTask.body.task.id}`, {
     method: "PATCH",
@@ -422,9 +422,9 @@ test("a failed task insert rolls back its reserved project identifier", async ()
   const failed = await createTask("atomic-counter", "Fail counter");
   assert.equal(failed.response.status, 500);
 
-  const counter = await cloud.db.prepare(
-    "SELECT next_task_number FROM projects WHERE id = 'atomic-counter'",
-  ).first("next_task_number");
+  const counter = await cloud.db
+    .prepare("SELECT next_task_number FROM projects WHERE id = 'atomic-counter'")
+    .first("next_task_number");
   assert.equal(counter, 1);
 
   const succeeded = await createTask("atomic-counter", "First real issue");
@@ -562,24 +562,37 @@ test("permanent task deletion requires archiving and cleans D1 and R2", async ()
   });
   assert.equal(deleted.response.status, 204);
   assert.deepEqual(await cloud.listAttachmentKeys(), keysBefore);
-  assert.equal((await cloud.request(`/api/tasks/${task.id}`, { actorName: alice })).response.status, 404);
+  assert.equal(
+    (await cloud.request(`/api/tasks/${task.id}`, { actorName: alice })).response.status,
+    404,
+  );
   assert.equal(
     await cloud.db.prepare("SELECT 1 FROM tasks WHERE id = ?").bind(task.id).first(),
     null,
   );
   assert.equal(
-    await cloud.db.prepare("SELECT 1 FROM comments WHERE id = ?")
-      .bind(comment.body.comment.id).first(),
+    await cloud.db
+      .prepare("SELECT 1 FROM comments WHERE id = ?")
+      .bind(comment.body.comment.id)
+      .first(),
     null,
   );
-  const remainingAttachments = await cloud.db.prepare(`
+  const remainingAttachments = await cloud.db
+    .prepare(`
     SELECT id FROM attachments WHERE id IN (?, ?)
-  `).bind(...attachmentIds).all();
+  `)
+    .bind(...attachmentIds)
+    .all();
   assert.deepEqual(remainingAttachments.results, []);
-  assert.equal((await cloud.request("/api/projects/temp-cloud-delete", {
-    method: "DELETE",
-    actorName: alice,
-  })).response.status, 204);
+  assert.equal(
+    (
+      await cloud.request("/api/projects/temp-cloud-delete", {
+        method: "DELETE",
+        actorName: alice,
+      })
+    ).response.status,
+    204,
+  );
 });
 
 test("the global revision is monotonic and lets clients poll only when data changed", async () => {
@@ -617,11 +630,18 @@ test("authenticated WebSockets receive a revision only after business data chang
   assert.ok(socket);
 
   const message = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timed out waiting for revision push")), 1_000);
-    socket.addEventListener("message", (event) => {
-      clearTimeout(timeout);
-      resolve(JSON.parse(event.data));
-    }, { once: true });
+    const timeout = setTimeout(
+      () => reject(new Error("Timed out waiting for revision push")),
+      1_000,
+    );
+    socket.addEventListener(
+      "message",
+      (event) => {
+        clearTimeout(timeout);
+        resolve(JSON.parse(event.data));
+      },
+      { once: true },
+    );
   });
   const created = await createTask("alpha", "WebSocket revision mutation", bob);
   assert.equal(created.response.status, 201);
@@ -660,10 +680,7 @@ test("cloud-only local capability routes return an explicit companion requiremen
   });
   assert.equal(meta.body.localCapabilities.available, false);
 
-  for (const pathname of [
-    "/api/device-workspaces",
-    "/api/projects/alpha/development-contexts",
-  ]) {
+  for (const pathname of ["/api/device-workspaces", "/api/projects/alpha/development-contexts"]) {
     const result = await cloud.request(pathname, { actorName: alice });
     assert.equal(result.response.status, 409);
     assert.equal(result.body.error.code, "LOCAL_COMPANION_REQUIRED");
@@ -766,10 +783,12 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
   const child = await createTask(projectId, "Tree child");
   const sibling = await createTask(projectId, "Tree sibling");
   const grandchild = await createTask(projectId, "Tree grandchild");
-  const addParent = async (childTask, parentTask) => cloud.request(
-    `/api/tasks/${childTask.id}/relations/parent/${parentTask.id}`,
-    { method: "POST", actorName: alice, json: { version: childTask.version } },
-  );
+  const addParent = async (childTask, parentTask) =>
+    cloud.request(`/api/tasks/${childTask.id}/relations/parent/${parentTask.id}`, {
+      method: "POST",
+      actorName: alice,
+      json: { version: childTask.version },
+    });
   for (const [childTask, parentTask] of [
     [child.body.task, root.body.task],
     [sibling.body.task, root.body.task],
@@ -783,11 +802,14 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
     { actorName: alice },
   );
   assert.equal(direct.response.status, 200);
-  assert.deepEqual(direct.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]), [
-    [root.body.task.id, null, 0],
-    [child.body.task.id, root.body.task.id, 1],
-    [sibling.body.task.id, root.body.task.id, 1],
-  ]);
+  assert.deepEqual(
+    direct.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]),
+    [
+      [root.body.task.id, null, 0],
+      [child.body.task.id, root.body.task.id, 1],
+      [sibling.body.task.id, root.body.task.id, 1],
+    ],
+  );
 
   const descendants = await cloud.request(
     `/api/tasks/${root.body.task.id}/tree?direction=descendants&depth=2`,
@@ -805,11 +827,14 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
     { actorName: alice },
   );
   assert.equal(ancestors.response.status, 200);
-  assert.deepEqual(ancestors.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]), [
-    [grandchild.body.task.id, null, 0],
-    [child.body.task.id, grandchild.body.task.id, 1],
-    [root.body.task.id, child.body.task.id, 2],
-  ]);
+  assert.deepEqual(
+    ancestors.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]),
+    [
+      [grandchild.body.task.id, null, 0],
+      [child.body.task.id, grandchild.body.task.id, 1],
+      [root.body.task.id, child.body.task.id, 2],
+    ],
+  );
 
   const invalid = await cloud.request(
     `/api/tasks/${root.body.task.id}/tree?direction=descendants&depth=0`,
@@ -825,7 +850,8 @@ test("cloud tree handles a 101-node frontier at depth 2", async () => {
   const root = await createTask(projectId, "Tree frontier root");
   const timestamp = new Date().toISOString();
 
-  await cloud.db.prepare(`
+  await cloud.db
+    .prepare(`
     WITH RECURSIVE sequence(value) AS (
       SELECT 1
       UNION ALL
@@ -857,8 +883,11 @@ test("cloud tree handles a 101-node frontier at depth 2", async () => {
       ?,
       ?
     FROM sequence
-  `).bind(projectId, timestamp, timestamp).run();
-  await cloud.db.prepare(`
+  `)
+    .bind(projectId, timestamp, timestamp)
+    .run();
+  await cloud.db
+    .prepare(`
     WITH RECURSIVE sequence(value) AS (
       SELECT 1
       UNION ALL
@@ -867,7 +896,9 @@ test("cloud tree handles a 101-node frontier at depth 2", async () => {
     INSERT INTO task_relations (relation_type, source_task_id, target_task_id, created_at)
     SELECT 'parent', ?, 'tree-frontier-child-' || value, ?
     FROM sequence
-  `).bind(root.body.task.id, timestamp).run();
+  `)
+    .bind(root.body.task.id, timestamp)
+    .run();
 
   const result = await cloud.request(
     `/api/tasks/${root.body.task.id}/tree?direction=descendants&depth=2`,
@@ -884,7 +915,8 @@ test("cloud tree rejects a breadth that exceeds the 1,000-node cap", async () =>
   const timestamp = new Date().toISOString();
 
   // A recursive CTE keeps this cap fixture to two D1 writes instead of 1,000 API mutations.
-  await cloud.db.prepare(`
+  await cloud.db
+    .prepare(`
     WITH RECURSIVE sequence(value) AS (
       SELECT 1
       UNION ALL
@@ -916,8 +948,11 @@ test("cloud tree rejects a breadth that exceeds the 1,000-node cap", async () =>
       ?,
       ?
     FROM sequence
-  `).bind(projectId, timestamp, timestamp).run();
-  await cloud.db.prepare(`
+  `)
+    .bind(projectId, timestamp, timestamp)
+    .run();
+  await cloud.db
+    .prepare(`
     WITH RECURSIVE sequence(value) AS (
       SELECT 1
       UNION ALL
@@ -926,7 +961,9 @@ test("cloud tree rejects a breadth that exceeds the 1,000-node cap", async () =>
     INSERT INTO task_relations (relation_type, source_task_id, target_task_id, created_at)
     SELECT 'parent', ?, 'tree-cap-child-' || value, ?
     FROM sequence
-  `).bind(root.body.task.id, timestamp).run();
+  `)
+    .bind(root.body.task.id, timestamp)
+    .run();
 
   const result = await cloud.request(
     `/api/tasks/${root.body.task.id}/tree?direction=descendants&depth=1`,
@@ -942,58 +979,53 @@ test("concurrent inverse parent writes cannot create a cycle", async () => {
   const second = await createTask("concurrent-parent-cycle", "Second");
 
   const [firstResult, secondResult] = await Promise.all([
-    cloud.request(
-      `/api/tasks/${first.body.task.id}/relations/parent/${second.body.task.id}`,
-      {
-        method: "POST",
-        actorName: alice,
-        json: { version: first.body.task.version },
-      },
-    ),
-    cloud.request(
-      `/api/tasks/${second.body.task.id}/relations/parent/${first.body.task.id}`,
-      {
-        method: "POST",
-        actorName: bob,
-        json: { version: second.body.task.version },
-      },
-    ),
+    cloud.request(`/api/tasks/${first.body.task.id}/relations/parent/${second.body.task.id}`, {
+      method: "POST",
+      actorName: alice,
+      json: { version: first.body.task.version },
+    }),
+    cloud.request(`/api/tasks/${second.body.task.id}/relations/parent/${first.body.task.id}`, {
+      method: "POST",
+      actorName: bob,
+      json: { version: second.body.task.version },
+    }),
   ]);
 
-  assert.deepEqual(
-    [firstResult.response.status, secondResult.response.status].sort(),
-    [200, 409],
-  );
+  assert.deepEqual([firstResult.response.status, secondResult.response.status].sort(), [200, 409]);
   const conflict = firstResult.response.status === 409 ? firstResult : secondResult;
   assert.equal(conflict.body.error.code, "RELATION_CYCLE");
 
-  const rows = await cloud.db.prepare(`
+  const rows = await cloud.db
+    .prepare(`
     SELECT source_task_id, target_task_id
     FROM task_relations
     WHERE relation_type = 'parent'
       AND source_task_id IN (?, ?)
       AND target_task_id IN (?, ?)
-  `).bind(
-    first.body.task.id,
-    second.body.task.id,
-    first.body.task.id,
-    second.body.task.id,
-  ).all();
+  `)
+    .bind(first.body.task.id, second.body.task.id, first.body.task.id, second.body.task.id)
+    .all();
   assert.equal(rows.results.length, 1);
 
   const third = await createTask("concurrent-parent-cycle", "Third");
   const fourth = await createTask("concurrent-parent-cycle", "Fourth");
   const inserted = await Promise.allSettled([
-    cloud.db.prepare(`
+    cloud.db
+      .prepare(`
       INSERT INTO task_relations (
         relation_type, source_task_id, target_task_id, created_at
       ) VALUES ('parent', ?, ?, ?)
-    `).bind(fourth.body.task.id, third.body.task.id, new Date().toISOString()).run(),
-    cloud.db.prepare(`
+    `)
+      .bind(fourth.body.task.id, third.body.task.id, new Date().toISOString())
+      .run(),
+    cloud.db
+      .prepare(`
       INSERT INTO task_relations (
         relation_type, source_task_id, target_task_id, created_at
       ) VALUES ('parent', ?, ?, ?)
-    `).bind(third.body.task.id, fourth.body.task.id, new Date().toISOString()).run(),
+    `)
+      .bind(third.body.task.id, fourth.body.task.id, new Date().toISOString())
+      .run(),
   ]);
   assert.equal(inserted.filter((result) => result.status === "fulfilled").length, 1);
 });
@@ -1006,19 +1038,16 @@ test("comment attachment cleanup preserves shared-state boundaries", async () =>
     actorName: bob,
     json: { body: "Initial" },
   });
-  const attachment = await cloud.request(
-    `/api/comments/${created.body.comment.id}/attachments`,
-    {
-      method: "POST",
-      actorName: bob,
-      headers: {
-        "content-type": "text/plain",
-        "x-broadcast-filename": encodeURIComponent("comment.txt"),
-        "x-broadcast-attachment-kind": "attachment",
-      },
-      body: "comment attachment",
+  const attachment = await cloud.request(`/api/comments/${created.body.comment.id}/attachments`, {
+    method: "POST",
+    actorName: bob,
+    headers: {
+      "content-type": "text/plain",
+      "x-broadcast-filename": encodeURIComponent("comment.txt"),
+      "x-broadcast-attachment-kind": "attachment",
     },
-  );
+    body: "comment attachment",
+  });
   assert.equal(attachment.response.status, 201);
 
   const updated = await cloud.request(`/api/comments/${created.body.comment.id}`, {

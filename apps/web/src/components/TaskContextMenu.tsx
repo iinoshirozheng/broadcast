@@ -94,8 +94,16 @@ function MenuItem({
         <span className="context-menu-icon">{icon}</span>
         <span className="context-menu-label">{label}</span>
         {shortcut && <span className="context-menu-shortcut">{shortcut}</span>}
-        {checked && <span className="context-menu-check"><LinearIcon name="check" /></span>}
-        {submenu && <span className="context-menu-chevron"><LinearIcon name="chevronRight" /></span>}
+        {checked && (
+          <span className="context-menu-check">
+            <LinearIcon name="check" />
+          </span>
+        )}
+        {submenu && (
+          <span className="context-menu-chevron">
+            <LinearIcon name="chevronRight" />
+          </span>
+        )}
       </button>
       {children}
     </div>
@@ -137,7 +145,9 @@ export function TaskContextMenu({
     if (focus) {
       requestAnimationFrame(() => {
         menuRef.current
-          ?.querySelector<HTMLElement>(`[data-submenu-panel="${name}"] .context-menu-item:not(:disabled)`)
+          ?.querySelector<HTMLElement>(
+            `[data-submenu-panel="${name}"] .context-menu-item:not(:disabled)`,
+          )
           ?.focus();
       });
     }
@@ -159,7 +169,7 @@ export function TaskContextMenu({
     const rect = menu.getBoundingClientRect();
     const x = Math.max(8, Math.min(position.x, window.innerWidth - rect.width - 8));
     const y = Math.max(8, Math.min(position.y, window.innerHeight - rect.height - 8));
-    setPlacedPosition((current) => current.x === x && current.y === y ? current : { x, y });
+    setPlacedPosition((current) => (current.x === x && current.y === y ? current : { x, y }));
     setSubmenuSide(x + rect.width + 196 > window.innerWidth - 8 ? "left" : "right");
   }, [position.x, position.y]);
 
@@ -171,17 +181,20 @@ export function TaskContextMenu({
     const panel = menuRef.current?.querySelector<HTMLElement>(`[data-submenu-panel="${submenu}"]`);
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
-    const shift = rect.bottom > window.innerHeight - 8
-      ? window.innerHeight - 8 - rect.bottom
-      : rect.top < 8
-        ? 8 - rect.top
-        : 0;
+    const shift =
+      rect.bottom > window.innerHeight - 8
+        ? window.innerHeight - 8 - rect.bottom
+        : rect.top < 8
+          ? 8 - rect.top
+          : 0;
     setSubmenuShift(shift);
   }, [submenu, placedPosition]);
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>(".context-menu-item:not(:disabled)")?.focus());
+    requestAnimationFrame(() =>
+      menuRef.current?.querySelector<HTMLElement>(".context-menu-item:not(:disabled)")?.focus(),
+    );
 
     const stopOutside = listenForOutsidePointerDown([menuRef], onClose);
     const stopViewport = listenForMenuViewportChange(menuRef, onClose);
@@ -195,9 +208,11 @@ export function TaskContextMenu({
   }, [onClose]);
 
   function buttonsIn(menu: HTMLElement): HTMLButtonElement[] {
-    return Array.from(menu.querySelectorAll<HTMLButtonElement>(
-      ":scope > .context-menu-group > .context-menu-item-anchor > .context-menu-item:not(:disabled), :scope > .context-menu-item-anchor > .context-menu-item:not(:disabled)",
-    ));
+    return Array.from(
+      menu.querySelectorAll<HTMLButtonElement>(
+        ":scope > .context-menu-group > .context-menu-item-anchor > .context-menu-item:not(:disabled), :scope > .context-menu-item-anchor > .context-menu-item:not(:disabled)",
+      ),
+    );
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -215,7 +230,9 @@ export function TaskContextMenu({
       event.preventDefault();
       const owner = submenu;
       setSubmenu(null);
-      requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>(`[data-submenu="${owner}"]`)?.focus());
+      requestAnimationFrame(() =>
+        menuRef.current?.querySelector<HTMLElement>(`[data-submenu="${owner}"]`)?.focus(),
+      );
       return;
     }
 
@@ -232,7 +249,8 @@ export function TaskContextMenu({
       if (event.key === "Home") buttons[0].focus();
       else if (event.key === "End") buttons.at(-1)?.focus();
       else {
-        const direction = event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey) ? -1 : 1;
+        const direction =
+          event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey) ? -1 : 1;
         const index = Math.max(0, buttons.indexOf(current));
         buttons[(index + direction + buttons.length) % buttons.length].focus();
       }
@@ -274,7 +292,12 @@ export function TaskContextMenu({
           onClick={() => openSubmenu("status", true)}
         >
           {submenu === "status" && (
-            <div className="context-submenu" role="menu" data-submenu-panel="status" style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}>
+            <div
+              className="context-submenu"
+              role="menu"
+              data-submenu-panel="status"
+              style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
+            >
               {TASK_STATUSES.map((status, index) => (
                 <MenuItem
                   key={status}
@@ -300,7 +323,12 @@ export function TaskContextMenu({
           onClick={() => openSubmenu("priority", true)}
         >
           {submenu === "priority" && (
-            <div className="context-submenu" role="menu" data-submenu-panel="priority" style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}>
+            <div
+              className="context-submenu"
+              role="menu"
+              data-submenu-panel="priority"
+              style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
+            >
               {TASK_PRIORITIES.map((priority, index) => (
                 <MenuItem
                   key={priority}
@@ -326,29 +354,44 @@ export function TaskContextMenu({
           onClick={() => openSubmenu("labels", true)}
         >
           {submenu === "labels" && (
-            <div className="context-submenu labels-submenu" role="menu" data-submenu-panel="labels" style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}>
-              {labels.length ? labels.map((label) => {
-                const selected = task.labels.includes(label);
-                const presentation = labelPresentation(label, language);
-                return (
-                  <MenuItem
-                    key={label}
-                    label={presentation.name}
-                    icon={presentation.tone ? (
-                      <span
-                        className="context-label-glyph"
-                        style={{ "--label-color": presentation.color } as CSSProperties}
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    checked={selected}
-                    onClick={() => closeThen(() => onLabelsChange(
-                      task,
-                      selected ? task.labels.filter((value) => value !== label) : [...task.labels, label],
-                    ))}
-                  />
-                );
-              }) : (
+            <div
+              className="context-submenu labels-submenu"
+              role="menu"
+              data-submenu-panel="labels"
+              style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
+            >
+              {labels.length ? (
+                labels.map((label) => {
+                  const selected = task.labels.includes(label);
+                  const presentation = labelPresentation(label, language);
+                  return (
+                    <MenuItem
+                      key={label}
+                      label={presentation.name}
+                      icon={
+                        presentation.tone ? (
+                          <span
+                            className="context-label-glyph"
+                            style={{ "--label-color": presentation.color } as CSSProperties}
+                            aria-hidden="true"
+                          />
+                        ) : null
+                      }
+                      checked={selected}
+                      onClick={() =>
+                        closeThen(() =>
+                          onLabelsChange(
+                            task,
+                            selected
+                              ? task.labels.filter((value) => value !== label)
+                              : [...task.labels, label],
+                          ),
+                        )
+                      }
+                    />
+                  );
+                })
+              ) : (
                 <MenuItem label={text("暂无可用标签", "No labels available")} disabled />
               )}
               <div className="context-menu-divider" role="separator" />
@@ -389,27 +432,41 @@ export function TaskContextMenu({
           onClick={() => openSubmenu("copy", true)}
         >
           {submenu === "copy" && (
-            <div className="context-submenu" role="menu" data-submenu-panel="copy" style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}>
+            <div
+              className="context-submenu"
+              role="menu"
+              data-submenu-panel="copy"
+              style={{ "--submenu-shift": `${submenuShift}px` } as CSSProperties}
+            >
               <MenuItem
                 label={text("复制议题 ID", "Copy issue ID")}
-                onClick={() => closeThen(() => onCopy(
-                  displayIdentifier,
-                  text(`${displayIdentifier} 已复制。`, `${displayIdentifier} copied.`),
-                ))}
+                onClick={() =>
+                  closeThen(() =>
+                    onCopy(
+                      displayIdentifier,
+                      text(`${displayIdentifier} 已复制。`, `${displayIdentifier} copied.`),
+                    ),
+                  )
+                }
               />
               <MenuItem
                 label={text("复制标题", "Copy title")}
-                onClick={() => closeThen(() => onCopy(
-                  task.title,
-                  text("议题标题已复制。", "Issue title copied."),
-                ))}
+                onClick={() =>
+                  closeThen(() =>
+                    onCopy(task.title, text("议题标题已复制。", "Issue title copied.")),
+                  )
+                }
               />
               <MenuItem
                 label={text("复制 Markdown", "Copy Markdown")}
-                onClick={() => closeThen(() => onCopy(
-                  `**${displayIdentifier}** ${task.title}`,
-                  text("Markdown 已复制。", "Markdown copied."),
-                ))}
+                onClick={() =>
+                  closeThen(() =>
+                    onCopy(
+                      `**${displayIdentifier}** ${task.title}`,
+                      text("Markdown 已复制。", "Markdown copied."),
+                    ),
+                  )
+                }
               />
             </div>
           )}

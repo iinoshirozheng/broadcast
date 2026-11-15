@@ -14,8 +14,7 @@ export function encodeComposerReferenceKey(stableId) {
   for (const byte of new TextEncoder().encode(requiredString(stableId, "stableId"))) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary)
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export function decodeComposerReferenceKey(referenceKey) {
@@ -25,7 +24,7 @@ export function decodeComposerReferenceKey(referenceKey) {
   }
   let decoded;
   try {
-    const padded = `${key.replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - key.length % 4) % 4)}`;
+    const padded = `${key.replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - (key.length % 4)) % 4)}`;
     const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
     decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
@@ -62,9 +61,10 @@ export function composerReferenceUri(kind, stableId) {
 }
 
 export function composerReferencePersistence(kind, stableId, label) {
-  const normalizedStableId = kind === "skill"
-    ? requiredString(stableId, "stableId").normalize("NFC")
-    : requiredString(stableId, "stableId");
+  const normalizedStableId =
+    kind === "skill"
+      ? requiredString(stableId, "stableId").normalize("NFC")
+      : requiredString(stableId, "stableId");
   const referenceKey = encodeComposerReferenceKey(normalizedStableId);
   const uri = `${REFERENCE_PREFIX}/${assertReferenceKind(kind)}/${referenceKey}`;
   return {

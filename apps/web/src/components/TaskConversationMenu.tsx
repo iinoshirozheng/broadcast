@@ -58,14 +58,15 @@ export function TaskConversationMenu({
     const rect = trigger.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     const gap = 6;
-    const left = Math.max(8, Math.min(
-      window.innerWidth - menuRect.width - 8,
-      rect.right - menuRect.width,
-    ));
+    const left = Math.max(
+      8,
+      Math.min(window.innerWidth - menuRect.width - 8, rect.right - menuRect.width),
+    );
     const preferredTop = rect.bottom + gap;
-    const top = preferredTop + menuRect.height <= window.innerHeight - 8
-      ? preferredTop
-      : Math.max(8, rect.top - menuRect.height - gap);
+    const top =
+      preferredTop + menuRect.height <= window.innerHeight - 8
+        ? preferredTop
+        : Math.max(8, rect.top - menuRect.height - gap);
     setPosition({ left, top, ready: true });
   }, [open, conversations.length]);
 
@@ -100,7 +101,9 @@ export function TaskConversationMenu({
 
   const multiple = conversations.length > 1;
   const singleAgentSession = !multiple ? conversations[0].agentSession : undefined;
-  const singleAgentLabel = singleAgentSession ? agentPlatformLabel(singleAgentSession.platform) : "";
+  const singleAgentLabel = singleAgentSession
+    ? agentPlatformLabel(singleAgentSession.platform)
+    : "";
   return (
     <>
       <button
@@ -108,18 +111,28 @@ export function TaskConversationMenu({
         className={`task-conversation-trigger${multiple ? " is-multiple" : ""}${singleAgentSession ? " is-agent-session" : ""}${open ? " is-open" : ""}`}
         type="button"
         draggable={false}
-        aria-label={multiple
-          ? text(`查看 ${conversations.length} 个对话`, `View ${conversations.length} conversations`)
-          : singleAgentSession
-            ? text(`复制 ${singleAgentLabel} 恢复命令`, `Copy ${singleAgentLabel} resume command`)
-            : text(`打开对话 ${conversations[0].title}`, `Open conversation ${conversations[0].title}`)}
+        aria-label={
+          multiple
+            ? text(
+                `查看 ${conversations.length} 个对话`,
+                `View ${conversations.length} conversations`,
+              )
+            : singleAgentSession
+              ? text(`复制 ${singleAgentLabel} 恢复命令`, `Copy ${singleAgentLabel} resume command`)
+              : text(
+                  `打开对话 ${conversations[0].title}`,
+                  `Open conversation ${conversations[0].title}`,
+                )
+        }
         aria-haspopup={multiple ? "menu" : undefined}
         aria-expanded={multiple ? open : undefined}
-        title={multiple
-          ? text(`${conversations.length} 个对话`, `${conversations.length} conversations`)
-          : singleAgentSession
-            ? `${singleAgentLabel}: ${sessionResumeCommand(singleAgentSession.platform, singleAgentSession.sessionId)}`
-            : conversations[0].title}
+        title={
+          multiple
+            ? text(`${conversations.length} 个对话`, `${conversations.length} conversations`)
+            : singleAgentSession
+              ? `${singleAgentLabel}: ${sessionResumeCommand(singleAgentSession.platform, singleAgentSession.sessionId)}`
+              : conversations[0].title
+        }
         onPointerDown={stop}
         onDragStart={(event) => event.preventDefault()}
         onClick={(event) => {
@@ -132,45 +145,56 @@ export function TaskConversationMenu({
         {multiple && <span>+{conversations.length}</span>}
         {singleAgentSession && <span>{singleAgentLabel}</span>}
       </button>
-      {open && multiple && createPortal(
-        <div
-          ref={menuRef}
-          className="task-conversation-menu"
-          role="menu"
-          aria-label={text("选择对话", "Select conversation")}
-          style={{
-            left: position.left,
-            top: position.top,
-            visibility: position.ready ? "visible" : "hidden",
-          }}
-          onClick={stop}
-        >
-          <div className="task-conversation-menu-heading">{text("关联对话", "Linked conversations")}</div>
-          {conversations.map((conversation) => (
-            <button
-              key={conversation.key}
-              type="button"
-              role="menuitem"
-              title={conversation.agentSession
-                ? sessionResumeCommand(conversation.agentSession.platform, conversation.agentSession.sessionId)
-                : undefined}
-              onClick={() => openConversation(conversation)}
-            >
-              <span className="task-conversation-menu-icon">
-                <ConversationIcon color="currentColor" size={13} />
-              </span>
-              <span className="task-conversation-menu-copy">
-                <strong>{conversation.title}</strong>
-                <small>{conversationSource(conversation, text)}</small>
-              </span>
-              <span className={`task-conversation-menu-status${conversation.currentRun?.status === "running" ? " is-running" : ""}`}>
-                {conversationStatus(conversation, text)}
-              </span>
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
+      {open &&
+        multiple &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="task-conversation-menu"
+            role="menu"
+            aria-label={text("选择对话", "Select conversation")}
+            style={{
+              left: position.left,
+              top: position.top,
+              visibility: position.ready ? "visible" : "hidden",
+            }}
+            onClick={stop}
+          >
+            <div className="task-conversation-menu-heading">
+              {text("关联对话", "Linked conversations")}
+            </div>
+            {conversations.map((conversation) => (
+              <button
+                key={conversation.key}
+                type="button"
+                role="menuitem"
+                title={
+                  conversation.agentSession
+                    ? sessionResumeCommand(
+                        conversation.agentSession.platform,
+                        conversation.agentSession.sessionId,
+                      )
+                    : undefined
+                }
+                onClick={() => openConversation(conversation)}
+              >
+                <span className="task-conversation-menu-icon">
+                  <ConversationIcon color="currentColor" size={13} />
+                </span>
+                <span className="task-conversation-menu-copy">
+                  <strong>{conversation.title}</strong>
+                  <small>{conversationSource(conversation, text)}</small>
+                </span>
+                <span
+                  className={`task-conversation-menu-status${conversation.currentRun?.status === "running" ? " is-running" : ""}`}
+                >
+                  {conversationStatus(conversation, text)}
+                </span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

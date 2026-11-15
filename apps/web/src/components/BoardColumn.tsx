@@ -6,10 +6,7 @@ import type { TaskCardPresentation, TaskConversationItem } from "../taskConversa
 import { TaskCard } from "./TaskCard";
 import { PlusIcon, StatusIcon } from "./SemanticIcons";
 
-export const STATUS_DETAILS: Record<
-  TaskStatus,
-  { label: string; tone: string }
-> = {
+export const STATUS_DETAILS: Record<TaskStatus, { label: string; tone: string }> = {
   backlog: { label: "待立项", tone: "backlog" },
   todo: { label: "等待认领", tone: "todo" },
   in_progress: { label: "处理中", tone: "progress" },
@@ -85,8 +82,13 @@ export function BoardColumn({
   const { language, text } = useBroadcastI18n();
   const details = STATUS_DETAILS[status];
   const label = taskStatusLabel(language, status);
-  const { findDropBefore, clearDropPreview, updateDropPreview, leaveDropPreview, getTaskDragShift } =
-    useTaskCardDragPreview({ tasks, draggedTaskId, draggedTaskHeight, isDropTarget });
+  const {
+    findDropBefore,
+    clearDropPreview,
+    updateDropPreview,
+    leaveDropPreview,
+    getTaskDragShift,
+  } = useTaskCardDragPreview({ tasks, draggedTaskId, draggedTaskHeight, isDropTarget });
 
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
@@ -115,7 +117,8 @@ export function BoardColumn({
             <StatusIcon status={status} color="var(--column-status-color)" size={14} />
           </span>
           <h2 id={`column-${status}`}>
-            {label}{tasks.length > 0 ? ` ${tasks.length}` : ""}
+            {label}
+            {tasks.length > 0 ? ` ${tasks.length}` : ""}
           </h2>
         </div>
         {createEnabled && (

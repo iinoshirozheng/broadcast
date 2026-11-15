@@ -25,10 +25,10 @@ function run(command, args, options = {}) {
   });
   if (result.status !== 0) {
     throw new Error(
-      result.error?.message
-      || result.stderr?.trim()
-      || result.stdout?.trim()
-      || `${command} failed`,
+      result.error?.message ||
+        result.stderr?.trim() ||
+        result.stdout?.trim() ||
+        `${command} failed`,
     );
   }
   return result.stdout.trim();
@@ -47,11 +47,11 @@ async function assertElfX64(filePath) {
   const { bytesRead } = await file.read(header, 0, header.length, 0);
   await file.close();
   if (
-    bytesRead !== header.length
-    || !header.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))
-    || header[4] !== 2
-    || header[5] !== 1
-    || header.readUInt16LE(18) !== 0x3e
+    bytesRead !== header.length ||
+    !header.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) ||
+    header[4] !== 2 ||
+    header[5] !== 1 ||
+    header.readUInt16LE(18) !== 0x3e
   ) {
     throw new Error(`Expected Linux x86_64 ELF: ${filePath}`);
   }
@@ -85,10 +85,7 @@ async function verifyPackageRoot(root, label) {
   }
 
   const wrapper = await readFile(broadcastPath, "utf8");
-  if (
-    !wrapper.includes("broadcast-node")
-    || !wrapper.includes("app/cli/broadcast.mjs")
-  ) {
+  if (!wrapper.includes("broadcast-node") || !wrapper.includes("app/cli/broadcast.mjs")) {
     throw new Error(`${label} broadcast does not use the packaged Node and CLI`);
   }
   const nodeVersion = run(nodePath, ["--version"]);

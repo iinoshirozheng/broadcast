@@ -1,25 +1,10 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type {
-  IssueRelationType,
-  Task,
-  TaskRelationSummary,
-} from "../types";
+import type { IssueRelationType, Task, TaskRelationSummary } from "../types";
 import { useBroadcastI18n } from "../i18n";
 import { ActorAvatar } from "./ActorAvatar";
 import { LinearIcon } from "./LinearIcon";
-import {
-  BlockingRelationIcon,
-  PlusIcon,
-  RelationIcon,
-  StatusIcon,
-} from "./SemanticIcons";
+import { BlockingRelationIcon, PlusIcon, RelationIcon, StatusIcon } from "./SemanticIcons";
 
 export interface RelationMutationResult {
   task: Task;
@@ -48,10 +33,11 @@ export function IssuePickerContent({
   const results = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return candidates;
-    return candidates.filter((task) => (
-      (task.externalKey ?? task.identifier).toLocaleLowerCase().includes(normalized)
-      || task.title.toLocaleLowerCase().includes(normalized)
-    ));
+    return candidates.filter(
+      (task) =>
+        (task.externalKey ?? task.identifier).toLocaleLowerCase().includes(normalized) ||
+        task.title.toLocaleLowerCase().includes(normalized),
+    );
   }, [candidates, query]);
 
   useEffect(() => {
@@ -82,7 +68,9 @@ export function IssuePickerContent({
           role="combobox"
           aria-expanded="true"
           aria-controls="issue-relation-results"
-          aria-activedescendant={results[activeIndex] ? `relation-option-${results[activeIndex].id}` : undefined}
+          aria-activedescendant={
+            results[activeIndex] ? `relation-option-${results[activeIndex].id}` : undefined
+          }
           placeholder={text("搜索议题…", "Search issues…")}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -113,38 +101,44 @@ export function IssuePickerContent({
         id="issue-relation-results"
         role="listbox"
       >
-        {results.length > 0 ? results.map((candidate, index) => {
-          const selected = selectedIds?.has(candidate.id) ?? false;
-          const className = [
-            index === activeIndex ? "is-active" : "",
-            selected ? "is-selected" : "",
-          ].filter(Boolean).join(" ");
-          return (
-            <button
-              ref={(element) => {
-                optionRefs.current[index] = element;
-              }}
-              id={`relation-option-${candidate.id}`}
-              className={className}
-              type="button"
-              role="option"
-              aria-selected={selectedIds ? selected : index === activeIndex}
-              disabled={disabled || savingId !== null}
-              key={candidate.id}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => void choose(candidate)}
-            >
-              <StatusIcon status={candidate.status} size={14} />
-              <span className="issue-relation-option-id">{candidate.externalKey ?? candidate.identifier}</span>
-              <span className="issue-relation-option-title">{candidate.title}</span>
-              {selectedIds && (
-                <span className="issue-relation-option-check">
-                  {selected && <LinearIcon name="check" />}
+        {results.length > 0 ? (
+          results.map((candidate, index) => {
+            const selected = selectedIds?.has(candidate.id) ?? false;
+            const className = [
+              index === activeIndex ? "is-active" : "",
+              selected ? "is-selected" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <button
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                id={`relation-option-${candidate.id}`}
+                className={className}
+                type="button"
+                role="option"
+                aria-selected={selectedIds ? selected : index === activeIndex}
+                disabled={disabled || savingId !== null}
+                key={candidate.id}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => void choose(candidate)}
+              >
+                <StatusIcon status={candidate.status} size={14} />
+                <span className="issue-relation-option-id">
+                  {candidate.externalKey ?? candidate.identifier}
                 </span>
-              )}
-            </button>
-          );
-        }) : (
+                <span className="issue-relation-option-title">{candidate.title}</span>
+                {selectedIds && (
+                  <span className="issue-relation-option-check">
+                    {selected && <LinearIcon name="check" />}
+                  </span>
+                )}
+              </button>
+            );
+          })
+        ) : (
           <p className="issue-relation-empty">{text("没有匹配的议题", "No matching issues")}</p>
         )}
       </div>
@@ -289,11 +283,10 @@ export function IssueParentLink({
   const parent = task.relations.parent;
   const excluded = descendantIds(task, tasks);
   excluded.add(task.id);
-  const candidates = tasks.filter((candidate) => (
-    candidate.archivedAt === null
-    && !excluded.has(candidate.id)
-    && candidate.id !== parent?.id
-  ));
+  const candidates = tasks.filter(
+    (candidate) =>
+      candidate.archivedAt === null && !excluded.has(candidate.id) && candidate.id !== parent?.id,
+  );
 
   return (
     <div className={`issue-parent-link${parent ? " has-parent" : ""}`}>
@@ -314,9 +307,11 @@ export function IssueParentLink({
         </>
       )}
       <IssuePicker
-        label={parent
-          ? text("更换父议题", "Change parent issue")
-          : text("设置父议题", "Set parent issue")}
+        label={
+          parent
+            ? text("更换父议题", "Change parent issue")
+            : text("设置父议题", "Set parent issue")
+        }
         candidates={candidates}
         disabled={saving}
         onSelect={async (candidate) => {
@@ -352,11 +347,10 @@ export function IssueSubIssues({
     ancestors.add(parent.id);
     parent = taskById.get(parent.id)?.relations.parent ?? null;
   }
-  const candidates = tasks.filter((candidate) => (
-    candidate.archivedAt === null
-    && !ancestors.has(candidate.id)
-    && !directIds.has(candidate.id)
-  ));
+  const candidates = tasks.filter(
+    (candidate) =>
+      candidate.archivedAt === null && !ancestors.has(candidate.id) && !directIds.has(candidate.id),
+  );
   const progress = subIssues.length > 0 ? Math.round((done / subIssues.length) * 100) : 0;
 
   return (
@@ -428,9 +422,33 @@ export function IssueSubIssues({
 }
 
 const RELATION_GROUPS = [
-  { type: "blocked_by", field: "blockedBy", chineseLabel: "阻塞于", englishLabel: "Blocked by", chineseAddLabel: "添加阻塞议题", englishAddLabel: "Add blocker", tone: "blocked-by" },
-  { type: "blocks", field: "blocks", chineseLabel: "阻塞", englishLabel: "Blocks", chineseAddLabel: "添加被阻塞议题", englishAddLabel: "Add blocked issue", tone: "blocks" },
-  { type: "related", field: "related", chineseLabel: "相关议题", englishLabel: "Related issues", chineseAddLabel: "添加相关议题", englishAddLabel: "Add related issue", tone: "related" },
+  {
+    type: "blocked_by",
+    field: "blockedBy",
+    chineseLabel: "阻塞于",
+    englishLabel: "Blocked by",
+    chineseAddLabel: "添加阻塞议题",
+    englishAddLabel: "Add blocker",
+    tone: "blocked-by",
+  },
+  {
+    type: "blocks",
+    field: "blocks",
+    chineseLabel: "阻塞",
+    englishLabel: "Blocks",
+    chineseAddLabel: "添加被阻塞议题",
+    englishAddLabel: "Add blocked issue",
+    tone: "blocks",
+  },
+  {
+    type: "related",
+    field: "related",
+    chineseLabel: "相关议题",
+    englishLabel: "Related issues",
+    chineseAddLabel: "添加相关议题",
+    englishAddLabel: "Add related issue",
+    tone: "related",
+  },
 ] as const;
 
 export function IssueRelationSidebar({
@@ -450,11 +468,12 @@ export function IssueRelationSidebar({
         const label = text(group.chineseLabel, group.englishLabel);
         const issues = task.relations[group.field];
         const existing = new Set(issues.map((issue) => issue.id));
-        const candidates = tasks.filter((candidate) => (
-          candidate.archivedAt === null
-          && candidate.id !== task.id
-          && !existing.has(candidate.id)
-        ));
+        const candidates = tasks.filter(
+          (candidate) =>
+            candidate.archivedAt === null &&
+            candidate.id !== task.id &&
+            !existing.has(candidate.id),
+        );
         return (
           <div className={`issue-relation-group is-${group.tone}`} key={group.type}>
             <header>

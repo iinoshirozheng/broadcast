@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -32,13 +24,7 @@ const fixtures = [];
 const timestamp = "2026-07-24T12:00:00.000Z";
 const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(import.meta.dirname, "..");
-const wranglerExecutable = path.join(
-  projectRoot,
-  "node_modules",
-  "wrangler",
-  "bin",
-  "wrangler.js",
-);
+const wranglerExecutable = path.join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 const wranglerConfig = path.join(projectRoot, "wrangler.jsonc");
 
 afterEach(async () => {
@@ -399,11 +385,7 @@ function expectedCloudBaselineCounts() {
 
 function createD1Adapter(
   bundle,
-  {
-    initialCounts = {},
-    importedCounts = bundle.counts.byProject,
-    failImport = false,
-  } = {},
+  { initialCounts = {}, importedCounts = bundle.counts.byProject, failImport = false } = {},
 ) {
   const calls = [];
   const state = { tables: null };
@@ -482,11 +464,11 @@ test("migration snapshots live WAL data, counts each project, and strips local e
 
   assert.equal(bundle.schemaVersion, 2);
   assert.deepEqual(bundle.counts.byProject, expectedProjectCounts());
-  assert.deepEqual(
-    bundle.tables.projects.map((project) => project.id).sort(),
-    ["alpha", "beta"],
+  assert.deepEqual(bundle.tables.projects.map((project) => project.id).sort(), ["alpha", "beta"]);
+  assert.equal(
+    bundle.tables.projects.every((project) => project.workspace_path === null),
+    true,
   );
-  assert.equal(bundle.tables.projects.every((project) => project.workspace_path === null), true);
 
   const alphaWorktreeTask = bundle.tables.tasks.find((task) => task.id === "task-a1");
   assert.equal(alphaWorktreeTask.worktree_path, null);
@@ -513,10 +495,7 @@ test("migration records attachment bytes, SHA-256, and actual size", async () =>
     const expectedContents = fixture.attachmentContents[attachment.id];
     assert.deepEqual(Buffer.from(attachment.body), expectedContents);
     assert.equal(attachment.size, expectedContents.byteLength);
-    assert.equal(
-      attachment.sha256,
-      createHash("sha256").update(expectedContents).digest("hex"),
-    );
+    assert.equal(attachment.sha256, createHash("sha256").update(expectedContents).digest("hex"));
     assert.equal(path.isAbsolute(attachment.objectKey), false);
   }
 });
@@ -623,10 +602,7 @@ test("cloud import is atomic in D1 and cleans staged R2 objects when D1 rejects"
   const d1 = createD1Adapter(bundle, { failImport: true });
   const r2 = createR2Adapter();
 
-  await assert.rejects(
-    importCloudMigrationBundle(bundle, { d1, r2 }),
-    /atomic D1 import failed/i,
-  );
+  await assert.rejects(importCloudMigrationBundle(bundle, { d1, r2 }), /atomic D1 import failed/i);
 
   assert.equal(d1.calls.length, 1);
   assert.equal(d1.state.tables, null);
@@ -697,7 +673,7 @@ test("Wrangler D1 SQL chunks large tables below the remote statement byte limit"
   assert.ok(Buffer.byteLength(sql, "utf8") > 100_000);
   const statements = sql
     .split(/;\n(?=INSERT INTO )/)
-    .map((statement) => statement.endsWith(";") ? statement : `${statement};`);
+    .map((statement) => (statement.endsWith(";") ? statement : `${statement};`));
   assert.ok(
     statements.filter((statement) => statement.startsWith('INSERT INTO "tasks"')).length > 1,
   );
@@ -710,16 +686,15 @@ test("Wrangler D1 SQL chunks large tables below the remote statement byte limit"
   assert.ok(sql.indexOf("large-task-000") < sql.indexOf("large-task-159"));
 
   const oversized = structuredClone(tables);
-  oversized.tasks = [{
-    ...structuredClone(template),
-    id: "oversized-task",
-    identifier: "OVERSIZED-1",
-    description: "界".repeat(40_000),
-  }];
-  assert.throws(
-    () => createCloudD1ImportSql(oversized),
-    /single row.*90,?000 bytes/i,
-  );
+  oversized.tasks = [
+    {
+      ...structuredClone(template),
+      id: "oversized-task",
+      identifier: "OVERSIZED-1",
+      description: "界".repeat(40_000),
+    },
+  ];
+  assert.throws(() => createCloudD1ImportSql(oversized), /single row.*90,?000 bytes/i);
 });
 
 test("real D1 batch atomically imports a bundle containing local and maps development fields", async () => {
@@ -738,13 +713,15 @@ test("real D1 batch atomically imports a bundle containing local and maps develo
 
   const failingCloud = await createCloudWorkerHarness();
   try {
-    await failingCloud.db.prepare(`
+    await failingCloud.db
+      .prepare(`
       CREATE TRIGGER fail_migration_comment
       BEFORE INSERT ON comments
       BEGIN
         SELECT RAISE(ABORT, 'intentional migration failure');
       END;
-    `).run();
+    `)
+      .run();
     await assert.rejects(
       importCloudMigrationBundle(
         bundle,
@@ -782,29 +759,36 @@ test("real D1 batch atomically imports a bundle containing local and maps develo
       [{ id: "beta" }, { id: "local" }],
     );
     assert.deepEqual(
-      await cloud.db.prepare(`
+      await cloud.db
+        .prepare(`
         SELECT development_context_type, development_branch
         FROM tasks
         WHERE id = 'task-a1'
-      `).first(),
+      `)
+        .first(),
       {
         development_context_type: "worktree",
         development_branch: "feature/cloud-share",
       },
     );
     assert.deepEqual(
-      await cloud.db.prepare(`
+      await cloud.db
+        .prepare(`
         SELECT development_context_type, development_branch
         FROM tasks
         WHERE id = 'task-a2'
-      `).first(),
+      `)
+        .first(),
       {
         development_context_type: "branch",
         development_branch: "feature/plain-branch",
       },
     );
     const taskColumns = await cloud.db.prepare("PRAGMA table_info(tasks)").all();
-    assert.equal(taskColumns.results.some((column) => column.name === "worktree_path"), false);
+    assert.equal(
+      taskColumns.results.some((column) => column.name === "worktree_path"),
+      false,
+    );
 
     const migratedAttachment = bundle.attachments.find(
       (attachment) => attachment.id === "attachment-a",
@@ -927,14 +911,8 @@ test("versioned bundle round-trips through private manifest, data, and attachmen
   if (process.platform !== "win32") {
     assert.equal((await stat(outputDirectory)).mode & 0o777, 0o700);
     assert.equal((await stat(path.join(outputDirectory, "data"))).mode & 0o777, 0o700);
-    assert.equal(
-      (await stat(path.join(outputDirectory, "attachments"))).mode & 0o777,
-      0o700,
-    );
-    assert.equal(
-      (await stat(path.join(outputDirectory, "manifest.json"))).mode & 0o777,
-      0o600,
-    );
+    assert.equal((await stat(path.join(outputDirectory, "attachments"))).mode & 0o777, 0o700);
+    assert.equal((await stat(path.join(outputDirectory, "manifest.json"))).mode & 0o777, 0o600);
   }
 
   const restored = await readCloudMigrationBundle(outputDirectory);
@@ -974,22 +952,19 @@ test("CLI import and verify require and use an explicit adapter module", async (
     options,
   );
   assert.equal(output.length, 2);
-  await assert.rejects(
-    runCli(["verify", "--bundle", outputDirectory], options),
-    /--adapter/,
-  );
+  await assert.rejects(runCli(["verify", "--bundle", outputDirectory], options), /--adapter/);
 });
 
 test("Wrangler adapter requires remote opt-in and keeps transfer files private", async () => {
-  const {
-    createCloudMigrationAdapters,
-    createWranglerCloudAdapters,
-  } = await import("../scripts/wrangler-cloud-adapter.mjs");
+  const { createCloudMigrationAdapters, createWranglerCloudAdapters } = await import(
+    "../scripts/wrangler-cloud-adapter.mjs"
+  );
   assert.throws(
-    () => createWranglerCloudAdapters({
-      remote: true,
-      environment: {},
-    }),
+    () =>
+      createWranglerCloudAdapters({
+        remote: true,
+        environment: {},
+      }),
     /BROADCAST_MIGRATION_REMOTE=1/,
   );
 
@@ -1001,10 +976,11 @@ test("Wrangler adapter requires remote opt-in and keeps transfer files private",
   const oversizedBundle = structuredClone(bundle);
   oversizedBundle.tables.tasks[0].description = "界".repeat(40_000);
   assert.throws(
-    () => createCloudMigrationAdapters({
-      bundle: oversizedBundle,
-      command: "import",
-    }),
+    () =>
+      createCloudMigrationAdapters({
+        bundle: oversizedBundle,
+        command: "import",
+      }),
     /single row.*90,?000 bytes/i,
   );
   const calls = [];
@@ -1068,14 +1044,13 @@ test("Wrangler adapter requires remote opt-in and keeps transfer files private",
 });
 
 test("one-time Wrangler adapter migrates and verifies local persistence without remote access", async () => {
-  const {
-    createWranglerCloudAdapters,
-  } = await import("../scripts/wrangler-cloud-adapter.mjs");
+  const { createWranglerCloudAdapters } = await import("../scripts/wrangler-cloud-adapter.mjs");
   assert.throws(
-    () => createWranglerCloudAdapters({
-      remote: true,
-      environment: {},
-    }),
+    () =>
+      createWranglerCloudAdapters({
+        remote: true,
+        environment: {},
+      }),
     /BROADCAST_MIGRATION_REMOTE=1/,
   );
 
@@ -1115,35 +1090,37 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
   const adapterPath = path.join(projectRoot, "scripts", "wrangler-cloud-adapter.mjs");
 
   async function applyMigrations(persistTo) {
-    await execFile(process.execPath, [wranglerExecutable,
-      "d1",
-      "migrations",
-      "apply",
-      "broadcast-db",
-      "--local",
-      "--persist-to",
-      persistTo,
-      "--config",
-      wranglerConfig,
-    ], { cwd: projectRoot });
+    await execFile(
+      process.execPath,
+      [
+        wranglerExecutable,
+        "d1",
+        "migrations",
+        "apply",
+        "broadcast-db",
+        "--local",
+        "--persist-to",
+        persistTo,
+        "--config",
+        wranglerConfig,
+      ],
+      { cwd: projectRoot },
+    );
   }
 
   async function runMigration(command, directory, persistTo) {
-    return execFile(process.execPath, [
-      "scripts/migrate-to-cloud.mjs",
-      command,
-      "--bundle",
-      directory,
-      "--adapter",
-      adapterPath,
-    ], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        BROADCAST_MIGRATION_PERSIST_TO: persistTo,
-        BROADCAST_MIGRATION_CONFIG: wranglerConfig,
+    return execFile(
+      process.execPath,
+      ["scripts/migrate-to-cloud.mjs", command, "--bundle", directory, "--adapter", adapterPath],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          BROADCAST_MIGRATION_PERSIST_TO: persistTo,
+          BROADCAST_MIGRATION_CONFIG: wranglerConfig,
+        },
       },
-    });
+    );
   }
 
   const persistTo = path.join(fixture.directory, "wrangler-success");
@@ -1151,9 +1128,8 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
   await runMigration("import", bundleDirectory, persistTo);
   await runMigration("verify", bundleDirectory, persistTo);
 
-  const configuredDatabaseId = JSON.parse(
-    await readFile(wranglerConfig, "utf8"),
-  ).d1_databases[0].database_id;
+  const configuredDatabaseId = JSON.parse(await readFile(wranglerConfig, "utf8")).d1_databases[0]
+    .database_id;
   const miniflare = new Miniflare({
     modules: true,
     scriptPath: path.join(projectRoot, "apps", "cloud", "build", "index.js"),
@@ -1187,10 +1163,7 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
       { method: "DELETE", headers: { authorization } },
     );
     assert.equal(deleted.status, 204);
-    assert.equal(
-      await (await miniflare.getR2Bucket("ATTACHMENTS")).head(attachment.id),
-      null,
-    );
+    assert.equal(await (await miniflare.getR2Bucket("ATTACHMENTS")).head(attachment.id), null);
   } finally {
     await miniflare.dispose();
   }
@@ -1211,10 +1184,7 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
     configPath: wranglerConfig,
   });
   try {
-    assert.deepEqual(
-      await failureAdapters.d1.countByProject(),
-      expectedCloudBaselineCounts(),
-    );
+    assert.deepEqual(await failureAdapters.d1.countByProject(), expectedCloudBaselineCounts());
     for (const attachment of bundle.attachments) {
       assert.equal(await failureAdapters.r2.head(attachment.id), null);
     }

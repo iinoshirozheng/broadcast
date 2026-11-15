@@ -3,12 +3,14 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
 
-
 const sourceUrl = new URL("../crates/codex/assets/broadcast.user.js", import.meta.url);
 const source = (await readFile(sourceUrl, "utf8")).replaceAll("\r\n", "\n");
 const webStyles = await readFile(new URL("../apps/web/src/styles.css", import.meta.url), "utf8");
 const webApp = await readFile(new URL("../apps/web/src/App.tsx", import.meta.url), "utf8");
-const embeddedHost = await readFile(new URL("../apps/web/src/embeddedHost.mjs", import.meta.url), "utf8");
+const embeddedHost = await readFile(
+  new URL("../apps/web/src/embeddedHost.mjs", import.meta.url),
+  "utf8",
+);
 
 test("injection is an idempotent IIFE guarded by its current source hash", () => {
   assert.match(source, /^\(\(\) => \{/);
@@ -64,21 +66,24 @@ test("entry recognizes the Explore rail labels", () => {
   );
   let currentButtons;
   const rail = {
-    querySelectorAll: (selector) => selector === "button" ? currentButtons : [],
+    querySelectorAll: (selector) => (selector === "button" ? currentButtons : []),
   };
-  const findReferenceButton = vm.runInNewContext(`(() => {
+  const findReferenceButton = vm.runInNewContext(
+    `(() => {
     const EXPLORE_LABELS = ["探索", "explore"];
     const OWNED_ATTRIBUTE = "data-broadcast-owned";
     ${normalizedLabelSource}
     ${referenceSource}
     return findReferenceButton;
-  })()`, {
-    document: { querySelector: () => rail },
-  });
+  })()`,
+    {
+      document: { querySelector: () => rail },
+    },
+  );
 
   for (const textContent of ["探索", "Explore"]) {
     const currentButton = {
-      querySelector: (selector) => selector === ".sr-only" ? { textContent } : null,
+      querySelector: (selector) => (selector === ".sr-only" ? { textContent } : null),
       getAttribute: () => null,
       parentElement: {},
     };
@@ -91,13 +96,16 @@ test("entry recognizes the Explore rail labels", () => {
     source.indexOf("function hostLanguage"),
     source.indexOf("\n\n  function hostError"),
   );
-  const hostText = vm.runInNewContext(`(() => {
+  const hostText = vm.runInNewContext(
+    `(() => {
     ${languageSource}
     return hostText;
-  })()`, {
-    document: languageDocument,
-    navigator: { language: "en-US" },
-  });
+  })()`,
+    {
+      document: languageDocument,
+      navigator: { language: "en-US" },
+    },
+  );
 
   for (const language of ["zh", "zh-CN", "zh-TW", "zh-HK"]) {
     languageDocument.documentElement.lang = language;
@@ -115,7 +123,10 @@ test("opening Broadcast preserves native selection and the titlebar", () => {
   assert.match(source, /syncNativeRailIcons\(\)/);
   assert.match(source, /restoreNativeRailIcons\(\)/);
   assert.match(source, /destination\?\.getAttribute\("aria-current"\) === "page"/);
-  assert.match(source, /function onDocumentClick[\s\S]*event\.stopPropagation\(\)[\s\S]*closeBroadcast\(false\);/);
+  assert.match(
+    source,
+    /function onDocumentClick[\s\S]*event\.stopPropagation\(\)[\s\S]*closeBroadcast\(false\);/,
+  );
 });
 
 test("the embedded page sits below the native titlebar without a full-page no-drag region", () => {
@@ -133,13 +144,19 @@ test("the embedded page sits below the native titlebar without a full-page no-dr
 });
 
 test("only the empty embedded header spacer is draggable", () => {
-  assert.match(webApp, /<div ref=\{dragRegionRef\} className="workspace-drag-region" aria-hidden="true" \/>/);
+  assert.match(
+    webApp,
+    /<div ref=\{dragRegionRef\} className="workspace-drag-region" aria-hidden="true" \/>/,
+  );
   assert.match(webApp, /type: "broadcast:drag-region"/);
   assert.match(source, /const DRAG_REGION_ID = "broadcast-drag-region"/);
   assert.match(source, /message\.type === "broadcast:drag-region"/);
   assert.match(source, /function updateDragRegion\(payload\)/);
   assert.match(source, /#\$\{DRAG_REGION_ID\} \{[\s\S]*?-webkit-app-region: drag;/);
-  assert.doesNotMatch(webStyles, /\.app-shell\.embedded \.workspace-header \{\s*-webkit-app-region: no-drag;/);
+  assert.doesNotMatch(
+    webStyles,
+    /\.app-shell\.embedded \.workspace-header \{\s*-webkit-app-region: no-drag;/,
+  );
   assert.match(
     webStyles,
     /\.app-shell\.embedded \.workspace-drag-region \{\s*-webkit-app-region: drag;/,
@@ -170,7 +187,10 @@ test("the embedded header exposes Codex's native sidebar expansion when collapse
   assert.match(webApp, /type: "broadcast:expand-sidebar"/);
   assert.match(webApp, /className="detail-back-button codex-sidebar-expand-button"/);
   assert.match(webApp, /<LinearIcon name="codexSidebarExpand" \/>/);
-  assert.match(webStyles, /\.codex-sidebar-expand-button \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;/);
+  assert.match(
+    webStyles,
+    /\.codex-sidebar-expand-button \{[\s\S]*?width: 28px;[\s\S]*?height: 28px;/,
+  );
 });
 
 test("opening asks the resident launcher to ensure the service and rebuilds failed frames", () => {
@@ -208,10 +228,7 @@ test("reopening captures the current identity before showing a reused cache-bust
 });
 
 test("opaque iframe messages require the current document capability", () => {
-  assert.match(
-    source,
-    /event\.source !== frame\.contentWindow \|\| event\.origin !== frameOrigin/,
-  );
+  assert.match(source, /event\.source !== frame\.contentWindow \|\| event\.origin !== frameOrigin/);
   assert.match(source, /message\.type === "broadcast:open-thread"/);
   assert.match(source, /message\.type === "broadcast:create-thread"/);
   assert.match(source, /message\.capability !== frameCapability/);
@@ -237,7 +254,10 @@ test("HTTP and HTTPS links are opened by the authenticated host instead of a san
 test("the iframe automation contract is forwarded through the fixed host binding", () => {
   assert.match(source, /message\.type === "broadcast:automation-request"/);
   assert.match(source, /function handleAutomationRequest\(payload\)/);
-  assert.match(source, /requestHost\(\s*"automation",\s*buildAutomationHostPayload\(payload\),\s*\)/);
+  assert.match(
+    source,
+    /requestHost\(\s*"automation",\s*buildAutomationHostPayload\(payload\),?\s*\)/,
+  );
   assert.match(source, /operation: payload\.operation/);
   assert.match(source, /broadcastProjectId: payload\.broadcastProjectId/);
   assert.match(source, /codexProjectId: payload\.codexProjectId/);
@@ -280,20 +300,38 @@ test("issues open an unsent native Codex composer in the confirmed project", () 
   assert.match(source, /available: Array\.isArray\(roots\)/);
   assert.match(source, /function normalizeNativeRootPath\(value\)/);
   assert.match(source, /async function canonicalNativeRootPaths\(roots\)/);
-  assert.match(source, /requestNativeFetch\("workspace-root-options", \{\s*hostId: "local",\s*canonicalizeRoots: roots,/);
+  assert.match(
+    source,
+    /requestNativeFetch\("workspace-root-options", \{\s*hostId: "local",\s*canonicalizeRoots: roots,/,
+  );
   assert.match(source, /async function resolveNativeProject\(requestedProjectId, workspacePath\)/);
-  assert.match(source, /let project = context\.projects\.find\(\(candidate\) => candidate\.id === requestedProjectId\) \?\? null/);
+  assert.match(
+    source,
+    /let project = context\.projects\.find\(\(candidate\) => candidate\.id === requestedProjectId\) \?\? null/,
+  );
   assert.match(source, /if \(!project && normalizedWorkspacePath\)/);
-  assert.match(source, /const targetRoot = normalizedWorkspacePath \? workspacePath : project\?\.rootPaths\[0\]/);
+  assert.match(
+    source,
+    /const targetRoot = normalizedWorkspacePath \? workspacePath : project\?\.rootPaths\[0\]/,
+  );
   assert.match(source, /async function waitForNativeProject\(targetRoot, expectedProjectId\)/);
   const waitStart = source.indexOf("async function waitForNativeProject");
-  const waitSource = source.slice(waitStart, source.indexOf("async function createThreadForTask", waitStart));
+  const waitSource = source.slice(
+    waitStart,
+    source.indexOf("async function createThreadForTask", waitStart),
+  );
   assert.match(waitSource, /selectedNativeProjectId\(\)/);
   assert.match(waitSource, /activeNativeWorkspaceRoots\(\)/);
   assert.match(waitSource, /if \(projectId && projectId === expectedProjectId\)/);
   assert.match(waitSource, /if \(!activeWorkspace\.available\) return projectId/);
-  assert.match(waitSource, /canonicalNativeRootPaths\(\[\s*targetRoot,\s*\.\.\.activeWorkspace\.roots,/);
-  assert.match(waitSource, /canonicalActiveRoots\.some\(\(root\) => root === canonicalTargetRoot\)/);
+  assert.match(
+    waitSource,
+    /canonicalNativeRootPaths\(\[\s*targetRoot,\s*\.\.\.activeWorkspace\.roots,/,
+  );
+  assert.match(
+    waitSource,
+    /canonicalActiveRoots\.some\(\(root\) => root === canonicalTargetRoot\)/,
+  );
   assert.match(
     source,
     /bridge\.sendMessageFromView\(\{\s*type: "electron-add-new-workspace-root-option",\s*root: targetRoot,/,
@@ -301,10 +339,13 @@ test("issues open an unsent native Codex composer in the confirmed project", () 
   assert.match(source, /await waitForNativeProject\(targetRoot, projectId\)/);
   assert.match(
     createThreadSource,
-    /if \(!projectless && codexProjectKind === "remote"\) \{[\s\S]*?codexHostId = typeof payload\?\.codexHostId[\s\S]*?codexProjectWorkspacePath[\s\S]*?await waitForRemoteProject\(requestedProjectId, codexHostId, codexProjectWorkspacePath\);/,
+    /if \(!projectless && codexProjectKind === "remote"\) \{[\s\S]*?codexHostId =\s+typeof payload\?\.codexHostId[\s\S]*?codexProjectWorkspacePath[\s\S]*?await waitForRemoteProject\(requestedProjectId, codexHostId, codexProjectWorkspacePath\);/,
   );
   assert.match(source, /const focusComposerNonce = crypto\.randomUUID\(\)/);
-  assert.match(createThreadSource, /type: "navigate-to-route",\s*path: "\/",\s*state: \{\s*focusComposerNonce,\s*prefillPrompt: instruction,/);
+  assert.match(
+    createThreadSource,
+    /type: "navigate-to-route",\s*path: "\/",\s*state: \{\s*focusComposerNonce,\s*prefillPrompt: instruction,/,
+  );
   assert.match(createThreadSource, /type: "broadcast:thread-prepared", payload: \{ taskId \}/);
   assert.doesNotMatch(createThreadSource, /start-task-conversation|previousThreadId|threadId:/);
   assert.match(webApp, /title: task\.title,/);
@@ -315,7 +356,10 @@ test("issues open an unsent native Codex composer in the confirmed project", () 
 });
 
 test("the standalone web page opens linked Codex tasks through the app deep link", () => {
-  assert.match(webApp, /window\.location\.assign\(`codex:\/\/threads\/\$\{encodeURIComponent\(binding\.threadId\.trim\(\)\)\}`\)/);
+  assert.match(
+    webApp,
+    /window\.location\.assign\(`codex:\/\/threads\/\$\{encodeURIComponent\(binding\.threadId\.trim\(\)\)\}`\)/,
+  );
 });
 
 test("the injected app opens an existing local Codex task instead of a new composer", () => {
@@ -325,7 +369,10 @@ test("the injected app opens an existing local Codex task instead of a new compo
     source.indexOf("async function nativeProjectContext", openThreadStart),
   );
   assert.match(openThreadSource, /if \(row\?\.isConnected\) \{\s*row\.click\?\.\(\);\s*return;/);
-  assert.match(openThreadSource, /await dispatchHostMessage\(\{\s*type: "navigate-to-route",\s*path: routeForThread\(normalizedThreadId\)/);
+  assert.match(
+    openThreadSource,
+    /await dispatchHostMessage\(\{\s*type: "navigate-to-route",\s*path: routeForThread\(normalizedThreadId\)/,
+  );
   assert.match(source, /return `\/local\/\$\{encodeURIComponent\(threadId\)\}`/);
   assert.doesNotMatch(source, /return `\/thread\/\$\{encodeURIComponent\(threadId\)\}`/);
   assert.doesNotMatch(openThreadSource, /focusComposerNonce/);
@@ -353,13 +400,19 @@ test("remote Codex tasks wait for the exact project and host without a local rou
   assert.match(remoteProjectSource, /selectedProjectId === projectId/);
   assert.match(remoteProjectSource, /selectedProject\?\.projectKind === "remote"/);
   assert.match(remoteProjectSource, /selectedProject\.hostId === hostId/);
-  assert.match(remoteProjectSource, /!workspacePath \|\| selectedProject\.workspacePath === workspacePath/);
+  assert.match(
+    remoteProjectSource,
+    /!workspacePath \|\| selectedProject\.workspacePath === workspacePath/,
+  );
   assert.match(remoteOpenSource, /waitForRemoteThreadRow\(normalizedThreadId, projectId\)/);
   assert.match(remoteOpenSource, /type: "broadcast:thread-open-error"/);
   assert.doesNotMatch(remoteOpenSource, /routeForThread/);
   assert.match(webApp, /openThread\(conversation\.threadBinding\)/);
   assert.match(webApp, /onOpenThread=\{openThread\}/);
-  assert.match(webApp, /project\.id === binding\.codexProjectId[\s\S]*?project\.hostId === binding\.codexHostId[\s\S]*?project\.workspacePath === binding\.workspacePath/);
+  assert.match(
+    webApp,
+    /project\.id === binding\.codexProjectId[\s\S]*?project\.hostId === binding\.codexHostId[\s\S]*?project\.workspacePath === binding\.workspacePath/,
+  );
   assert.match(webApp, /message\.type === "broadcast:thread-open-error"/);
 });
 
@@ -370,8 +423,14 @@ test("host navigation follows Codex's renderer message bus", () => {
 });
 
 test("the standalone web page always opens a project-scoped Codex composer", () => {
-  assert.doesNotMatch(webApp, /standalone && task\.threadBinding[\s\S]*?openThread\(task\.threadBinding\)/);
-  assert.doesNotMatch(webApp, /standalone && task\.legacyLocalThreadId[\s\S]*?openLegacyLocalThread\(task\.legacyLocalThreadId\)/);
+  assert.doesNotMatch(
+    webApp,
+    /standalone && task\.threadBinding[\s\S]*?openThread\(task\.threadBinding\)/,
+  );
+  assert.doesNotMatch(
+    webApp,
+    /standalone && task\.legacyLocalThreadId[\s\S]*?openLegacyLocalThread\(task\.legacyLocalThreadId\)/,
+  );
   assert.match(webApp, /new URL\("codex:\/\/threads\/new"\)/);
   assert.match(webApp, /deepLink\.searchParams\.set\("path", workspacePath\)/);
   assert.match(webApp, /deepLink\.searchParams\.set\("prompt", embeddedInstruction\)/);
@@ -382,10 +441,11 @@ test("native fetch preserves successful null bodies and returns undefined when u
     source.indexOf("function requestNativeFetch"),
     source.indexOf("\n\n  async function selectedNativeProjectId"),
   );
-  const loadRequestNativeFetch = (window) => vm.runInNewContext(`(${functionSource})`, {
-    crypto: { randomUUID: () => "request-id" },
-    window,
-  });
+  const loadRequestNativeFetch = (window) =>
+    vm.runInNewContext(`(${functionSource})`, {
+      crypto: { randomUUID: () => "request-id" },
+      window,
+    });
   const responseWindow = (status, bodyJsonString) => {
     let onMessage;
     return {
@@ -403,7 +463,9 @@ test("native fetch preserves successful null bodies and returns undefined when u
       },
       setTimeout,
       clearTimeout,
-      addEventListener(_type, listener) { onMessage = listener; },
+      addEventListener(_type, listener) {
+        onMessage = listener;
+      },
       removeEventListener() {},
     };
   };
@@ -414,9 +476,11 @@ test("native fetch preserves successful null bodies and returns undefined when u
     null,
   );
   assert.deepEqual(
-    JSON.parse(JSON.stringify(
-      await loadRequestNativeFetch(responseWindow(200, '{"value":null}'))("get-global-state", {}),
-    )),
+    JSON.parse(
+      JSON.stringify(
+        await loadRequestNativeFetch(responseWindow(200, '{"value":null}'))("get-global-state", {}),
+      ),
+    ),
     { value: null },
   );
   assert.equal(
@@ -431,7 +495,10 @@ test("native fetch preserves successful null bodies and returns undefined when u
   let expire;
   const timeoutWindow = {
     electronBridge: { sendMessageFromView() {} },
-    setTimeout(callback) { expire = callback; return 1; },
+    setTimeout(callback) {
+      expire = callback;
+      return 1;
+    },
     clearTimeout() {},
     addEventListener() {},
     removeEventListener() {},
@@ -441,16 +508,17 @@ test("native fetch preserves successful null bodies and returns undefined when u
   assert.equal(await timeoutRequest, undefined);
 
   const throwingWindow = {
-    electronBridge: { sendMessageFromView() { throw new Error("unavailable"); } },
+    electronBridge: {
+      sendMessageFromView() {
+        throw new Error("unavailable");
+      },
+    },
     setTimeout,
     clearTimeout,
     addEventListener() {},
     removeEventListener() {},
   };
-  assert.equal(
-    await loadRequestNativeFetch(throwingWindow)("get-global-state", {}),
-    undefined,
-  );
+  assert.equal(await loadRequestNativeFetch(throwingWindow)("get-global-state", {}), undefined);
 });
 
 test("host context captures all Codex projects even when the sidebar section is collapsed", () => {
@@ -458,8 +526,14 @@ test("host context captures all Codex projects even when the sidebar section is 
   assert.match(source, /await window\.electronBridge\?\.getInitialSidebarBootstrap\?\.\(\)/);
   assert.match(source, /requestNativeFetch\("get-global-state", \{ key: "local-projects" \}\)/);
   assert.match(source, /requestNativeFetch\("get-global-state", \{ key: "remote-projects" \}\)/);
-  assert.match(source, /currentLocalProjects === undefined\s*\? entries\.get\("local-projects"\)\s*: currentLocalProjects\?\.value/);
-  assert.match(source, /currentRemoteProjects === undefined\s*\? entries\.get\("remote-projects"\)\s*: currentRemoteProjects\?\.value/);
+  assert.match(
+    source,
+    /currentLocalProjects === undefined\s*\? entries\.get\("local-projects"\)\s*: currentLocalProjects\?\.value/,
+  );
+  assert.match(
+    source,
+    /currentRemoteProjects === undefined\s*\? entries\.get\("remote-projects"\)\s*: currentRemoteProjects\?\.value/,
+  );
   assert.match(source, /entries\.get\("local-projects"\)/);
   assert.match(source, /entries\.get\("remote-projects"\)/);
   assert.match(source, /projectKind: "remote"/);
@@ -474,8 +548,14 @@ test("host context captures all Codex projects even when the sidebar section is 
   assert.match(source, /requestHostEnsure\(broadcastUrl\),\s*captureHostContext\(\),/);
   assert.match(source, /let lastNativeThreadId = ""/);
   assert.match(source, /clickedThreadId.*lastNativeThreadId/s);
-  assert.match(source, /const currentThreadId = activeThreadId \|\| runningThreadId \|\| lastNativeThreadId/);
-  assert.match(source, /const threadId = currentThreadId \|\| lastNativeThreadId \|\| normalizeThreadId\(threadIdFromLocation\(\)\)/);
+  assert.match(
+    source,
+    /const currentThreadId = activeThreadId \|\| runningThreadId \|\| lastNativeThreadId/,
+  );
+  assert.match(
+    source,
+    /const threadId =\s+currentThreadId \|\| lastNativeThreadId \|\| normalizeThreadId\(threadIdFromLocation\(\)\)/,
+  );
   assert.match(source, /replace\(\/\^\(\?:local\|cloud\):\/i, ""\)/);
   assert.match(source, /function findTasksSection\(\)/);
 });
@@ -499,33 +579,38 @@ test("Codex bootstrap metadata resolves local roots and SSH remote roots asynchr
             },
             {
               key: "remote-projects",
-              value: [{
-                id: "remote-project",
-                hostId: "remote-ssh-discovered:example",
-                remotePath: "/srv/example/project",
-              }],
+              value: [
+                {
+                  id: "remote-project",
+                  hostId: "remote-ssh-discovered:example",
+                  remotePath: "/srv/example/project",
+                },
+              ],
             },
           ],
         }),
       },
     },
   });
-  assert.deepEqual(
-    JSON.parse(JSON.stringify([...(await readCodexProjectMetadata()).entries()])),
+  assert.deepEqual(JSON.parse(JSON.stringify([...(await readCodexProjectMetadata()).entries()])), [
     [
-      ["local", {
+      "local",
+      {
         projectKind: "local",
         hostId: "local",
         workspacePath: "/Users/example/project",
-      }],
-      ["remote-project", {
+      },
+    ],
+    [
+      "remote-project",
+      {
         projectKind: "remote",
         workspacePath: "/srv/example/project",
         hostId: "remote-ssh-discovered:example",
         name: "remote-project",
-      }],
+      },
     ],
-  );
+  ]);
 });
 
 test("Codex project metadata prefers the live global state over the startup bootstrap", async () => {
@@ -535,14 +620,17 @@ test("Codex project metadata prefers the live global state over the startup boot
   );
   const readCodexProjectMetadata = vm.runInNewContext(`(${functionSource})`, {
     requestNativeFetch: async (_path, body) => ({
-      value: body.key === "local-projects"
-        ? { live: { rootPaths: ["/Users/example/live"] } }
-        : [{
-          id: "live-remote",
-          hostId: "remote-ssh-discovered:live",
-          remotePath: "/srv/live",
-          label: "Live Remote",
-        }],
+      value:
+        body.key === "local-projects"
+          ? { live: { rootPaths: ["/Users/example/live"] } }
+          : [
+              {
+                id: "live-remote",
+                hostId: "remote-ssh-discovered:live",
+                remotePath: "/srv/live",
+                label: "Live Remote",
+              },
+            ],
     }),
     window: {
       electronBridge: {
@@ -554,33 +642,38 @@ test("Codex project metadata prefers the live global state over the startup boot
             },
             {
               key: "remote-projects",
-              value: [{
-                id: "stale-remote",
-                hostId: "remote-ssh-discovered:stale",
-                remotePath: "/srv/stale",
-              }],
+              value: [
+                {
+                  id: "stale-remote",
+                  hostId: "remote-ssh-discovered:stale",
+                  remotePath: "/srv/stale",
+                },
+              ],
             },
           ],
         }),
       },
     },
   });
-  assert.deepEqual(
-    JSON.parse(JSON.stringify([...(await readCodexProjectMetadata()).entries()])),
+  assert.deepEqual(JSON.parse(JSON.stringify([...(await readCodexProjectMetadata()).entries()])), [
     [
-      ["live", {
+      "live",
+      {
         projectKind: "local",
         hostId: "local",
         workspacePath: "/Users/example/live",
-      }],
-      ["live-remote", {
+      },
+    ],
+    [
+      "live-remote",
+      {
         projectKind: "remote",
         workspacePath: "/srv/live",
         hostId: "remote-ssh-discovered:live",
         name: "Live Remote",
-      }],
+      },
     ],
-  );
+  ]);
 });
 
 test("successful empty Codex project state does not revive startup metadata", async () => {
@@ -596,20 +689,23 @@ test("successful empty Codex project state does not revive startup metadata", as
       },
       {
         key: "remote-projects",
-        value: [{
-          id: "stale-remote",
-          hostId: "remote-ssh-discovered:stale",
-          remotePath: "/srv/stale",
-        }],
+        value: [
+          {
+            id: "stale-remote",
+            hostId: "remote-ssh-discovered:stale",
+            remotePath: "/srv/stale",
+          },
+        ],
       },
     ],
   };
-  const loadMetadata = (requestNativeFetch) => vm.runInNewContext(`(${functionSource})`, {
-    requestNativeFetch,
-    window: {
-      electronBridge: { getInitialSidebarBootstrap: async () => bootstrap },
-    },
-  });
+  const loadMetadata = (requestNativeFetch) =>
+    vm.runInNewContext(`(${functionSource})`, {
+      requestNativeFetch,
+      window: {
+        electronBridge: { getInitialSidebarBootstrap: async () => bootstrap },
+      },
+    });
 
   for (const requestNativeFetch of [
     async () => null,
@@ -637,18 +733,19 @@ test("new Codex conversations resolve projects added after startup", async () =>
     window: {
       electronBridge: {
         getInitialSidebarBootstrap: async () => ({
-          globalStateEntries: [{
-            key: "local-projects",
-            value: { stale: { rootPaths: ["/Users/example/stale"] } },
-          }],
+          globalStateEntries: [
+            {
+              key: "local-projects",
+              value: { stale: { rootPaths: ["/Users/example/stale"] } },
+            },
+          ],
         }),
       },
     },
   });
-  assert.deepEqual(
-    JSON.parse(JSON.stringify((await nativeProjectContext()).projects)),
-    [{ id: "live-project", rootPaths: ["/Users/example/live"] }],
-  );
+  assert.deepEqual(JSON.parse(JSON.stringify((await nativeProjectContext()).projects)), [
+    { id: "live-project", rootPaths: ["/Users/example/live"] },
+  ]);
 });
 
 test("new Codex conversations only use startup projects when the live request is unavailable", async () => {
@@ -657,28 +754,27 @@ test("new Codex conversations only use startup projects when the live request is
     source.indexOf("\n\n  async function resolveNativeProject"),
   );
   const bootstrap = {
-    globalStateEntries: [{
-      key: "local-projects",
-      value: { stale: { rootPaths: ["/Users/example/stale"] } },
-    }],
+    globalStateEntries: [
+      {
+        key: "local-projects",
+        value: { stale: { rootPaths: ["/Users/example/stale"] } },
+      },
+    ],
   };
-  const loadContext = (response) => vm.runInNewContext(`(${functionSource})`, {
-    requestNativeFetch: async () => response,
-    window: {
-      electronBridge: { getInitialSidebarBootstrap: async () => bootstrap },
-    },
-  });
+  const loadContext = (response) =>
+    vm.runInNewContext(`(${functionSource})`, {
+      requestNativeFetch: async () => response,
+      window: {
+        electronBridge: { getInitialSidebarBootstrap: async () => bootstrap },
+      },
+    });
 
   for (const response of [null, { value: null }, { value: {} }, { value: [] }]) {
-    assert.deepEqual(
-      JSON.parse(JSON.stringify((await loadContext(response)()).projects)),
-      [],
-    );
+    assert.deepEqual(JSON.parse(JSON.stringify((await loadContext(response)()).projects)), []);
   }
-  assert.deepEqual(
-    JSON.parse(JSON.stringify((await loadContext(undefined)()).projects)),
-    [{ id: "stale", rootPaths: ["/Users/example/stale"] }],
-  );
+  assert.deepEqual(JSON.parse(JSON.stringify((await loadContext(undefined)()).projects)), [
+    { id: "stale", rootPaths: ["/Users/example/stale"] },
+  ]);
 });
 
 test("native root canonicalization follows the filesystem's case sensitivity", async () => {
@@ -693,10 +789,14 @@ test("native root canonicalization follows the filesystem's case sensitivity", a
     "/Volumes/LOCAL344CASE/Project",
     "/Volumes/LOCAL344CASE/project",
   ];
-  const loadCanonicalizer = (requestNativeFetch) => vm.runInNewContext(`(() => {
+  const loadCanonicalizer = (requestNativeFetch) =>
+    vm.runInNewContext(
+      `(() => {
     ${functionSource}
     return { normalizeNativeRootPath, canonicalNativeRootPaths };
-  })()`, { requestNativeFetch });
+  })()`,
+      { requestNativeFetch },
+    );
   const calls = [];
   const canonicalizer = loadCanonicalizer(async (path, body) => {
     calls.push({ path, body: JSON.parse(JSON.stringify(body)) });
@@ -717,10 +817,12 @@ test("native root canonicalization follows the filesystem's case sensitivity", a
     canonicalizer.normalizeNativeRootPath(roots[2]),
     canonicalizer.normalizeNativeRootPath(roots[3]),
   );
-  assert.deepEqual(calls, [{
-    path: "workspace-root-options",
-    body: { hostId: "local", canonicalizeRoots: roots },
-  }]);
+  assert.deepEqual(calls, [
+    {
+      path: "workspace-root-options",
+      body: { hostId: "local", canonicalizeRoots: roots },
+    },
+  ]);
 
   const unavailable = loadCanonicalizer(async () => undefined);
   assert.deepEqual(
@@ -750,13 +852,16 @@ test("native project resolution gives the explicit project ID priority over path
       ],
     }),
     normalizeNativeRootPath: (value) => String(value || "").replace(/\/+$/, ""),
-    canonicalNativeRootPaths: async () => { canonicalCalls += 1; return []; },
+    canonicalNativeRootPaths: async () => {
+      canonicalCalls += 1;
+      return [];
+    },
   });
 
   assert.deepEqual(
-    JSON.parse(JSON.stringify(
-      await resolveNativeProject("expected", "/Volumes/LOCAL344CASE/project"),
-    )),
+    JSON.parse(
+      JSON.stringify(await resolveNativeProject("expected", "/Volumes/LOCAL344CASE/project")),
+    ),
     { projectId: "expected", targetRoot: "/Volumes/LOCAL344CASE/project" },
   );
   assert.equal(canonicalCalls, 0);
@@ -776,23 +881,29 @@ test("native project confirmation composes exact IDs, root availability, and can
   const loadWait = ({ projectId, activeWorkspace, canonicalPathByRoot }) => {
     let now = 0;
     const canonicalCalls = [];
-    const api = vm.runInNewContext(`(() => {
+    const api = vm.runInNewContext(
+      `(() => {
       ${canonicalSource}
       ${waitSource}
       return { waitForNativeProject };
-    })()`, {
-      Date: { now: () => now },
-      activeNativeWorkspaceRoots: async () => activeWorkspace,
-      hostText: (_chinese, english) => english,
-      requestNativeFetch: async (path, body) => {
-        canonicalCalls.push({ path, body: JSON.parse(JSON.stringify(body)) });
-        return canonicalPathByRoot === undefined ? undefined : { canonicalPathByRoot };
+    })()`,
+      {
+        Date: { now: () => now },
+        activeNativeWorkspaceRoots: async () => activeWorkspace,
+        hostText: (_chinese, english) => english,
+        requestNativeFetch: async (path, body) => {
+          canonicalCalls.push({ path, body: JSON.parse(JSON.stringify(body)) });
+          return canonicalPathByRoot === undefined ? undefined : { canonicalPathByRoot };
+        },
+        selectedNativeProjectId: async () => projectId,
+        window: {
+          setTimeout(resolve) {
+            now = 8_001;
+            resolve();
+          },
+        },
       },
-      selectedNativeProjectId: async () => projectId,
-      window: {
-        setTimeout(resolve) { now = 8_001; resolve(); },
-      },
-    });
+    );
     return { waitForNativeProject: api.waitForNativeProject, canonicalCalls };
   };
 
@@ -816,14 +927,13 @@ test("native project confirmation composes exact IDs, root availability, and can
       [defaultActive]: defaultTarget,
     },
   });
-  assert.equal(
-    await canonicalMatch.waitForNativeProject(defaultTarget, "expected"),
-    "expected",
-  );
-  assert.deepEqual(canonicalMatch.canonicalCalls, [{
-    path: "workspace-root-options",
-    body: { hostId: "local", canonicalizeRoots: [defaultTarget, defaultActive] },
-  }]);
+  assert.equal(await canonicalMatch.waitForNativeProject(defaultTarget, "expected"), "expected");
+  assert.deepEqual(canonicalMatch.canonicalCalls, [
+    {
+      path: "workspace-root-options",
+      body: { hostId: "local", canonicalizeRoots: [defaultTarget, defaultActive] },
+    },
+  ]);
 
   const emptyRoots = loadWait({
     projectId: "expected",

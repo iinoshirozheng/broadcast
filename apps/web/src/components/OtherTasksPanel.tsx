@@ -14,8 +14,9 @@ function archivedDate(
   text: (chinese: string, english: string) => string,
 ) {
   if (!value) return "";
-  const formatted = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" })
-    .format(new Date(value));
+  const formatted = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" }).format(
+    new Date(value),
+  );
   return text(`${formatted}归档`, `Archived ${formatted}`);
 }
 
@@ -27,13 +28,7 @@ interface ArchivedTaskCardProps {
   onDelete: (task: Task) => void;
 }
 
-function ArchivedTaskCard({
-  task,
-  busy,
-  restoring,
-  onRestore,
-  onDelete,
-}: ArchivedTaskCardProps) {
+function ArchivedTaskCard({ task, busy, restoring, onRestore, onDelete }: ArchivedTaskCardProps) {
   const { language, locale, text } = useBroadcastI18n();
   const displayIdentifier = task.externalKey ?? task.identifier;
   return (
@@ -62,7 +57,10 @@ function ArchivedTaskCard({
             <button
               className="archived-task-action archived-task-delete"
               type="button"
-              aria-label={text(`永久删除 ${displayIdentifier}`, `Permanently delete ${displayIdentifier}`)}
+              aria-label={text(
+                `永久删除 ${displayIdentifier}`,
+                `Permanently delete ${displayIdentifier}`,
+              )}
               title={text("永久删除", "Delete permanently")}
               disabled={busy}
               onClick={() => onDelete(task)}
@@ -102,7 +100,8 @@ export function ArchivedTasksColumn({
             <DeleteIcon color="var(--column-status-color)" size={14} />
           </span>
           <h2 id="column-archived">
-            {text("已归档", "Archived")}{tasks.length > 0 ? ` ${tasks.length}` : ""}
+            {text("已归档", "Archived")}
+            {tasks.length > 0 ? ` ${tasks.length}` : ""}
           </h2>
         </div>
       </header>
@@ -204,12 +203,15 @@ export function OtherTasksPanel({
 }: OtherTasksPanelProps) {
   const { language, text } = useBroadcastI18n();
   const archived = activeTab === "archived";
-  const activeLabel = archived
-    ? text("已归档", "Archived")
-    : taskStatusLabel(language, activeTab);
+  const activeLabel = archived ? text("已归档", "Archived") : taskStatusLabel(language, activeTab);
   const tasks = archived ? archivedTasks : tasksByStatus[activeTab];
-  const { findDropBefore, clearDropPreview, updateDropPreview, leaveDropPreview, getTaskDragShift } =
-    useTaskCardDragPreview({ tasks, draggedTaskId, draggedTaskHeight, isDropTarget });
+  const {
+    findDropBefore,
+    clearDropPreview,
+    updateDropPreview,
+    leaveDropPreview,
+    getTaskDragShift,
+  } = useTaskCardDragPreview({ tasks, draggedTaskId, draggedTaskHeight, isDropTarget });
 
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
@@ -235,9 +237,8 @@ export function OtherTasksPanel({
         style={{ "--other-task-tab-count": tabs.length } as CSSProperties}
       >
         {tabs.map((tab) => {
-          const label = tab === "archived"
-            ? text("已归档", "Archived")
-            : taskStatusLabel(language, tab);
+          const label =
+            tab === "archived" ? text("已归档", "Archived") : taskStatusLabel(language, tab);
           const count = tab === "archived" ? archivedTasks.length : tasksByStatus[tab].length;
           const selected = tab === activeTab;
           return (
@@ -253,7 +254,10 @@ export function OtherTasksPanel({
               onClick={() => onTabChange(tab)}
             >
               <span className="other-tasks-tab-label">{label}</span>
-              <span className="other-tasks-tab-count" aria-label={text(`${count} 个议题`, `${count} issues`)}>
+              <span
+                className="other-tasks-tab-count"
+                aria-label={text(`${count} 个议题`, `${count} issues`)}
+              >
                 {count}
               </span>
             </button>
@@ -289,57 +293,66 @@ export function OtherTasksPanel({
         onDragLeave={leaveDropPreview}
         onDrop={handleDrop}
       >
-        {archived ? archivedTasks.map((task) => (
-          <ArchivedTaskCard
-            key={task.id}
-            task={task}
-            busy={restoringTaskId !== null || deletingTaskId !== null}
-            restoring={restoringTaskId === task.id}
-            onRestore={onRestore}
-            onDelete={onDelete}
-          />
-        )) : tasks.map((task) => {
-          const dragShift = getTaskDragShift(task.id);
-          return (
-            <TaskCard
-              key={task.id}
-              task={task}
-              variant="sidebar"
-              presentation={presentations[task.id]}
-              isDragging={draggedTaskId === task.id}
-              dragShift={dragShift}
-              isMoving={movingTaskId === task.id}
-              isSettling={settlingTaskId === task.id}
-              isContextMenuOpen={contextMenuTaskId === task.id}
-              availableLabels={availableLabels}
-              projectName={projectNames?.[task.projectId]}
-              currentUser={currentUser}
-              showCover={showCover}
-              showBody={showBody}
-              showCreatedAt={showCreatedAt}
-              onCreateLabel={(label) => onCreateLabel(label, task.projectId)}
-              onEdit={onEdit}
-              onUpdate={onUpdate}
-              onContextMenu={onContextMenu}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-              onOpenConversation={onOpenConversation}
-            />
-          );
-        })}
+        {archived
+          ? archivedTasks.map((task) => (
+              <ArchivedTaskCard
+                key={task.id}
+                task={task}
+                busy={restoringTaskId !== null || deletingTaskId !== null}
+                restoring={restoringTaskId === task.id}
+                onRestore={onRestore}
+                onDelete={onDelete}
+              />
+            ))
+          : tasks.map((task) => {
+              const dragShift = getTaskDragShift(task.id);
+              return (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  variant="sidebar"
+                  presentation={presentations[task.id]}
+                  isDragging={draggedTaskId === task.id}
+                  dragShift={dragShift}
+                  isMoving={movingTaskId === task.id}
+                  isSettling={settlingTaskId === task.id}
+                  isContextMenuOpen={contextMenuTaskId === task.id}
+                  availableLabels={availableLabels}
+                  projectName={projectNames?.[task.projectId]}
+                  currentUser={currentUser}
+                  showCover={showCover}
+                  showBody={showBody}
+                  showCreatedAt={showCreatedAt}
+                  onCreateLabel={(label) => onCreateLabel(label, task.projectId)}
+                  onEdit={onEdit}
+                  onUpdate={onUpdate}
+                  onContextMenu={onContextMenu}
+                  onDragStart={onDragStart}
+                  onDragEnd={onDragEnd}
+                  onOpenConversation={onOpenConversation}
+                />
+              );
+            })}
         {tasks.length === 0 && (
           <div className="other-tasks-empty">
-            {hasActiveFilters
-              ? <LinearIcon name="search" />
-              : archived
-                ? <DeleteIcon color="currentColor" />
-                : <LinearIcon name="panel" />}
-            <strong>{hasActiveFilters
-              ? text("当前筛选下无匹配议题", "No issues match the current filters")
-              : text("暂无议题", "No issues")}</strong>
+            {hasActiveFilters ? (
+              <LinearIcon name="search" />
+            ) : archived ? (
+              <DeleteIcon color="currentColor" />
+            ) : (
+              <LinearIcon name="panel" />
+            )}
+            <strong>
+              {hasActiveFilters
+                ? text("当前筛选下无匹配议题", "No issues match the current filters")
+                : text("暂无议题", "No issues")}
+            </strong>
             <span>
               {hasActiveFilters
-                ? text("搜索和筛选会同步作用于所有状态。", "Search and filters apply to every status.")
+                ? text(
+                    "搜索和筛选会同步作用于所有状态。",
+                    "Search and filters apply to every status.",
+                  )
                 : archived
                   ? text("没有已归档议题。", "There are no archived issues.")
                   : text(`没有${activeLabel}。`, `There are no issues in ${activeLabel}.`)}

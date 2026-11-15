@@ -50,7 +50,9 @@ export function BroadcastIcon({ name, className, ...props }: BroadcastIconProps)
     "broadcast-icon",
     MONOCHROME_ICONS.has(name) ? "broadcast-icon-monochrome" : "",
     className ?? "",
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <img

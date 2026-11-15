@@ -2,10 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const launcherSource = await readFile(new URL("../apps/desktop/src/main.rs", import.meta.url), "utf8");
-const tauriConfig = JSON.parse(await readFile(new URL("../apps/desktop/tauri.conf.json", import.meta.url), "utf8"));
-const releaseWorkflow = await readFile(new URL("../.github/workflows/release-macos.yml", import.meta.url), "utf8");
-const checkWorkflow = await readFile(new URL("../.github/workflows/check.yml", import.meta.url), "utf8");
+const launcherSource = await readFile(
+  new URL("../apps/desktop/src/main.rs", import.meta.url),
+  "utf8",
+);
+const tauriConfig = JSON.parse(
+  await readFile(new URL("../apps/desktop/tauri.conf.json", import.meta.url), "utf8"),
+);
+const releaseWorkflow = await readFile(
+  new URL("../.github/workflows/release-macos.yml", import.meta.url),
+  "utf8",
+);
+const checkWorkflow = await readFile(
+  new URL("../.github/workflows/check.yml", import.meta.url),
+  "utf8",
+);
 
 test("the launcher keeps CDP random and prefers the Broadcast port with a fallback", () => {
   assert.match(launcherSource, /libc::flock/);
@@ -25,10 +36,7 @@ test("the launcher keeps CDP random and prefers the Broadcast port with a fallba
     /fn broadcast_listener\([^)]*\)[\s\S]*?broadcast_loopback_listener\(\)\?/,
   );
   assert.match(launcherSource, /codex_port: Mutex<Option<u16>>/);
-  assert.match(
-    launcherSource,
-    /fn codex_port\([\s\S]*?let listener = loopback_listener\(\)\?;/,
-  );
+  assert.match(launcherSource, /fn codex_port\([\s\S]*?let listener = loopback_listener\(\)\?;/);
   assert.match(
     launcherSource,
     /#\[cfg\(any\(target_os = "macos", target_os = "windows"\)\)\]\s+let cdp = broadcast_codex::Cdp::Port\(codex_port\);/,
@@ -60,10 +68,7 @@ test("Windows CI runs the Node suite and the unsigned launcher skips unsupported
     checkWorkflow,
     /windows-launcher:[\s\S]*?run: npm test[\s\S]*?run: npm run app:build:windows/,
   );
-  assert.match(
-    launcherSource,
-    /cfg!\(target_os = "windows"\)[\s\S]*?Windows 版本暂不支持自动更新/,
-  );
+  assert.match(launcherSource, /cfg!\(target_os = "windows"\)[\s\S]*?Windows 版本暂不支持自动更新/);
 });
 
 test("Windows CI uploads the NSIS installer with the pinned Node 24 artifact action", () => {

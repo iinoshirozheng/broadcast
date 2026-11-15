@@ -15,7 +15,8 @@ export function buildIssueUrl(
   if (projectId) url.searchParams.set("project", projectId);
   else url.searchParams.delete("project");
 
-  if (issueIdentifier) url.searchParams.set(ISSUE_QUERY_PARAM, issueIdentifier.trim().toUpperCase());
+  if (issueIdentifier)
+    url.searchParams.set(ISSUE_QUERY_PARAM, issueIdentifier.trim().toUpperCase());
   else url.searchParams.delete(ISSUE_QUERY_PARAM);
 
   return url;

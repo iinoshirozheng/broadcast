@@ -43,6 +43,7 @@ export function assigneeTargetForActor(
   actor: ActorIdentity,
   currentUser: ActorIdentity,
 ): AssigneeTarget | undefined {
-  if (actor.type === "agent") return actor.id === CLAUDE_AGENT_ACTOR.id ? "claude-agent" : "codex-agent";
+  if (actor.type === "agent")
+    return actor.id === CLAUDE_AGENT_ACTOR.id ? "claude-agent" : "codex-agent";
   return actor.id === currentUser.id ? "current-user" : undefined;
 }

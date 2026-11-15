@@ -46,17 +46,21 @@ test("a new status entry overrides the old draft status and restores the remaini
     const url = `http://127.0.0.1:${address.port}/test/fixtures/task-editor-create-status.html`;
     let stdout;
     try {
-      ({ stdout } = await execFileAsync(chrome, [
-        "--headless=new",
-        "--disable-background-networking",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-sandbox",
-        `--user-data-dir=${profile}`,
-        "--virtual-time-budget=2000",
-        "--dump-dom",
-        url,
-      ], { maxBuffer: 2_000_000, timeout: 30_000 }));
+      ({ stdout } = await execFileAsync(
+        chrome,
+        [
+          "--headless=new",
+          "--disable-background-networking",
+          "--disable-gpu",
+          "--no-first-run",
+          "--no-sandbox",
+          `--user-data-dir=${profile}`,
+          "--virtual-time-budget=2000",
+          "--dump-dom",
+          url,
+        ],
+        { maxBuffer: 2_000_000, timeout: 30_000 },
+      ));
     } catch (error) {
       if (!String(error?.stdout ?? "").trim()) {
         t.skip("Chrome or Chromium cannot run headless dump-dom in this environment");

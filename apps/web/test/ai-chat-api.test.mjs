@@ -52,14 +52,16 @@ test("local AI API client follows the fixed catalog, thread, turn and interrupt 
     const requestPath = `${url.pathname.replace("/instance-token", "")}${url.search}`;
     if (requestPath.startsWith("/api/local/ai/catalog")) {
       return json({
-        models: [{
-          slug: "codex-real",
-          displayName: "Codex Real",
-          description: "Local catalog",
-          defaultReasoningEffort: "high",
-          supportedReasoningEfforts: ["high"],
-          serviceTiers: [],
-        }],
+        models: [
+          {
+            slug: "codex-real",
+            displayName: "Codex Real",
+            description: "Local catalog",
+            defaultReasoningEffort: "high",
+            supportedReasoningEfforts: ["high"],
+            serviceTiers: [],
+          },
+        ],
         skills: [{ id: "real-skill", label: "Real Skill", scope: "user" }],
         sandboxes: ["read-only", "workspace-write", "danger-full-access"],
       });
@@ -69,7 +71,8 @@ test("local AI API client follows the fixed catalog, thread, turn and interrupt 
     if (requestPath === "/api/local/ai/threads/thread-1" && !init.method) {
       return json({ thread, events: [], runs: [] });
     }
-    if (requestPath === "/api/local/ai/threads/thread-1" && init.method === "PATCH") return json({ thread });
+    if (requestPath === "/api/local/ai/threads/thread-1" && init.method === "PATCH")
+      return json({ thread });
     if (requestPath === "/api/local/ai/threads/thread-1" && init.method === "DELETE") {
       return new Response(null, { status: 204 });
     }

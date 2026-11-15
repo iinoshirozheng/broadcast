@@ -148,11 +148,16 @@ window.__ModuleLoader__.load({
         return () => style.remove();
       }, "broadcast: styles");
 
-      ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
-        name: "sidebar.footer.action",
-        id: "broadcast",
-        order: 0,
-      }, BroadcastEntry));
+      ctx.slots.inject("sidebar.footer.action", () =>
+        ctx.slots.register(
+          {
+            name: "sidebar.footer.action",
+            id: "broadcast",
+            order: 0,
+          },
+          BroadcastEntry,
+        ),
+      );
     }
 
     exports.apply = apply;

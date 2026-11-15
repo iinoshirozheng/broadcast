@@ -2,14 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  lstat,
-  mkdtemp,
-  readFile,
-  readdir,
-  readlink,
-  rm,
-} from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, readlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,14 +22,12 @@ if (!appPath || !dmgPath || !releaseDirectory || !releaseTag) {
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
-const tauriConfig = JSON.parse(await readFile(
-  path.join(projectRoot, "apps", "desktop", "tauri.conf.json"),
-  "utf8",
-));
-const releasePolicy = JSON.parse(await readFile(
-  path.join(projectRoot, "apps", "desktop", "release.json"),
-  "utf8",
-));
+const tauriConfig = JSON.parse(
+  await readFile(path.join(projectRoot, "apps", "desktop", "tauri.conf.json"), "utf8"),
+);
+const releasePolicy = JSON.parse(
+  await readFile(path.join(projectRoot, "apps", "desktop", "release.json"), "utf8"),
+);
 const { releaseVersion, productName, appName, assets } = releaseMetadata(
   packageJson.version,
   releaseTag,
@@ -92,10 +83,13 @@ function verifyApp(targetPath) {
     throw new Error(`App does not use Apple Team ${releasePolicy.appleTeamId}`);
   }
   const launcherPath = path.join(targetPath, "Contents", "MacOS", "broadcast-launcher");
-  const embeddedVersion = spawnSync(
-    "/usr/bin/grep",
-    ["-a", "-F", "-q", releaseVersion, launcherPath],
-  );
+  const embeddedVersion = spawnSync("/usr/bin/grep", [
+    "-a",
+    "-F",
+    "-q",
+    releaseVersion,
+    launcherPath,
+  ]);
   if (embeddedVersion.status !== 0) {
     throw new Error(`Launcher does not embed release version ${releaseVersion}`);
   }
@@ -126,7 +120,7 @@ async function manifest(root, relative = "") {
     const details = await lstat(childPath);
     if (details.isDirectory()) {
       entries.push({ path: childRelative, type: "directory", mode: details.mode & 0o777 });
-      entries.push(...await manifest(root, childRelative));
+      entries.push(...(await manifest(root, childRelative)));
     } else if (details.isSymbolicLink()) {
       entries.push({ path: childRelative, type: "symlink", target: await readlink(childPath) });
     } else if (details.isFile()) {
@@ -135,7 +129,9 @@ async function manifest(root, relative = "") {
         type: "file",
         mode: details.mode & 0o777,
         size: details.size,
-        sha256: createHash("sha256").update(await readFile(childPath)).digest("hex"),
+        sha256: createHash("sha256")
+          .update(await readFile(childPath))
+          .digest("hex"),
       });
     }
   }
@@ -163,7 +159,9 @@ const expectedPlatforms = [
   "darwin-x86_64-app",
   "darwin-universal-app",
 ];
-if (JSON.stringify(Object.keys(latest.platforms).sort()) !== JSON.stringify(expectedPlatforms.sort())) {
+if (
+  JSON.stringify(Object.keys(latest.platforms).sort()) !== JSON.stringify(expectedPlatforms.sort())
+) {
   throw new Error("latest.json Darwin platform set is incorrect");
 }
 for (const platform of Object.values(latest.platforms)) {
@@ -176,7 +174,15 @@ verifyApp(appPath);
 run("/usr/bin/hdiutil", ["verify", dmgPath]);
 run("/usr/bin/xcrun", ["stapler", "validate", dmgPath]);
 run("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", dmgPath]);
-run("/usr/sbin/spctl", ["-a", "-t", "open", "--context", "context:primary-signature", "-vv", dmgPath]);
+run("/usr/sbin/spctl", [
+  "-a",
+  "-t",
+  "open",
+  "--context",
+  "context:primary-signature",
+  "-vv",
+  dmgPath,
+]);
 if (!signingDetails(dmgPath).includes(`TeamIdentifier=${releasePolicy.appleTeamId}`)) {
   throw new Error(`DMG does not use Apple Team ${releasePolicy.appleTeamId}`);
 }
@@ -191,14 +197,10 @@ try {
   verifyApp(updaterApp);
 
   const attach = run("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", "-plist", dmgPath]);
-  const attachJson = JSON.parse(run(
-    "/usr/bin/plutil",
-    ["-convert", "json", "-o", "-", "-"],
-    { input: attach.stdout },
-  ).stdout);
-  mountedDmg = attachJson["system-entities"]
-    .map((entry) => entry["mount-point"])
-    .find(Boolean);
+  const attachJson = JSON.parse(
+    run("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], { input: attach.stdout }).stdout,
+  );
+  mountedDmg = attachJson["system-entities"].map((entry) => entry["mount-point"]).find(Boolean);
   if (!mountedDmg) throw new Error("DMG did not expose a mount point");
   const dmgApp = path.join(mountedDmg, path.basename(appPath));
   verifyApp(dmgApp);

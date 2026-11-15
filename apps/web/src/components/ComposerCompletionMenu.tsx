@@ -1,11 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBroadcastI18n } from "../i18n";
-import {
-  ConversationIcon,
-  ProjectIcon,
-  WorkspaceWritePermissionIcon,
-} from "./SemanticIcons";
+import { ConversationIcon, ProjectIcon, WorkspaceWritePermissionIcon } from "./SemanticIcons";
 
 export interface ComposerCompletionOption {
   id: string;
@@ -123,45 +119,52 @@ export function ComposerCompletionMenu({
       style={{ position: "fixed", left: position.left, top: position.top }}
       onPointerDown={(event) => event.preventDefault()}
     >
-      {groups.map((group) => group.options.length > 0 && (
-        <section
-          className="composer-completion-group"
-          role="group"
-          aria-label={group.label}
-          key={group.id}
-        >
-          <header aria-hidden="true">{group.label}</header>
-          {group.options.map((option) => (
-            <button
-              className={option.selectableIndex === activeIndex ? "is-selected" : ""}
-              type="button"
-              role="option"
-              aria-selected={option.selectableIndex === activeIndex}
-              data-completion-index={option.selectableIndex}
-              key={option.id}
-              onPointerEnter={() => onActiveIndexChange(option.selectableIndex)}
-              onClick={() => onSelect(option.selectableIndex)}
+      {groups.map(
+        (group) =>
+          group.options.length > 0 && (
+            <section
+              className="composer-completion-group"
+              role="group"
+              aria-label={group.label}
+              key={group.id}
             >
-              {option.icon === "conversation"
-                ? <ConversationIcon color="currentColor" />
-                : option.icon === "action"
-                  ? <WorkspaceWritePermissionIcon color="currentColor" size={16} />
-                  : <ProjectIcon color="currentColor" />}
-              <span>
-                <strong>{option.label}</strong>
-                {option.description && <small>{option.description}</small>}
-              </span>
-            </button>
-          ))}
-        </section>
-      ))}
+              <header aria-hidden="true">{group.label}</header>
+              {group.options.map((option) => (
+                <button
+                  className={option.selectableIndex === activeIndex ? "is-selected" : ""}
+                  type="button"
+                  role="option"
+                  aria-selected={option.selectableIndex === activeIndex}
+                  data-completion-index={option.selectableIndex}
+                  key={option.id}
+                  onPointerEnter={() => onActiveIndexChange(option.selectableIndex)}
+                  onClick={() => onSelect(option.selectableIndex)}
+                >
+                  {option.icon === "conversation" ? (
+                    <ConversationIcon color="currentColor" />
+                  ) : option.icon === "action" ? (
+                    <WorkspaceWritePermissionIcon color="currentColor" size={16} />
+                  ) : (
+                    <ProjectIcon color="currentColor" />
+                  )}
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.description && <small>{option.description}</small>}
+                  </span>
+                </button>
+              ))}
+            </section>
+          ),
+      )}
       {loading && (
         <p className="composer-completion-state" role="status">
           {text("正在读取补全…", "Loading completions…")}
         </p>
       )}
       {!loading && error && (
-        <p className="composer-completion-state is-error" role="alert">{error}</p>
+        <p className="composer-completion-state is-error" role="alert">
+          {error}
+        </p>
       )}
       {!loading && !error && !hasOptions && (
         <div className="composer-completion-empty" role="status">
@@ -169,8 +172,13 @@ export function ComposerCompletionMenu({
             {text("没有匹配的可选项", "No matching completions")}
           </p>
           {emptyDiagnostics.length > 0 && (
-            <ul className="composer-completion-diagnostics" aria-label={text("来源状态", "Source status")}>
-              {emptyDiagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}
+            <ul
+              className="composer-completion-diagnostics"
+              aria-label={text("来源状态", "Source status")}
+            >
+              {emptyDiagnostics.map((diagnostic) => (
+                <li key={diagnostic}>{diagnostic}</li>
+              ))}
             </ul>
           )}
         </div>

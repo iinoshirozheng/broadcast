@@ -204,9 +204,12 @@ export function attachmentSegment(file: File): PendingAttachmentSegment {
   };
 }
 
-const COMPOSER_REFERENCE_URL = /^broadcast:\/\/composer-reference\/v1\/(skill|agent)\/([A-Za-z0-9_-]+)$/;
-const COMPOSER_REFERENCE_NAMESPACE_URL = /^broadcast:\/\/composer-reference\/([^/]+)\/([^/]+)\/([A-Za-z0-9_-]+)$/;
-const PENDING_IMAGE_COMPOSER_REFERENCE_URL = /^broadcast:\/\/composer-reference\/v1\/pending-image\/([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/;
+const COMPOSER_REFERENCE_URL =
+  /^broadcast:\/\/composer-reference\/v1\/(skill|agent)\/([A-Za-z0-9_-]+)$/;
+const COMPOSER_REFERENCE_NAMESPACE_URL =
+  /^broadcast:\/\/composer-reference\/([^/]+)\/([^/]+)\/([A-Za-z0-9_-]+)$/;
+const PENDING_IMAGE_COMPOSER_REFERENCE_URL =
+  /^broadcast:\/\/composer-reference\/v1\/pending-image\/([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/;
 
 function pendingImageComposerReference(
   url: string,
@@ -216,7 +219,7 @@ function pendingImageComposerReference(
   const type = match ? readComposerReferenceId(match[1]) : null;
   if (!match || !type?.startsWith("image/")) return null;
   try {
-    const base64 = `${match[2].replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - match[2].length % 4) % 4)}`;
+    const base64 = `${match[2].replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - (match[2].length % 4)) % 4)}`;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
@@ -244,20 +247,19 @@ function markdownNodeText(node: MarkdownAstNode): string | null {
 function composerReferenceFromNode(
   node: MarkdownAstNode,
   source: string,
-): (
-  | Omit<InlineComposerReferenceSegment, "id">
-  | Omit<InlineUnsupportedComposerReferenceSegment, "id">
-) & { start: number; end: number } | null {
+):
+  | ((
+      | Omit<InlineComposerReferenceSegment, "id">
+      | Omit<InlineUnsupportedComposerReferenceSegment, "id">
+    ) & { start: number; end: number })
+  | null {
   if (node.type !== "link" || !node.url) return null;
   const namespaceMatch = COMPOSER_REFERENCE_NAMESPACE_URL.exec(node.url);
-  if (!namespaceMatch || !readComposerReferenceId(namespaceMatch[3], namespaceMatch[2])) return null;
+  if (!namespaceMatch || !readComposerReferenceId(namespaceMatch[3], namespaceMatch[2]))
+    return null;
   const label = markdownNodeText(node);
   const markdown = source.slice(node.position.start.offset, node.position.end.offset);
-  if (
-    !label
-    || !markdown.startsWith("[")
-    || !markdown.endsWith(`](${node.url})`)
-  ) return null;
+  if (!label || !markdown.startsWith("[") || !markdown.endsWith(`](${node.url})`)) return null;
   const urlMatch = COMPOSER_REFERENCE_URL.exec(node.url);
   if (!urlMatch) {
     return {
@@ -289,13 +291,17 @@ export function referencedAttachmentIds(value: string): Set<string> {
   const ids = new Set<string>();
   while (nodes.length > 0) {
     const node = nodes.pop()!;
-    const url = node.type === "link" || node.type === "image"
-      ? node.url
-      : node.type === "linkReference" || node.type === "imageReference"
-        ? getDefinition(node.identifier)?.url
-        : undefined;
+    const url =
+      node.type === "link" || node.type === "image"
+        ? node.url
+        : node.type === "linkReference" || node.type === "imageReference"
+          ? getDefinition(node.identifier)?.url
+          : undefined;
     if (url) {
-      const reference = parseInternalDocumentUrl(resolvePersistedAttachmentUrl(url), document.baseURI);
+      const reference = parseInternalDocumentUrl(
+        resolvePersistedAttachmentUrl(url),
+        document.baseURI,
+      );
       if (reference?.type === "attachment") ids.add(reference.attachmentId);
     }
     if (node.children) nodes.push(...node.children);
@@ -392,9 +398,9 @@ export function createInlineMediaSegments(
       if (reference?.type === "attachment" && reference.endpoint === "download") {
         const filename = markdownNodeText(node);
         if (filename) {
-          const attachment = attachments.find((candidate) => (
-            candidate.id === reference.attachmentId
-          ));
+          const attachment = attachments.find(
+            (candidate) => candidate.id === reference.attachmentId,
+          );
           items.push({
             type: "persisted-attachment",
             start: node.position.start.offset,
@@ -410,9 +416,9 @@ export function createInlineMediaSegments(
       }
       if (reference?.type === "issue") {
         const { projectId, identifier } = reference;
-        const task = referenceTasks.find((candidate) => (
-          candidate.projectId === projectId && candidate.identifier === identifier
-        ));
+        const task = referenceTasks.find(
+          (candidate) => candidate.projectId === projectId && candidate.identifier === identifier,
+        );
         items.push({
           type: "issue-reference",
           start: node.position.start.offset,
@@ -424,9 +430,8 @@ export function createInlineMediaSegments(
         handledIssueReference = true;
       }
     }
-    const composerReference = handledAttachment || handledIssueReference
-      ? null
-      : composerReferenceFromNode(node, text);
+    const composerReference =
+      handledAttachment || handledIssueReference ? null : composerReferenceFromNode(node, text);
     if (composerReference) items.push(composerReference);
     if (node.children) nodes.push(...node.children);
   }
@@ -504,21 +509,25 @@ export function createInlineMediaSegments(
 }
 
 export function inlineMediaImages(segments: InlineMediaSegment[]): PendingInlineImage[] {
-  return segments.filter((segment): segment is PendingInlineImage => segment.type === "pending-image");
+  return segments.filter(
+    (segment): segment is PendingInlineImage => segment.type === "pending-image",
+  );
 }
 
 export function inlineMediaFiles(segments: InlineMediaSegment[]): PendingInlineAttachment[] {
-  return segments.filter((segment): segment is PendingInlineAttachment => (
-    segment.type === "pending-attachment"
-  ));
+  return segments.filter(
+    (segment): segment is PendingInlineAttachment => segment.type === "pending-attachment",
+  );
 }
 
 export function inlineMediaText(segments: InlineMediaSegment[]): string {
-  return segments.map((segment) => {
-    if (segment.type === "text") return segment.text;
-    if (segment.type === "pending-image" || segment.type === "pending-attachment") return "";
-    return segment.markdown;
-  }).join("");
+  return segments
+    .map((segment) => {
+      if (segment.type === "text") return segment.text;
+      if (segment.type === "pending-image" || segment.type === "pending-attachment") return "";
+      return segment.markdown;
+    })
+    .join("");
 }
 
 export function isBroadcastAttachmentMedia(
@@ -529,9 +538,11 @@ export function isBroadcastAttachmentMedia(
     const reference = parseInternalDocumentUrl(segment.url, baseUri);
     return reference?.type === "attachment" && reference.endpoint === "content";
   }
-  return segment?.type === "pending-image"
-    || segment?.type === "pending-attachment"
-    || segment?.type === "persisted-attachment";
+  return (
+    segment?.type === "pending-image" ||
+    segment?.type === "pending-attachment" ||
+    segment?.type === "persisted-attachment"
+  );
 }
 
 function serializeInlineMediaSegments(
@@ -545,10 +556,10 @@ function serializeInlineMediaSegments(
   segments.forEach((segment, index) => {
     const value = segmentValue(segment);
     if (
-      segment.type === "text"
-      && isBroadcastAttachmentMedia(segments[index - 1], baseUri)
-      && isBroadcastAttachmentMedia(segments[index + 1], baseUri)
-      && /^\n*$/.test(value)
+      segment.type === "text" &&
+      isBroadcastAttachmentMedia(segments[index - 1], baseUri) &&
+      isBroadcastAttachmentMedia(segments[index + 1], baseUri) &&
+      /^\n*$/.test(value)
     ) {
       markdown += `\n${value}`;
       previousWasMedia = false;
@@ -576,15 +587,18 @@ export function serializeInlineMedia(
   segments: InlineMediaSegment[],
   baseUri: string = document.baseURI,
 ): string {
-  return serializeInlineMediaSegments(segments, (segment) => (
-    segment.type === "text"
-      ? segment.text
-      : segment.type === "pending-image"
-        ? segment.token
-        : segment.type === "pending-attachment"
+  return serializeInlineMediaSegments(
+    segments,
+    (segment) =>
+      segment.type === "text"
+        ? segment.text
+        : segment.type === "pending-image"
           ? segment.token
-        : segment.markdown
-  ), baseUri);
+          : segment.type === "pending-attachment"
+            ? segment.token
+            : segment.markdown,
+    baseUri,
+  );
 }
 
 export function normalizeSegments(segments: InlineMediaSegment[]): InlineMediaSegment[] {
@@ -592,8 +606,8 @@ export function normalizeSegments(segments: InlineMediaSegment[]): InlineMediaSe
   for (const segment of segments) {
     const previous = normalized.at(-1);
     if (
-      (isInlineReference(segment) && previous?.type !== "text")
-      || (previous && isInlineReference(previous) && segment.type !== "text")
+      (isInlineReference(segment) && previous?.type !== "text") ||
+      (previous && isInlineReference(previous) && segment.type !== "text")
     ) {
       normalized.push(textSegment());
     }
@@ -615,25 +629,34 @@ export function normalizeSegments(segments: InlineMediaSegment[]): InlineMediaSe
 
 export function isInlineReference(
   segment: InlineMediaSegment,
-): segment is IssueReferenceSegment | InlineComposerReferenceSegment | InlineUnsupportedComposerReferenceSegment {
-  return segment.type === "issue-reference"
-    || segment.type === "skill-reference"
-    || segment.type === "agent-reference"
-    || segment.type === "unsupported-reference";
+): segment is
+  | IssueReferenceSegment
+  | InlineComposerReferenceSegment
+  | InlineUnsupportedComposerReferenceSegment {
+  return (
+    segment.type === "issue-reference" ||
+    segment.type === "skill-reference" ||
+    segment.type === "agent-reference" ||
+    segment.type === "unsupported-reference"
+  );
 }
 
 export function inlineMediaClipboardText(
   segments: InlineMediaSegment[],
   baseUri: string = document.baseURI,
 ): string {
-  return serializeInlineMediaSegments(segments, (segment) => {
-    if (segment.type === "text") return segment.text;
-    if (segment.type === "pending-image") {
-      return pendingImageClipboardMarkdown(segment) ?? segment.file.name;
-    }
-    if (segment.type === "pending-attachment") return segment.file.name;
-    return segment.markdown;
-  }, baseUri);
+  return serializeInlineMediaSegments(
+    segments,
+    (segment) => {
+      if (segment.type === "text") return segment.text;
+      if (segment.type === "pending-image") {
+        return pendingImageClipboardMarkdown(segment) ?? segment.file.name;
+      }
+      if (segment.type === "pending-attachment") return segment.file.name;
+      return segment.markdown;
+    },
+    baseUri,
+  );
 }
 
 function pendingImageClipboardMarkdown(segment: InlineImageSegment): string | null {
@@ -649,10 +672,8 @@ export function selfContainedClipboardSegments(
   segments: InlineMediaSegment[],
 ): InlineMediaSegment[] {
   return segments.map((segment) => {
-    if (
-      segment.type !== "persisted-image"
-      || /^!\[(?:\\.|[^\]])*\]\(/.test(segment.markdown)
-    ) return segment;
+    if (segment.type !== "persisted-image" || /^!\[(?:\\.|[^\]])*\]\(/.test(segment.markdown))
+      return segment;
     const alt = segment.alt.replace(/[\\[\]]/g, "\\$&");
     return { ...segment, markdown: `![${alt}](${segment.url})` };
   });
@@ -700,9 +721,9 @@ export function createInlineMediaSegmentsFromHtml(
       const reference = parseInternalDocumentUrl(href, baseUri);
       if (reference?.type === "issue") {
         const { projectId, identifier } = reference;
-        const task = referenceTasks.find((candidate) => (
-          candidate.projectId === projectId && candidate.identifier === identifier
-        ));
+        const task = referenceTasks.find(
+          (candidate) => candidate.projectId === projectId && candidate.identifier === identifier,
+        );
         const displayIdentifier = task?.externalKey ?? identifier;
         const route = new URLSearchParams({ project: projectId, issue: identifier });
         markdown += `[@${displayIdentifier}](?${route})`;
@@ -723,9 +744,10 @@ export function createInlineMediaSegmentsFromHtml(
       const source = element.getAttribute("src");
       if (source) {
         const reference = parseInternalDocumentUrl(source, baseUri);
-        const url = reference?.type === "attachment" && reference.endpoint === "content"
-          ? `api/attachments/${encodeURIComponent(reference.attachmentId)}/content`
-          : source;
+        const url =
+          reference?.type === "attachment" && reference.endpoint === "content"
+            ? `api/attachments/${encodeURIComponent(reference.attachmentId)}/content`
+            : source;
         const alt = (element.getAttribute("alt") ?? "").replace(/[\\[\]]/g, "\\$&");
         markdown += `![${alt}](${url})`;
         structured = true;

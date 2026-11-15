@@ -38,7 +38,8 @@ interface MarkdownAstNode {
 const RAW_COMMENT = /<!--[\s\S]*?-->/g;
 const EXTERNAL_CSS_REFERENCE = /@import|url\s*\(\s*(?!(?:['"]\s*)?#)/i;
 const MERMAID_FRONTMATTER = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/s;
-const MERMAID_EXTERNAL_RESOURCE = /^\s*(?:(?:Person(?:_Ext)?|System(?:Db|Queue)?(?:_Ext)?)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){3}|(?:(?:Container|Component)(?:Db|Queue)?(?:_Ext)?|Deployment_Node|Node(?:_[LR])?)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){4}|(?:Rel(?:_(?:Up|Down|Left|Right|Back|[UDLR]))?|BiRel)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){5}|RelIndex\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){6}|UpdateElementStyle\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){6})\s*(?:\$sprite\s*=\s*)?["']?\s*(?:https?:)?\/\//im;
+const MERMAID_EXTERNAL_RESOURCE =
+  /^\s*(?:(?:Person(?:_Ext)?|System(?:Db|Queue)?(?:_Ext)?)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){3}|(?:(?:Container|Component)(?:Db|Queue)?(?:_Ext)?|Deployment_Node|Node(?:_[LR])?)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){4}|(?:Rel(?:_(?:Up|Down|Left|Right|Back|[UDLR]))?|BiRel)\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){5}|RelIndex\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){6}|UpdateElementStyle\s*\((?:(?:"[^"\r\n]*"|[^,\r\n]*)\s*,){6})\s*(?:\$sprite\s*=\s*)?["']?\s*(?:https?:)?\/\//im;
 const MERMAID_SEQUENCE_PROPERTIES = /(?:^|[;\r\n])\s*properties\s+[^:\r\n;]+\s*:[^\S\r\n]*/gim;
 
 interface EncodedCommentMarker {
@@ -110,10 +111,12 @@ function hasFlowchartImageResource(source: string) {
       index += fullLink[0].length - 1;
       continue;
     }
-    const edgeText = edgeTextRules.map(({ start, end }) => ({
-      end,
-      match: remainingSource.match(start),
-    })).find(({ match }) => match);
+    const edgeText = edgeTextRules
+      .map(({ start, end }) => ({
+        end,
+        match: remainingSource.match(start),
+      }))
+      .find(({ match }) => match);
     if (edgeText?.match) {
       edgeTextEnd = edgeText.end;
       index += edgeText.match[0].length - 1;
@@ -130,11 +133,12 @@ function hasFlowchartImageResource(source: string) {
     try {
       const metadata = loadYaml(yamlSource, { schema: JSON_SCHEMA });
       if (
-        metadata !== null
-        && typeof metadata === "object"
-        && !Array.isArray(metadata)
-        && (metadata as Record<string, unknown>).img
-      ) return true;
+        metadata !== null &&
+        typeof metadata === "object" &&
+        !Array.isArray(metadata) &&
+        (metadata as Record<string, unknown>).img
+      )
+        return true;
     } catch {
       continue;
     }
@@ -154,18 +158,20 @@ function hasExternalMermaidCss(source: string) {
   if (frontmatter) {
     const indent = frontmatter[1];
     const yamlSource = indent
-      ? frontmatter[2].split("\n").map((line) => (
-        line.startsWith(indent) ? line.slice(indent.length) : line
-      )).join("\n")
+      ? frontmatter[2]
+          .split("\n")
+          .map((line) => (line.startsWith(indent) ? line.slice(indent.length) : line))
+          .join("\n")
       : frontmatter[2];
     try {
       const metadata = loadYaml(yamlSource, { schema: JSON_SCHEMA });
       if (
-        metadata !== null
-        && typeof metadata === "object"
-        && !Array.isArray(metadata)
-        && hasExternalThemeCss((metadata as Record<string, unknown>).config)
-      ) return true;
+        metadata !== null &&
+        typeof metadata === "object" &&
+        !Array.isArray(metadata) &&
+        hasExternalThemeCss((metadata as Record<string, unknown>).config)
+      )
+        return true;
     } catch {
       // Mermaid reports malformed frontmatter through the existing render fallback.
     }
@@ -174,8 +180,7 @@ function hasExternalMermaidCss(source: string) {
   for (const directive of source.matchAll(/%%\{\s*(?:init|initialize)\b\s*:?\s*([\s\S]*?)\}%%/gi)) {
     try {
       if (hasExternalThemeCss(JSON.parse(directive[1].trim().replace(/'/g, '"')))) return true;
-    } catch {
-    }
+    } catch {}
   }
 
   const statements: string[] = [];
@@ -200,10 +205,12 @@ function hasExternalMermaidCss(source: string) {
   }
   statements.push(source.slice(start));
 
-  return statements.some((statement) => (
-    /^\s*(?:style\s+\S+|classDef\s+\S+|linkStyle\s+\S+|rect\b|UpdateElementStyle\s*\(|UpdateRelStyle\s*\()/i.test(statement)
-    && EXTERNAL_CSS_REFERENCE.test(statement)
-  ));
+  return statements.some(
+    (statement) =>
+      /^\s*(?:style\s+\S+|classDef\s+\S+|linkStyle\s+\S+|rect\b|UpdateElementStyle\s*\(|UpdateRelStyle\s*\()/i.test(
+        statement,
+      ) && EXTERNAL_CSS_REFERENCE.test(statement),
+  );
 }
 
 function hasExternalMermaidResource(source: string) {
@@ -216,24 +223,32 @@ function hasExternalMermaidResource(source: string) {
     const objectEnd = mermaidObjectEnd(source, objectStart);
     if (objectEnd < 0) continue;
     try {
-      const properties = JSON.parse(source.slice(objectStart, objectEnd + 1)) as Record<string, unknown>;
+      const properties = JSON.parse(source.slice(objectStart, objectEnd + 1)) as Record<
+        string,
+        unknown
+      >;
       const icon = properties.icon;
       if (typeof icon === "string") {
         const iconSource = icon.trim();
         if (iconSource !== "" && !iconSource.startsWith("@")) return true;
       }
-    } catch {
-    }
+    } catch {}
   }
   return false;
 }
 
 function isLocalSvgReference(element: Element, reference: string) {
   if (!reference.startsWith("#") || reference.length === 1) return false;
-  const svg = element.localName === "svg" ? element as SVGSVGElement : (element as SVGElement).ownerSVGElement;
+  const svg =
+    element.localName === "svg"
+      ? (element as SVGSVGElement)
+      : (element as SVGElement).ownerSVGElement;
   if (!svg) return false;
   const targetId = reference.slice(1);
-  return svg.id === targetId || [...svg.querySelectorAll<SVGElement>("[id]")].some((target) => target.id === targetId);
+  return (
+    svg.id === targetId ||
+    [...svg.querySelectorAll<SVGElement>("[id]")].some((target) => target.id === targetId)
+  );
 }
 
 export function remarkStripMarkdownComments() {
@@ -242,12 +257,23 @@ export function remarkStripMarkdownComments() {
     const markers: EncodedCommentMarker[] = [];
 
     const collectMarkers = (node: MarkdownAstNode) => {
-      if (node.type === "text" && node.value && node.position?.start.offset !== undefined && node.position.end.offset !== undefined) {
+      if (
+        node.type === "text" &&
+        node.value &&
+        node.position?.start.offset !== undefined &&
+        node.position.end.offset !== undefined
+      ) {
         const sourceStart = node.position.start.offset;
         const sourceValue = source.slice(sourceStart, node.position.end.offset);
-        const sourceOpenMarkers = [...sourceValue.matchAll(/&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});!--/gi)].filter((match) => {
+        const sourceOpenMarkers = [
+          ...sourceValue.matchAll(/&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});!--/gi),
+        ].filter((match) => {
           let backslashes = 0;
-          for (let index = (match.index ?? 0) - 1; index >= 0 && sourceValue[index] === "\\"; index -= 1) {
+          for (
+            let index = (match.index ?? 0) - 1;
+            index >= 0 && sourceValue[index] === "\\";
+            index -= 1
+          ) {
             backslashes += 1;
           }
           return backslashes % 2 === 0;
@@ -266,7 +292,9 @@ export function remarkStripMarkdownComments() {
           });
         });
 
-        const sourceCloseMarkers = [...sourceValue.matchAll(/--&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi)];
+        const sourceCloseMarkers = [
+          ...sourceValue.matchAll(/--&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi),
+        ];
         sourceCloseMarkers.forEach((match) => {
           if (decodeString(match[0]) !== "-->") return;
           const valueOffset = decodeString(sourceValue.slice(0, match.index ?? 0)).length;
@@ -287,23 +315,25 @@ export function remarkStripMarkdownComments() {
 
     const ranges: EncodedCommentRange[] = [];
     let open: EncodedCommentMarker | null = null;
-    markers.sort((left, right) => left.sourceOffset - right.sourceOffset).forEach((marker) => {
-      if (marker.kind === "open") {
-        if (!open) open = marker;
-      } else if (open) {
-        ranges.push({ open, close: marker });
-        open = null;
-      }
-    });
+    markers
+      .sort((left, right) => left.sourceOffset - right.sourceOffset)
+      .forEach((marker) => {
+        if (marker.kind === "open") {
+          if (!open) open = marker;
+        } else if (open) {
+          ranges.push({ open, close: marker });
+          open = null;
+        }
+      });
 
-    const fullyInsideRange = (node: MarkdownAstNode) => (
-      node.position?.start.offset !== undefined
-      && node.position.end.offset !== undefined
-      && ranges.some((range) => (
-        range.open.sourceOffset <= node.position!.start.offset!
-        && node.position!.end.offset! <= range.close.sourceEndOffset
-      ))
-    );
+    const fullyInsideRange = (node: MarkdownAstNode) =>
+      node.position?.start.offset !== undefined &&
+      node.position.end.offset !== undefined &&
+      ranges.some(
+        (range) =>
+          range.open.sourceOffset <= node.position!.start.offset! &&
+          node.position!.end.offset! <= range.close.sourceEndOffset,
+      );
 
     const visit = (node: MarkdownAstNode, root = false): boolean => {
       if (!root && fullyInsideRange(node)) return false;
@@ -311,16 +341,28 @@ export function remarkStripMarkdownComments() {
         node.value = node.value.replace(RAW_COMMENT, "");
         return node.value.trim().length > 0;
       }
-      if (node.type === "text" && node.value && node.position?.start.offset !== undefined && node.position.end.offset !== undefined) {
-        const removals = ranges.flatMap((range) => {
-          if (node.position!.end.offset! <= range.open.sourceOffset || range.close.sourceEndOffset <= node.position!.start.offset!) {
-            return [];
-          }
-          return [{
-            start: range.open.node === node ? range.open.valueOffset : 0,
-            end: range.close.node === node ? range.close.valueEndOffset : node.value!.length,
-          }];
-        }).sort((left, right) => right.start - left.start);
+      if (
+        node.type === "text" &&
+        node.value &&
+        node.position?.start.offset !== undefined &&
+        node.position.end.offset !== undefined
+      ) {
+        const removals = ranges
+          .flatMap((range) => {
+            if (
+              node.position!.end.offset! <= range.open.sourceOffset ||
+              range.close.sourceEndOffset <= node.position!.start.offset!
+            ) {
+              return [];
+            }
+            return [
+              {
+                start: range.open.node === node ? range.open.valueOffset : 0,
+                end: range.close.node === node ? range.close.valueEndOffset : node.value!.length,
+              },
+            ];
+          })
+          .sort((left, right) => right.start - left.start);
         for (const removal of removals) {
           node.value = node.value.slice(0, removal.start) + node.value.slice(removal.end);
         }
@@ -368,11 +410,11 @@ export function remarkStripMarkdownComments() {
 
 function codeBlockLanguage(children: ReactNode): { language: string | null; source: string } {
   const code = Children.toArray(children).find(
-    (child): child is ReactElement<{ className?: string; children?: ReactNode }> => (
-      isValidElement(child) && child.type === "code"
-    ),
+    (child): child is ReactElement<{ className?: string; children?: ReactNode }> =>
+      isValidElement(child) && child.type === "code",
   );
-  const language = code?.props.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]?.toLowerCase() ?? null;
+  const language =
+    code?.props.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]?.toLowerCase() ?? null;
   return { language, source: Children.toArray(code?.props.children).join("") };
 }
 
@@ -380,13 +422,19 @@ function MermaidFallback({ source, error }: { source: string; error?: boolean })
   const { text } = useBroadcastI18n();
   return (
     <div className="markdown-mermaid-fallback" role={error ? "alert" : undefined}>
-      {error && <p>{text(
-        "无法渲染 Mermaid 图，下面显示图表源码。",
-        "Unable to render Mermaid diagram. Showing its source instead.",
-      )}</p>}
+      {error && (
+        <p>
+          {text(
+            "无法渲染 Mermaid 图，下面显示图表源码。",
+            "Unable to render Mermaid diagram. Showing its source instead.",
+          )}
+        </p>
+      )}
       <details open={error}>
         <summary>{text("Mermaid 源码", "Mermaid source")}</summary>
-        <pre><code className="language-mermaid">{source}</code></pre>
+        <pre>
+          <code className="language-mermaid">{source}</code>
+        </pre>
       </details>
     </div>
   );
@@ -396,12 +444,14 @@ export function MermaidDiagram({ source }: { source: string }) {
   const { text } = useBroadcastI18n();
   const reactId = useId();
   const renderId = `broadcast-mermaid-${reactId.replace(/[^A-Za-z0-9_-]/g, "")}`;
-  const [theme, setTheme] = useState<"light" | "dark">(() => (
-    typeof document !== "undefined" && document.documentElement.dataset.theme === "dark" ? "dark" : "light"
-  ));
-  const [diagram, setDiagram] = useState<(
-    { source: string; theme: "light" | "dark" } & ({ svg: string } | { error: true })
-  ) | null>(null);
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "dark"
+      ? "dark"
+      : "light",
+  );
+  const [diagram, setDiagram] = useState<
+    ({ source: string; theme: "light" | "dark" } & ({ svg: string } | { error: true })) | null
+  >(null);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -456,7 +506,10 @@ export function MermaidDiagram({ source }: { source: string }) {
           });
           const svgRoot = document.createElement("template");
           svgRoot.innerHTML = sanitizedSvg;
-          if (svgRoot.content.children.length !== 1 || svgRoot.content.firstElementChild?.localName !== "svg") {
+          if (
+            svgRoot.content.children.length !== 1 ||
+            svgRoot.content.firstElementChild?.localName !== "svg"
+          ) {
             throw new Error("Mermaid did not produce a usable SVG document.");
           }
           svgRoot.content.querySelectorAll("style").forEach((element) => {
@@ -476,15 +529,25 @@ export function MermaidDiagram({ source }: { source: string }) {
       .catch(() => {
         if (!cancelled) setDiagram({ source, theme, error: true });
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [renderId, source, theme]);
 
   const currentDiagram = diagram?.source === source && diagram.theme === theme ? diagram : null;
   if (!currentDiagram) {
-    return <div className="markdown-mermaid" aria-busy="true"><MermaidFallback source={source} /></div>;
+    return (
+      <div className="markdown-mermaid" aria-busy="true">
+        <MermaidFallback source={source} />
+      </div>
+    );
   }
   if ("error" in currentDiagram) {
-    return <div className="markdown-mermaid"><MermaidFallback source={source} error /></div>;
+    return (
+      <div className="markdown-mermaid">
+        <MermaidFallback source={source} error />
+      </div>
+    );
   }
   return (
     <div
@@ -520,50 +583,65 @@ function MarkdownLink({
   className,
   ...props
 }: ComponentPropsWithoutRef<"a"> & ExtraProps) {
-  const { value, onLinkClick, renderLink, renderLinkActions } = useContext(MarkdownDocumentContext)!;
+  const { value, onLinkClick, renderLink, renderLinkActions } =
+    useContext(MarkdownDocumentContext)!;
   const renderedLink = renderLink?.(href, children);
   const isRenderedLink = renderedLink !== null && renderedLink !== undefined;
   const start = node?.position?.start.offset;
   const end = node?.position?.end.offset;
-  const markdown = typeof start === "number" && typeof end === "number"
-    ? value.slice(start, end)
-    : undefined;
+  const markdown =
+    typeof start === "number" && typeof end === "number" ? value.slice(start, end) : undefined;
   const isComposerReference = Boolean(
     markdown && /^\[[\s\S]*\]\(broadcast:\/\/composer-reference\/[^)]+\)$/.test(markdown),
   );
-  const link = isValidElement(renderedLink) && renderedLink.type === "video" ? renderedLink : (
-    <a
-      {...props}
-      className={[className, isRenderedLink ? "issue-reference-link" : ""].filter(Boolean).join(" ") || undefined}
-      data-broadcast-inline-media-markdown={isRenderedLink || isComposerReference ? markdown : undefined}
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => onLinkClick?.(event, href)}
-    >
-      {isRenderedLink ? renderedLink : children}
-    </a>
-  );
+  const link =
+    isValidElement(renderedLink) && renderedLink.type === "video" ? (
+      renderedLink
+    ) : (
+      <a
+        {...props}
+        className={
+          [className, isRenderedLink ? "issue-reference-link" : ""].filter(Boolean).join(" ") ||
+          undefined
+        }
+        data-broadcast-inline-media-markdown={
+          isRenderedLink || isComposerReference ? markdown : undefined
+        }
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => onLinkClick?.(event, href)}
+      >
+        {isRenderedLink ? renderedLink : children}
+      </a>
+    );
   const actions = renderLinkActions?.(href);
   // Keep preview buttons outside the link: they must not open/download the file.
-  return actions ? <span className="document-attachment-preview">{link}{actions}</span> : link;
+  return actions ? (
+    <span className="document-attachment-preview">
+      {link}
+      {actions}
+    </span>
+  ) : (
+    link
+  );
 }
 
 function MarkdownImage({ node, ...props }: ComponentPropsWithoutRef<"img"> & ExtraProps) {
   const { value, onImageClick } = useContext(MarkdownDocumentContext)!;
   const start = node?.position?.start.offset;
   const end = node?.position?.end.offset;
-  const markdown = typeof start === "number" && typeof end === "number"
-    ? value.slice(start, end)
-    : undefined;
-  const selfContainedMarkdown = markdown
-    && /^!\[(?:\\.|[^\]])*\]\(/.test(markdown)
-    ? markdown
-    : undefined;
+  const markdown =
+    typeof start === "number" && typeof end === "number" ? value.slice(start, end) : undefined;
+  const selfContainedMarkdown =
+    markdown && /^!\[(?:\\.|[^\]])*\]\(/.test(markdown) ? markdown : undefined;
   return (
     <img
       {...props}
-      className={[props.className, onImageClick ? "is-previewable" : ""].filter(Boolean).join(" ") || undefined}
+      className={
+        [props.className, onImageClick ? "is-previewable" : ""].filter(Boolean).join(" ") ||
+        undefined
+      }
       data-broadcast-inline-media-markdown={selfContainedMarkdown}
       onClick={onImageClick}
     />
@@ -587,7 +665,9 @@ export function MarkdownDocument({
 }) {
   return (
     <div className="issue-description-document" onCopy={onCopy}>
-      <MarkdownDocumentContext.Provider value={{ value, onImageClick, onLinkClick, renderLink, renderLinkActions }}>
+      <MarkdownDocumentContext.Provider
+        value={{ value, onImageClick, onLinkClick, renderLink, renderLinkActions }}
+      >
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkStripMarkdownComments, remarkBreaks]}
           urlTransform={(url) => defaultUrlTransform(resolvePersistedAttachmentUrl(url))}

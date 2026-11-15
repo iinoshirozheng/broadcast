@@ -23,11 +23,11 @@ export function parseAiChatComposerFragment(
     const parsed = JSON.parse(raw) as { message?: unknown; skillIds?: unknown };
     const validIds = new Set(validSkillIds);
     if (
-      typeof parsed.message !== "string"
-      || !Array.isArray(parsed.skillIds)
-      || !parsed.skillIds.every((skillId): skillId is string => typeof skillId === "string")
-      || parsed.message.split(AI_CHAT_SKILL_MARKER).length - 1 !== parsed.skillIds.length
-      || !parsed.skillIds.every((skillId) => validIds.has(skillId))
+      typeof parsed.message !== "string" ||
+      !Array.isArray(parsed.skillIds) ||
+      !parsed.skillIds.every((skillId): skillId is string => typeof skillId === "string") ||
+      parsed.message.split(AI_CHAT_SKILL_MARKER).length - 1 !== parsed.skillIds.length ||
+      !parsed.skillIds.every((skillId) => validIds.has(skillId))
     ) {
       return null;
     }
@@ -73,10 +73,11 @@ export function reasoningEffortForModel(
   const nearestEffort = model.supportedReasoningEfforts
     .map((effort) => ({ effort, index: REASONING_EFFORTS.indexOf(effort) }))
     .filter(({ index }) => index >= 0)
-    .sort((left, right) => (
-      Math.abs(left.index - currentIndex) - Math.abs(right.index - currentIndex)
-      || left.index - right.index
-    ))[0];
+    .sort(
+      (left, right) =>
+        Math.abs(left.index - currentIndex) - Math.abs(right.index - currentIndex) ||
+        left.index - right.index,
+    )[0];
   return nearestEffort?.effort ?? model.defaultReasoningEffort;
 }
 
@@ -153,10 +154,7 @@ export function chatPrimaryAction(
   return message.trim() || hasAttachments ? "send" : "disabled";
 }
 
-export function needsDangerConfirmation(
-  sandbox: AiChatSandbox,
-  confirmed: boolean,
-): boolean {
+export function needsDangerConfirmation(sandbox: AiChatSandbox, confirmed: boolean): boolean {
   return sandbox === "danger-full-access" && !confirmed;
 }
 
@@ -182,17 +180,19 @@ const VISIBLE_EVENT_TYPES = new Set([
 ]);
 
 function isMessageEvent(event: Pick<AiChatEvent, "role" | "type">): boolean {
-  return event.role === "user"
-    || event.role === "assistant"
-    || event.type === "user"
-    || event.type === "user_message"
-    || event.type === "assistant"
-    || event.type === "agent_message";
+  return (
+    event.role === "user" ||
+    event.role === "assistant" ||
+    event.type === "user" ||
+    event.type === "user_message" ||
+    event.type === "assistant" ||
+    event.type === "agent_message"
+  );
 }
 
-export function filterVisibleAiEvents<
-  T extends Pick<AiChatEvent, "type" | "role" | "data">,
->(events: T[]): T[] {
+export function filterVisibleAiEvents<T extends Pick<AiChatEvent, "type" | "role" | "data">>(
+  events: T[],
+): T[] {
   const visible = events.filter((event) => VISIBLE_EVENT_TYPES.has(event.type));
   const latestActivityIndex = new Map<string, number>();
   visible.forEach((event, index) => {
@@ -203,9 +203,11 @@ export function filterVisibleAiEvents<
   });
   return visible.filter((event, index) => {
     const itemId = event.data?.itemId;
-    return isMessageEvent(event)
-      || typeof itemId !== "string"
-      || latestActivityIndex.get(itemId) === index;
+    return (
+      isMessageEvent(event) ||
+      typeof itemId !== "string" ||
+      latestActivityIndex.get(itemId) === index
+    );
   });
 }
 
@@ -232,13 +234,14 @@ export function patchAiChatSnapshot(
   return { ...current, thread };
 }
 
-export function createAiSnapshotRefreshQueue(
-  refresh: (threadId: string) => Promise<void>,
-) {
-  const states = new Map<string, {
-    queued: boolean;
-    promise: Promise<void>;
-  }>();
+export function createAiSnapshotRefreshQueue(refresh: (threadId: string) => Promise<void>) {
+  const states = new Map<
+    string,
+    {
+      queued: boolean;
+      promise: Promise<void>;
+    }
+  >();
   let active = true;
 
   return {
