@@ -43,6 +43,10 @@ pub struct Options {
     pub secret: String,
     /// Open the board in the first window once it is injected.
     pub open: bool,
+    /// The `broadcast` executable automation prompts run.
+    pub cli: PathBuf,
+    /// The runtime descriptor that executable reads (`BROADCAST_RUNTIME_FILE`).
+    pub runtime_file: Option<PathBuf>,
 }
 
 /// What the desktop shows for the launcher (`emitLauncherEvent`).
@@ -94,6 +98,10 @@ impl Launcher {
             startup_token: options.token.clone(),
             routes: Routes::default(),
             notifications,
+            cli_command: cli_command(&options),
+            codex: crate::executable(std::env::var("CODEX_EXECUTABLE").ok().as_deref(), Some(&options.app_path)),
+            policies: Default::default(),
+            turns: Default::default(),
         });
         let source = Source::new(&context);
         let runner = Runner {
@@ -626,5 +634,14 @@ impl Runner {
             }
         }
         Ok(())
+    }
+}
+
+/// `buildBroadcastCommand`: the full `broadcast` command prefix, never the one on `PATH`.
+fn cli_command(options: &Options) -> String {
+    let command = crate::automation::shell_quote(&options.cli.to_string_lossy());
+    match &options.runtime_file {
+        Some(file) => format!("{command} --runtime-file {}", crate::automation::shell_quote(&file.to_string_lossy())),
+        None => command,
     }
 }

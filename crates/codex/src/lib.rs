@@ -1,13 +1,17 @@
 //! The Codex desktop app on this device: its executables, its processes and the Broadcast
 //! injector that mounts the board inside it over the Chrome DevTools Protocol.
 
+mod automation;
 pub mod cdp;
 mod host;
 mod inject;
 #[cfg(unix)]
 pub mod launcher;
 mod process;
+mod policy;
 mod profile;
+mod quota;
+mod remote;
 
 use std::path::{Path, PathBuf};
 

@@ -98,7 +98,12 @@ so packaging infrastructure is edited only once.
   - [x] 5b — task conversations: not ported. The userscript starts threads through Codex's
         `navigate-to-route` prefill and nothing sends `start-task-conversation` any more, so
         the host rejects it like any unknown action; the JS handler goes at cutover.
-  - [ ] 5c — automation and quota policies
+  - [x] 5c — automation and quota policies: `crates/codex` keeps the per-project policy in
+        `codex-automation-policies.json` (0600), restores it on install, and runs the timer,
+        the read-only `can_start` turn, the remote todo run and the app-server quota read.
+        Automations are created and updated through the same `vscode://codex/*` fetches with
+        a spec identical to `buildBroadcastAutomationSpec`. Verified on the fake Codex page:
+        explicit apply, timer → start → create, `list`, restart restore and wait → paused.
   - [ ] 5d — the desktop embeds server and launcher, writes `launcher-runtime.json`,
         Windows launch paths, stops bundling Node
 - [x] Phase 6 — the `broadcast` binary carries every `cli/broadcast.mjs` command with the

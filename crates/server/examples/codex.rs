@@ -38,6 +38,8 @@ async fn main() -> anyhow::Result<()> {
         token: launcher.token,
         secret: launcher.secret,
         open: std::env::var("BROADCAST_CODEX_OPEN").map_or(true, |value| value != "0"),
+        cli: std::env::current_exe()?.parent().and_then(std::path::Path::parent).map(|debug| debug.join("broadcast")).ok_or_else(|| anyhow::anyhow!("no target directory"))?,
+        runtime_file: std::env::var_os("BROADCAST_RUNTIME_FILE").map(PathBuf::from),
     };
     let (launcher, task) = Launcher::start(options, bridge.requests, bridge.notifications, events);
     tokio::spawn(async move {

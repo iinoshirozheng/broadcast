@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -42,9 +42,15 @@ pub struct Context {
     pub startup_token: String,
     pub routes: Routes,
     pub notifications: mpsc::UnboundedSender<HostNotification>,
+    /// The `broadcast` invocation automation prompts tell Codex to run.
+    pub cli_command: String,
+    /// The `codex` executable quota checks run.
+    pub codex: String,
+    pub policies: crate::policy::Policies,
+    pub turns: crate::remote::Turns,
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
@@ -60,6 +66,8 @@ pub struct Routes {
 struct RouteState {
     routable: Vec<Session>,
     hosts: HashMap<String, Session>,
+    /// `quotaPolicyCdps`: installed windows, the most recently installed last.
+    recent: Vec<Session>,
 }
 
 impl Routes {
@@ -68,6 +76,8 @@ impl Routes {
         if !state.routable.iter().any(|known| known.same(session)) {
             state.routable.push(session.clone());
         }
+        state.recent.retain(|known| !known.same(session));
+        state.recent.push(session.clone());
         drop(state);
         self.ready.notify_waiters();
     }
@@ -76,12 +86,20 @@ impl Routes {
         let mut state = lock(&self.state);
         state.routable.retain(|known| !known.same(session));
         state.hosts.retain(|_, known| !known.same(session));
+        state.recent.retain(|known| !known.same(session));
+    }
+
+    /// `currentQuotaPolicyCdp`: the most recently installed live window.
+    pub fn latest(&self) -> Result<Session> {
+        let mut state = lock(&self.state);
+        state.recent.retain(|session| !session.is_closed());
+        state.recent.last().cloned().ok_or_else(|| anyhow!("No live Codex renderer is available for quota automation"))
     }
 
     fn pick(&self, host_id: &str) -> Option<Session> {
         let mut state = lock(&self.state);
         state.routable.retain(|session| !session.is_closed());
-        let RouteState { routable, hosts } = &mut *state;
+        let RouteState { routable, hosts, .. } = &mut *state;
         if let Some(current) = hosts.get(host_id)
             && routable.iter().any(|session| session.same(current))
         {
@@ -117,11 +135,13 @@ pub struct Bridge {
     active: Mutex<Option<i64>>,
     installs: tokio::sync::Mutex<()>,
     installed: AtomicU64,
+    /// Whether this window's install restored the saved quota policies.
+    restored: Arc<AtomicBool>,
 }
 
 impl Bridge {
     pub fn new(session: Session, context: Arc<Context>) -> Arc<Self> {
-        Arc::new(Self { session, context, active: Mutex::new(None), installs: tokio::sync::Mutex::new(()), installed: AtomicU64::new(0) })
+        Arc::new(Self { session, context, active: Mutex::new(None), installs: tokio::sync::Mutex::new(()), installed: AtomicU64::new(0), restored: Arc::default() })
     }
 
     pub fn context(&self) -> &Arc<Context> {
@@ -149,6 +169,16 @@ impl Bridge {
         self.session.send("Runtime.evaluate", json!({ "contextId": context, "expression": self.listener(), "returnByValue": true })).await?;
         self.installed.fetch_add(1, Ordering::AcqRel);
         self.context.routes.register(&self.session);
+        if !self.restored.swap(true, Ordering::AcqRel) {
+            let context = Arc::clone(&self.context);
+            let restored = Arc::clone(&self.restored);
+            tokio::spawn(async move {
+                if let Err(error) = crate::policy::restore(&context).await {
+                    eprintln!("Broadcast quota policy restore failed: {error}");
+                    restored.store(false, Ordering::Release);
+                }
+            });
+        }
         Ok(context)
     }
 
@@ -236,10 +266,11 @@ impl Bridge {
     fn forward_notification(&self, payload: &Value) {
         let Some(notification) = payload.as_str().and_then(|payload| serde_json::from_str::<Value>(payload).ok()) else { return };
         let (Some(host_id), Some(method)) = (notification["hostId"].as_str(), notification["method"].as_str()) else { return };
+        let params = notification.get("params").cloned().unwrap_or(Value::Null);
+        self.context.turns.deliver(host_id, method, &params);
         if !self.context.routes.routes_to(host_id, &self.session) {
             return;
         }
-        let params = notification.get("params").cloned().unwrap_or(Value::Null);
         let _ = self.context.notifications.send(HostNotification { host_id: host_id.to_owned(), method: method.to_owned(), params });
     }
 
@@ -279,6 +310,10 @@ impl Bridge {
                 json!({ "opened": true })
             }
             "open-attachment" => self.open_attachment(request).await?,
+            "automation" => {
+                let request = crate::automation::parse(request).ok_or_else(|| anyhow!(HOST_REQUEST_ERROR))?;
+                return crate::policy::run_automation(&self.context, &self.session, request).await;
+            }
             _ => bail!(HOST_REQUEST_ERROR),
         };
         Ok(result.as_object().cloned().unwrap_or_default())
@@ -430,7 +465,7 @@ pub fn encode_component(value: &str) -> String {
 }
 
 #[cfg(unix)]
-async fn write_private(directory: &std::path::Path, path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+pub(crate) async fn write_private(directory: &std::path::Path, path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     use tokio::io::AsyncWriteExt;
 
     tokio::fs::DirBuilder::new().recursive(true).mode(0o700).create(directory).await?;
@@ -440,7 +475,7 @@ async fn write_private(directory: &std::path::Path, path: &std::path::Path, byte
 }
 
 #[cfg(not(unix))]
-async fn write_private(directory: &std::path::Path, path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+pub(crate) async fn write_private(directory: &std::path::Path, path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     tokio::fs::create_dir_all(directory).await?;
     tokio::fs::write(path, bytes).await?;
     Ok(())
@@ -486,13 +521,13 @@ async fn reveal(path: &std::path::Path, directory: &std::path::Path) -> Result<(
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-fn request_id(kind: &str) -> String {
+pub(crate) fn request_id(kind: &str) -> String {
     let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1;
     let now = chrono_millis();
     format!("{kind}-{}-{}-{}", std::process::id(), radix36(now), radix36(sequence))
 }
 
-fn chrono_millis() -> u64 {
+pub(crate) fn chrono_millis() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
 }
 
@@ -609,6 +644,11 @@ fn has_control(value: &str) -> bool {
     value.chars().any(|character| matches!(character, '\u{0}'..='\u{1f}' | '\u{7f}'))
 }
 
+/// Non-empty, at most `max` UTF-16 units and free of control characters.
+pub(crate) fn bounded_text(value: &str, max: usize) -> bool {
+    !value.is_empty() && js_length(value) <= max && !has_control(value)
+}
+
 fn bounded(value: &Value, max: usize) -> Option<&str> {
     value.as_str().filter(|value| !value.is_empty() && js_length(value) <= max)
 }
@@ -645,7 +685,12 @@ fn parse(payload: &Value) -> Result<Value, Rejected> {
                 && request["attachmentId"].as_str().is_some_and(|id| ATTACHMENT_ID.is_match(id))
                 && filename.is_some_and(|name| name != "." && name != ".." && !has_control(name) && !name.contains(['/', '\\']))
         }
-        "automation" => return Err(Rejected { id: Some(id), diagnostic: Some(AUTOMATION_SCHEMA_DIAGNOSTIC) }),
+        "automation" => {
+            if crate::automation::parse(&request).is_none() {
+                return Err(Rejected { id: Some(id), diagnostic: Some(AUTOMATION_SCHEMA_DIAGNOSTIC) });
+            }
+            true
+        }
         _ => false,
     };
     if accepted { Ok(request) } else { Err(rejected(Some(&id))) }
