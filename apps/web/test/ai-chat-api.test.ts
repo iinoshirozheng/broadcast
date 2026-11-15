@@ -14,7 +14,7 @@ import {
 } from "../src/api.ts";
 
 const broadcastBase = "http://127.0.0.1:43210/instance-token/";
-globalThis.document = { baseURI: broadcastBase };
+globalThis.document = { baseURI: broadcastBase } as Document;
 
 const thread = {
   id: "thread-1",
@@ -36,7 +36,7 @@ const thread = {
   currentRun: null,
 };
 
-function json(body, status = 200) {
+function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -45,8 +45,14 @@ function json(body, status = 200) {
 
 test("local AI API client follows the fixed catalog, thread, turn and interrupt contract", async () => {
   const previousFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (path, init = {}) => {
+  const calls: { path: string; init: RequestInit }[] = [];
+  const lastCall = () => {
+    const call = calls.at(-1);
+    assert.ok(call);
+    return call;
+  };
+  globalThis.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const path = String(input);
     calls.push({ path, init });
     const url = new URL(path);
     const requestPath = `${url.pathname.replace("/instance-token", "")}${url.search}`;
@@ -89,13 +95,13 @@ test("local AI API client follows the fixed catalog, thread, turn and interrupt 
     const catalog = await getAiChatCatalog("project / one");
     assert.equal(catalog.models[0].slug, "codex-real");
     assert.equal(
-      calls.at(-1).path,
+      lastCall().path,
       `${broadcastBase}api/local/ai/catalog?projectId=project%20%2F%20one`,
     );
 
     assert.equal((await listAiChatThreads())[0].id, "thread-1");
     await createAiChatThread({ projectId: "project / one", issueId: "issue-1" });
-    assert.deepEqual(JSON.parse(calls.at(-1).init.body), {
+    assert.deepEqual(JSON.parse(String(lastCall().init.body)), {
       projectId: "project / one",
       issueId: "issue-1",
     });
@@ -106,21 +112,21 @@ test("local AI API client follows the fixed catalog, thread, turn and interrupt 
       reasoningEffort: "high",
       sandbox: "workspace-write",
     });
-    assert.deepEqual(JSON.parse(calls.at(-1).init.body), {
+    assert.deepEqual(JSON.parse(String(lastCall().init.body)), {
       model: "codex-real",
       reasoningEffort: "high",
       sandbox: "workspace-write",
     });
 
     await deleteAiChatThread("thread-1");
-    assert.equal(calls.at(-1).init.method, "DELETE");
+    assert.equal(lastCall().init.method, "DELETE");
 
     await startAiChatTurn("thread-1", {
       message: "公开的用户消息",
       skillIds: ["real-skill"],
       dangerFullAccessConfirmed: true,
     });
-    const turnBody = JSON.parse(calls.at(-1).init.body);
+    const turnBody = JSON.parse(String(lastCall().init.body));
     assert.deepEqual(turnBody, {
       message: "公开的用户消息",
       skillIds: ["real-skill"],
@@ -155,29 +161,29 @@ test("aborted catalog requests preserve AbortError instead of reporting a servic
 
 test("thread event subscription listens only for public snapshot hints and closes cleanly", () => {
   const PreviousEventSource = globalThis.EventSource;
-  const listeners = new Map();
+  const listeners = new Map<string, () => void>();
   let openedUrl = "";
   let closed = false;
   globalThis.EventSource = class {
-    constructor(url) {
+    constructor(url: string) {
       openedUrl = url;
     }
 
-    addEventListener(type, listener) {
+    addEventListener(type: string, listener: () => void) {
       listeners.set(type, listener);
     }
 
     close() {
       closed = true;
     }
-  };
+  } as unknown as typeof EventSource;
 
   try {
-    const hints = [];
+    const hints: string[] = [];
     const unsubscribe = subscribeAiChatThread("thread / 1", (type) => hints.push(type));
     assert.equal(openedUrl, `${broadcastBase}api/local/ai/threads/thread%20%2F%201/events`);
-    listeners.get("ai.event")();
-    listeners.get("ai.run")();
+    listeners.get("ai.event")?.();
+    listeners.get("ai.run")?.();
     assert.deepEqual(hints, ["ai.event", "ai.run"]);
     unsubscribe();
     assert.equal(closed, true);

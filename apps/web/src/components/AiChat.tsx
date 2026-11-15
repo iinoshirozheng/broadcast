@@ -1,4 +1,4 @@
-import { composerReferencePersistence, readComposerReferenceId } from "../composerReference.mjs";
+import { composerReferencePersistence, readComposerReferenceId } from "../composerReference.ts";
 import {
   useCallback,
   useEffect,

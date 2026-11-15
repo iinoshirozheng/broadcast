@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 
-import { createCloudWorkerHarness } from "./helpers/cloud-worker-harness.mjs";
+import { createCloudWorkerHarness } from "./helpers/cloud-worker-harness.ts";
 
-let cloud;
+let cloud: Awaited<ReturnType<typeof createCloudWorkerHarness>>;
+type TreeNode = { id: string; parentId: string | null; depth: number };
+
 const alice = "Alice";
 const bob = "Bob";
 
@@ -15,7 +17,7 @@ after(async () => {
   await cloud?.dispose();
 });
 
-async function createProject(id, actorName = alice) {
+async function createProject(id: string, actorName = alice) {
   return cloud.request("/api/projects", {
     method: "POST",
     actorName,
@@ -27,7 +29,12 @@ async function createProject(id, actorName = alice) {
   });
 }
 
-async function createTask(projectId, title, actorName = alice, extra = {}) {
+async function createTask(
+  projectId: string,
+  title: string,
+  actorName = alice,
+  extra: Record<string, unknown> = {},
+) {
   return cloud.request("/api/tasks", {
     method: "POST",
     actorName,
@@ -130,7 +137,7 @@ test("projects, tasks, comments, and relations preserve the current API contract
     actorName: alice,
   });
   assert.equal(listed.response.status, 200);
-  assert.ok(listed.body.tasks.some((task) => task.id === child.body.task.id));
+  assert.ok(listed.body.tasks.some((task: { id: string }) => task.id === child.body.task.id));
 });
 
 test("concurrent issue creation has unique identifiers and stale writes return 409", async () => {
@@ -291,7 +298,7 @@ test("remote thread identity survives controller moves and clears after create f
   assert.equal(blocked.response.status, 200, JSON.stringify(blocked.body));
   assert.deepEqual(blocked.body.task.threadBinding, binding);
   assert.deepEqual(
-    blocked.body.task.conversationRefs.map((ref) => ref.threadId),
+    blocked.body.task.conversationRefs.map((ref: { threadId: string }) => ref.threadId),
     [binding.threadId, "controller-thread"],
   );
 
@@ -310,7 +317,7 @@ test("remote thread identity survives controller moves and clears after create f
   assert.equal(todo.body.task.threadId, null);
   assert.equal(todo.body.task.threadBinding, null);
   assert.deepEqual(
-    todo.body.task.conversationRefs.map((ref) => ref.threadId),
+    todo.body.task.conversationRefs.map((ref: { threadId: string }) => ref.threadId),
     ["controller-thread"],
   );
 });
@@ -347,7 +354,7 @@ test("PATCH rejects moving an issue that still has relations", async () => {
   assert.equal(unchanged.body.task.projectId, "move-related-cloud-source");
   assert.equal(unchanged.body.task.version, linked.body.task.version);
   assert.deepEqual(
-    unchanged.body.task.relations.related.map((task) => task.id),
+    unchanged.body.task.relations.related.map((task: { id: string }) => task.id),
     [relatedTask.body.task.id],
   );
 });
@@ -438,7 +445,8 @@ test("archived tasks are excluded from project issue counts", async () => {
   const task = await createTask("archive-count", "Archive me");
   const before = await cloud.request("/api/projects", { actorName: alice });
   assert.equal(
-    before.body.projects.find((candidate) => candidate.id === "archive-count").issueCount,
+    before.body.projects.find((candidate: { id: string }) => candidate.id === "archive-count")
+      .issueCount,
     1,
   );
 
@@ -450,7 +458,8 @@ test("archived tasks are excluded from project issue counts", async () => {
   assert.equal(archived.response.status, 200);
   const after = await cloud.request("/api/projects", { actorName: alice });
   assert.equal(
-    after.body.projects.find((candidate) => candidate.id === "archive-count").issueCount,
+    after.body.projects.find((candidate: { id: string }) => candidate.id === "archive-count")
+      .issueCount,
     0,
   );
 });
@@ -629,7 +638,7 @@ test("authenticated WebSockets receive a revision only after business data chang
   assert.equal(response.status, 101);
   assert.ok(socket);
 
-  const message = new Promise((resolve, reject) => {
+  const message = new Promise<{ type: string; revision: number }>((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error("Timed out waiting for revision push")),
       1_000,
@@ -638,7 +647,7 @@ test("authenticated WebSockets receive a revision only after business data chang
       "message",
       (event) => {
         clearTimeout(timeout);
-        resolve(JSON.parse(event.data));
+        resolve(JSON.parse(event.data as string));
       },
       { once: true },
     );
@@ -654,7 +663,7 @@ test("authenticated WebSockets receive a revision only after business data chang
 test("browser session cookie authenticates API reads and WebSocket reconnects", async () => {
   const login = await cloud.request("/api/meta", { actorName: alice });
   assert.equal(login.response.status, 200);
-  const setCookie = login.response.headers.get("set-cookie");
+  const setCookie = login.response.headers.get("set-cookie") ?? "";
   assert.match(setCookie, /^__Host-broadcast_session=/);
   assert.match(setCookie, /; HttpOnly; Secure; SameSite=Strict$/);
   const cookie = setCookie.split(";", 1)[0];
@@ -783,7 +792,10 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
   const child = await createTask(projectId, "Tree child");
   const sibling = await createTask(projectId, "Tree sibling");
   const grandchild = await createTask(projectId, "Tree grandchild");
-  const addParent = async (childTask, parentTask) =>
+  const addParent = async (
+    childTask: { id: string; version: number },
+    parentTask: { id: string },
+  ) =>
     cloud.request(`/api/tasks/${childTask.id}/relations/parent/${parentTask.id}`, {
       method: "POST",
       actorName: alice,
@@ -803,7 +815,7 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
   );
   assert.equal(direct.response.status, 200);
   assert.deepEqual(
-    direct.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]),
+    direct.body.tree.nodes.map((node: TreeNode) => [node.id, node.parentId, node.depth]),
     [
       [root.body.task.id, null, 0],
       [child.body.task.id, root.body.task.id, 1],
@@ -828,7 +840,7 @@ test("tree queries keep direct and nested ancestor/descendant traversal in cloud
   );
   assert.equal(ancestors.response.status, 200);
   assert.deepEqual(
-    ancestors.body.tree.nodes.map((node) => [node.id, node.parentId, node.depth]),
+    ancestors.body.tree.nodes.map((node: TreeNode) => [node.id, node.parentId, node.depth]),
     [
       [grandchild.body.task.id, null, 0],
       [child.body.task.id, grandchild.body.task.id, 1],

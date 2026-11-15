@@ -8,7 +8,7 @@ import {
   pick,
   setDate,
   tasks,
-} from "./helpers";
+} from "./helpers.ts";
 
 test("issue creation, inline editing, properties, recurrence and persisted reload", async ({
   app,

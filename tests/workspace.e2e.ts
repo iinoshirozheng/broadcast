@@ -8,7 +8,7 @@ import {
   pick,
   setDate,
   tasks,
-} from "./helpers";
+} from "./helpers.ts";
 
 test("project create, switch, delete empty project and reject deleting a populated project", async ({
   app,

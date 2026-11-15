@@ -94,7 +94,7 @@ import {
 } from "./IssueRelations";
 import { TaskPropertyPicker } from "./TaskPropertyPicker";
 import { buildIssueUrl } from "../issueRoute";
-import { postEmbeddedHostMessage } from "../embeddedHost.mjs";
+import { postEmbeddedHostMessage } from "../embeddedHost.ts";
 import copyIdIcon from "../assets/figma-broadcast/copy-id.svg";
 import copyLinkIcon from "../assets/figma-broadcast/copy-link.svg";
 import { DescriptionDocument } from "./DescriptionDocument";

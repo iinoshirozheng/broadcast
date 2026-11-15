@@ -360,7 +360,7 @@ impl Pipe {
     }
 }
 
-/// `validatedLoopbackCdpWebSocketUrl`, for the browser endpoint.
+/// The browser's WebSocket endpoint, accepted only on this loopback port without credentials.
 fn loopback_endpoint(value: Option<&str>, port: u16) -> Result<Url> {
     let value = value.context("Rejected Codex CDP target without a WebSocket URL")?;
     let endpoint = Url::parse(value)?;

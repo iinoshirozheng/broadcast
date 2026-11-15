@@ -12,6 +12,7 @@ import {
   parseAiChatComposerFragment,
   patchAiChatSnapshot,
 } from "../src/aiChatState.ts";
+import type { AiChatThread, AiChatThreadSnapshot } from "../src/types.ts";
 
 const models = [
   {
@@ -44,19 +45,21 @@ test("new threads freeze the current project and optional issue as server identi
 });
 
 test("PATCH results can update only the snapshot for the thread that started the request", () => {
-  const threadA = {
-    id: "thread-a",
-    title: "A",
+  const thread = (id: string, title: string, projectId: string): AiChatThread => ({
+    id,
+    title,
     status: "idle",
-    origin: { projectId: "project-a" },
-  };
-  const threadB = {
-    id: "thread-b",
-    title: "B",
-    status: "idle",
-    origin: { projectId: "project-b" },
-  };
-  const current = { thread: threadB, events: [], runs: [] };
+    origin: { projectId, projectName: projectId, workspacePath: `/${projectId}` },
+    codexThreadId: null,
+    model: "codex-real-model",
+    reasoningEffort: "high",
+    sandbox: "read-only",
+    createdAt: "2026-07-27T00:00:00.000Z",
+    updatedAt: "2026-07-27T00:00:00.000Z",
+  });
+  const threadA = thread("thread-a", "A", "project-a");
+  const threadB = thread("thread-b", "B", "project-b");
+  const current: AiChatThreadSnapshot = { thread: threadB, events: [], runs: [] };
 
   assert.equal(patchAiChatSnapshot(current, "thread-a", threadA), current);
   assert.deepEqual(
@@ -171,49 +174,39 @@ test("visible activity keeps only the latest lifecycle item without merging mess
 test("activity status treats started, running and in_progress as active and failures as failed", () => {
   assert.equal(
     aiChatEventStatus({
-      id: "1",
       type: "command_execution",
       role: "activity",
-      content: "",
       data: { status: "started" },
     }),
     "running",
   );
   assert.equal(
     aiChatEventStatus({
-      id: "2",
       type: "todo_list",
       role: "activity",
-      content: "",
       data: { status: "in_progress" },
     }),
     "running",
   );
   assert.equal(
     aiChatEventStatus({
-      id: "3",
       type: "turn.failed",
       role: "error",
-      content: "failed",
     }),
     "failed",
   );
   assert.equal(
     aiChatEventStatus({
-      id: "4",
       type: "file_change",
       role: "activity",
-      content: "",
       data: { status: "completed" },
     }),
     "completed",
   );
   assert.equal(
     aiChatEventStatus({
-      id: "5",
       type: "error",
       role: "activity",
-      content: "Skill descriptions were shortened",
       data: { status: "warning" },
     }),
     "completed",
@@ -221,22 +214,27 @@ test("activity status treats started, running and in_progress as active and fail
 });
 
 test("snapshot hint refreshes allow one in-flight request and one queued request", async () => {
-  const calls = [];
-  const releases = [];
+  const calls: string[] = [];
+  const releases: (() => void)[] = [];
+  const release = () => {
+    const next = releases.shift();
+    assert.ok(next);
+    next();
+  };
   const queue = createAiSnapshotRefreshQueue(async (threadId) => {
     calls.push(threadId);
-    await new Promise((resolve) => releases.push(resolve));
+    await new Promise<void>((resolve) => releases.push(resolve));
   });
 
   const first = queue.request("thread-1");
   const queued = [queue.request("thread-1"), queue.request("thread-1"), queue.request("thread-1")];
   assert.deepEqual(calls, ["thread-1"]);
 
-  releases.shift()();
+  release();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(calls, ["thread-1", "thread-1"]);
 
-  releases.shift()();
+  release();
   await Promise.all([first, ...queued]);
   assert.deepEqual(calls, ["thread-1", "thread-1"]);
   queue.clear();

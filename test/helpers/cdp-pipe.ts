@@ -1,27 +1,38 @@
-class CdpEventChannel {
-  constructor() {
-    this.eventWaiters = new Map();
-    this.eventHandlers = new Map();
-    this.closed = false;
-  }
+import type { ChildProcess } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
+import type { ProtocolMapping } from "devtools-protocol/types/protocol-mapping.js";
 
-  dispatch(method, params) {
+type Commands = ProtocolMapping.Commands;
+type Events = ProtocolMapping.Events;
+type Params<M extends keyof Commands> = Commands[M]["paramsType"][0];
+type Result<M extends keyof Commands> = Commands[M]["returnType"];
+type EventParams<E extends keyof Events> = Events[E][0];
+type Waiter = { resolve: (params: unknown) => void; reject: (error: Error) => void };
+type Handler = (params: unknown) => unknown;
+type Pending = Waiter & { timeout: NodeJS.Timeout };
+
+class CdpEventChannel {
+  eventWaiters = new Map<string, Waiter[]>();
+  eventHandlers = new Map<string, Handler[]>();
+  closed = false;
+
+  dispatch(method: string, params: unknown) {
     const waiters = this.eventWaiters.get(method) || [];
     this.eventWaiters.delete(method);
     waiters.forEach((waiter) => waiter.resolve(params));
     const handlers = this.eventHandlers.get(method) || [];
     handlers.forEach((handler) => {
       try {
-        Promise.resolve(handler(params)).catch((error) => {
+        Promise.resolve(handler(params)).catch((error: Error) => {
           console.error(`CDP ${method} handler failed: ${error.message}`);
         });
       } catch (error) {
-        console.error(`CDP ${method} handler failed: ${error.message}`);
+        console.error(`CDP ${method} handler failed: ${(error as Error).message}`);
       }
     });
   }
 
-  waitFor(method, timeoutMs) {
+  waitFor<E extends keyof Events>(method: E, timeoutMs: number): Promise<EventParams<E>> {
     return new Promise((resolve, reject) => {
       const waiters = this.eventWaiters.get(method) || [];
       const timeout = setTimeout(() => {
@@ -33,18 +44,18 @@ class CdpEventChannel {
         );
         reject(new Error(`Timed out waiting for CDP event ${method}`));
       }, timeoutMs);
-      const wrappedResolve = (value) => {
+      const wrappedResolve = (value: unknown) => {
         clearTimeout(timeout);
-        resolve(value);
+        resolve(value as EventParams<E>);
       };
       waiters.push({ resolve: wrappedResolve, reject });
       this.eventWaiters.set(method, waiters);
     });
   }
 
-  on(method, handler) {
+  on<E extends keyof Events>(method: E, handler: (params: EventParams<E>) => unknown) {
     const handlers = this.eventHandlers.get(method) || [];
-    handlers.push(handler);
+    handlers.push(handler as Handler);
     this.eventHandlers.set(method, handlers);
     return () => {
       this.eventHandlers.set(
@@ -54,7 +65,7 @@ class CdpEventChannel {
     };
   }
 
-  markClosed(error) {
+  markClosed(error: Error) {
     if (this.closed) return;
     this.closed = true;
     this.eventWaiters.forEach((waiters) => {
@@ -65,32 +76,17 @@ class CdpEventChannel {
   }
 }
 
-export function validatedLoopbackCdpWebSocketUrl(value, port) {
-  if (typeof value !== "string") {
-    throw new Error("Rejected Codex CDP target without a WebSocket URL");
-  }
-  const debuggerUrl = new URL(value);
-  if (
-    debuggerUrl.protocol !== "ws:" ||
-    debuggerUrl.hostname !== "127.0.0.1" ||
-    debuggerUrl.port !== String(port) ||
-    !debuggerUrl.pathname.startsWith("/devtools/page/") ||
-    debuggerUrl.username ||
-    debuggerUrl.password
-  ) {
-    throw new Error(`Rejected unexpected Codex CDP target URL: ${debuggerUrl.origin}`);
-  }
-  return debuggerUrl.href;
-}
+export class CdpPipeSession extends CdpEventChannel {
+  browser: CdpPipeBrowser;
+  sessionId: string;
 
-class CdpPipeSession extends CdpEventChannel {
-  constructor(browser, sessionId) {
+  constructor(browser: CdpPipeBrowser, sessionId: string) {
     super();
     this.browser = browser;
     this.sessionId = sessionId;
   }
 
-  send(method, params = {}) {
+  send<M extends keyof Commands>(method: M, params?: Params<M>): Promise<Result<M>> {
     if (method === "Target.getTargets") return this.browser.send(method, params);
     if (this.closed) return Promise.reject(new Error("CDP session closed"));
     return this.browser.send(method, params, this.sessionId);
@@ -103,17 +99,22 @@ class CdpPipeSession extends CdpEventChannel {
 }
 
 export class CdpPipeBrowser extends CdpEventChannel {
-  constructor(child) {
+  child: ChildProcess;
+  // Chrome's --remote-debugging-pipe reads commands on fd 3 and writes replies on fd 4.
+  input: Writable;
+  output: Readable;
+  sequence = 0;
+  pending = new Map<number, Pending>();
+  sessions = new Map<string, CdpPipeSession>();
+  buffer = Buffer.alloc(0);
+
+  constructor(child: ChildProcess) {
     super();
     this.child = child;
-    this.input = child.stdio[3];
-    this.output = child.stdio[4];
-    this.sequence = 0;
-    this.pending = new Map();
-    this.sessions = new Map();
-    this.buffer = Buffer.alloc(0);
+    this.input = child.stdio[3] as Writable;
+    this.output = child.stdio[4] as Readable;
 
-    this.output.on("data", (chunk) => this.receive(chunk));
+    this.output.on("data", (chunk: Buffer) => this.receive(chunk));
     this.output.once("error", (error) => this.fail(error));
     this.output.once("end", () => this.fail(new Error("CDP pipe ended")));
     this.output.once("close", () => this.fail(new Error("CDP pipe closed")));
@@ -128,7 +129,7 @@ export class CdpPipeBrowser extends CdpEventChannel {
     await this.send("Target.setDiscoverTargets", { discover: true });
   }
 
-  receive(chunk) {
+  receive(chunk: Buffer) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     for (
       let boundary = this.buffer.indexOf(0);
@@ -157,7 +158,11 @@ export class CdpPipeBrowser extends CdpEventChannel {
     }
   }
 
-  send(method, params = {}, sessionId) {
+  send<M extends keyof Commands>(
+    method: M,
+    params: Params<M> = {} as Params<M>,
+    sessionId?: string,
+  ): Promise<Result<M>> {
     if (this.closed) return Promise.reject(new Error("CDP pipe closed"));
     const id = ++this.sequence;
     return new Promise((resolve, reject) => {
@@ -165,7 +170,7 @@ export class CdpPipeBrowser extends CdpEventChannel {
         this.pending.delete(id);
         reject(new Error(`Timed out waiting for CDP command ${method}`));
       }, 30_000);
-      this.pending.set(id, { resolve, reject, timeout });
+      this.pending.set(id, { resolve: resolve as (result: unknown) => void, reject, timeout });
       const message = sessionId ? { id, method, params, sessionId } : { id, method, params };
       this.input.write(`${JSON.stringify(message)}\0`, (error) => {
         if (error) this.fail(error);
@@ -178,7 +183,7 @@ export class CdpPipeBrowser extends CdpEventChannel {
     return targetInfos;
   }
 
-  async connect(targetId) {
+  async connect(targetId: string) {
     const { sessionId } = await this.send("Target.attachToTarget", {
       targetId,
       flatten: true,
@@ -188,21 +193,21 @@ export class CdpPipeBrowser extends CdpEventChannel {
     return session;
   }
 
-  detach(sessionId) {
+  detach(sessionId: string) {
     this.closeSession(sessionId, new Error("CDP session closed"));
     if (!this.closed) {
       this.send("Target.detachFromTarget", { sessionId }).catch(() => {});
     }
   }
 
-  closeSession(sessionId, error) {
+  closeSession(sessionId: string, error: Error) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
     session.markClosed(error);
   }
 
-  fail(error) {
+  fail(error: Error) {
     if (this.closed) return;
     this.pending.forEach((pending) => {
       clearTimeout(pending.timeout);

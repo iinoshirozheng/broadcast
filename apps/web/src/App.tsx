@@ -90,7 +90,7 @@ import {
   installEmbeddedExternalLinkHandler,
   postEmbeddedHostMessage,
   setEmbeddedFrameChallenge,
-} from "./embeddedHost.mjs";
+} from "./embeddedHost.ts";
 import { buildIssueUrl, readIssueIdentifier } from "./issueRoute";
 import { getBroadcastI18n, resolveBroadcastLanguage, BroadcastLanguageProvider } from "./i18n";
 import { MAIN_STATUSES, type OtherTaskTab } from "./issueBoardStatuses";
@@ -127,10 +127,12 @@ import {
   type TaskDraft,
   type TaskStatus,
 } from "./types";
-// The poller stays in ESM JavaScript so its lifecycle can be tested directly with node:test.
-// biome-ignore format: the @ts-expect-error below must stay on the line before the module path
-// @ts-expect-error The module's option contract is enforced by its focused node tests.
-import { createRevisionPoller, createRevisionWebSocketClient, getRevisionPollingInterval, getRevisionWebSocketConfig } from "./revisionPolling.mjs";
+import {
+  createRevisionPoller,
+  createRevisionWebSocketClient,
+  getRevisionPollingInterval,
+  getRevisionWebSocketConfig,
+} from "./revisionPolling.ts";
 
 type ConnectionState = "connecting" | "live" | "reconnecting";
 type Theme = "light" | "dark";

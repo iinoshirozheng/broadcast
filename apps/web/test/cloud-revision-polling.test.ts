@@ -7,19 +7,65 @@ import {
   createRevisionWebSocketClient,
   getRevisionPollingInterval,
   getRevisionWebSocketConfig,
-} from "../src/revisionPolling.mjs";
+  type RevisionSocket,
+} from "../src/revisionPolling.ts";
+
+type RevisionResult = { changed: boolean; revision: number };
+type FakeTimer = { callback: () => unknown; delay: number };
+
+class FakeSocket implements RevisionSocket {
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+  closeCalls: { code?: number; reason?: string }[] = [];
+  url: string;
+
+  constructor(url = "") {
+    this.url = url;
+  }
+
+  close(code?: number, reason?: string) {
+    this.closeCalls.push({ code, reason });
+  }
+
+  emitOpen() {
+    this.onopen?.(new Event("open"));
+  }
+
+  emitMessage(data: string) {
+    this.onmessage?.(new MessageEvent("message", { data }));
+  }
+
+  emitClose() {
+    this.onclose?.(new CloseEvent("close"));
+  }
+}
+
+function createTimeoutHarness() {
+  const timeouts: FakeTimer[] = [];
+  return {
+    timeouts,
+    setTimeout(callback: () => unknown, delay: number) {
+      const timer = { callback, delay };
+      timeouts.push(timer);
+      return timer;
+    },
+    clearTimeout() {},
+  };
+}
 
 function createTimerHarness() {
-  const intervals = [];
-  const cleared = [];
+  const intervals: FakeTimer[] = [];
+  const cleared: unknown[] = [];
 
   return {
-    setInterval(callback, delay) {
+    setInterval(callback: () => unknown, delay: number) {
       const timer = { callback, delay };
       intervals.push(timer);
       return timer;
     },
-    clearInterval(timer) {
+    clearInterval(timer: unknown) {
       cleared.push(timer);
     },
     fire(index = 0) {
@@ -35,7 +81,11 @@ async function flush() {
   await Promise.resolve();
 }
 
-async function runFirstPoll(poller, timer, calls) {
+async function runFirstPoll(
+  poller: { start(): void },
+  timer: ReturnType<typeof createTimerHarness>,
+  calls: number[],
+) {
   poller.start();
   await flush();
   if (calls.length === 0) {
@@ -46,7 +96,7 @@ async function runFirstPoll(poller, timer, calls) {
 
 test("polls the current revision every 2000ms by default and ignores unchanged responses", async () => {
   const timer = createTimerHarness();
-  const calls = [];
+  const calls: number[] = [];
   let invalidations = 0;
   const poller = createRevisionPoller({
     fetchRevision: async (since) => {
@@ -70,7 +120,7 @@ test("polls the current revision every 2000ms by default and ignores unchanged r
 
 test("advances the revision on change and invalidates once", async () => {
   const timer = createTimerHarness();
-  const calls = [];
+  const calls: number[] = [];
   let invalidations = 0;
   const responses = [
     { changed: false, revision: 0 },
@@ -80,7 +130,9 @@ test("advances the revision on change and invalidates once", async () => {
   const poller = createRevisionPoller({
     fetchRevision: async (since) => {
       calls.push(since);
-      return responses.shift();
+      const response = responses.shift();
+      assert.ok(response);
+      return response;
     },
     onInvalidate: () => {
       invalidations += 1;
@@ -101,10 +153,10 @@ test("advances the revision on change and invalidates once", async () => {
 
 test("does not start another request while a revision request is pending", async () => {
   const timer = createTimerHarness();
-  const calls = [];
+  const calls: number[] = [];
   let invalidations = 0;
-  let resolveRequest;
-  const request = new Promise((resolve) => {
+  let resolveRequest: (result: RevisionResult) => void = () => {};
+  const request = new Promise<RevisionResult>((resolve) => {
     resolveRequest = resolve;
   });
   const poller = createRevisionPoller({
@@ -140,7 +192,7 @@ test("does not start another request while a revision request is pending", async
 
 test("keeps the old revision after an error and retries it on the next tick", async () => {
   const timer = createTimerHarness();
-  const calls = [];
+  const calls: number[] = [];
   let attempt = 0;
   let invalidations = 0;
   const poller = createRevisionPoller({
@@ -186,10 +238,10 @@ test("uses an explicit interval and clears its timer when stopped", async () => 
 test("does not invalidate after being stopped while a request is pending", async () => {
   const timer = createTimerHarness();
   let invalidations = 0;
-  let resolveRequest;
+  let resolveRequest: (result: RevisionResult) => void = () => {};
   const poller = createRevisionPoller({
     fetchRevision: () =>
-      new Promise((resolve) => {
+      new Promise<RevisionResult>((resolve) => {
         resolveRequest = resolve;
       }),
     onInvalidate: () => {
@@ -252,10 +304,10 @@ test("cloud metadata selects WebSocket push without periodic polling", () => {
 });
 
 test("WebSocket push invalidates on changes and checks revision once per connection", async () => {
-  const sockets = [];
-  const timeouts = [];
-  const states = [];
-  const revisionCalls = [];
+  const sockets: FakeSocket[] = [];
+  const { timeouts, ...timers } = createTimeoutHarness();
+  const states: string[] = [];
+  const revisionCalls: number[] = [];
   let invalidations = 0;
 
   const client = createRevisionWebSocketClient({
@@ -269,22 +321,11 @@ test("WebSocket push invalidates on changes and checks revision once per connect
     },
     onConnectionChange: (state) => states.push(state),
     createWebSocket: (url) => {
-      const socket = {
-        url,
-        closeCalls: [],
-        close(code, reason) {
-          this.closeCalls.push({ code, reason });
-        },
-      };
+      const socket = new FakeSocket(url);
       sockets.push(socket);
       return socket;
     },
-    setTimeout(callback, delay) {
-      const timer = { callback, delay };
-      timeouts.push(timer);
-      return timer;
-    },
-    clearTimeout() {},
+    ...timers,
   });
 
   client.start();
@@ -292,18 +333,18 @@ test("WebSocket push invalidates on changes and checks revision once per connect
   assert.equal(sockets[0].url, "wss://broadcast.example.test/api/events");
   assert.deepEqual(states, ["connecting"]);
 
-  sockets[0].onopen();
+  sockets[0].emitOpen();
   await flush();
   assert.deepEqual(states, ["connecting", "live"]);
   assert.deepEqual(revisionCalls, [0]);
 
-  sockets[0].onmessage({ data: JSON.stringify({ type: "revision", revision: 4 }) });
+  sockets[0].emitMessage(JSON.stringify({ type: "revision", revision: 4 }));
   assert.equal(invalidations, 1);
-  sockets[0].onmessage({ data: JSON.stringify({ type: "revision", revision: 4 }) });
-  sockets[0].onmessage({ data: "malformed" });
+  sockets[0].emitMessage(JSON.stringify({ type: "revision", revision: 4 }));
+  sockets[0].emitMessage("malformed");
   assert.equal(invalidations, 1);
 
-  sockets[0].onclose();
+  sockets[0].emitClose();
   await flush();
   assert.equal(states.at(-1), "reconnecting");
   assert.deepEqual(revisionCalls, [0]);
@@ -311,7 +352,7 @@ test("WebSocket push invalidates on changes and checks revision once per connect
 
   timeouts[0].callback();
   assert.equal(sockets.length, 2);
-  sockets[1].onopen();
+  sockets[1].emitOpen();
   await flush();
   assert.equal(states.at(-1), "live");
   assert.deepEqual(revisionCalls, [0, 4]);
@@ -321,8 +362,8 @@ test("WebSocket push invalidates on changes and checks revision once per connect
 });
 
 test("a failed reconnect revision check closes the socket so compensation retries", async () => {
-  const sockets = [];
-  const timeouts = [];
+  const sockets: FakeSocket[] = [];
+  const { timeouts, ...timers } = createTimeoutHarness();
   let revisionRequest = 0;
 
   const client = createRevisionWebSocketClient({
@@ -334,32 +375,22 @@ test("a failed reconnect revision check closes the socket so compensation retrie
     },
     onInvalidate() {},
     createWebSocket() {
-      const socket = {
-        closeCalls: [],
-        close(code, reason) {
-          this.closeCalls.push({ code, reason });
-        },
-      };
+      const socket = new FakeSocket();
       sockets.push(socket);
       return socket;
     },
-    setTimeout(callback, delay) {
-      const timer = { callback, delay };
-      timeouts.push(timer);
-      return timer;
-    },
-    clearTimeout() {},
+    ...timers,
   });
 
   client.start();
-  sockets[0].onopen();
+  sockets[0].emitOpen();
   await flush();
   assert.deepEqual(sockets[0].closeCalls, [{ code: 4000, reason: "Revision check failed" }]);
 
-  sockets[0].onclose();
+  sockets[0].emitClose();
   assert.equal(timeouts[0].delay, 1_000);
   timeouts[0].callback();
-  sockets[1].onopen();
+  sockets[1].emitOpen();
   await flush();
   assert.equal(revisionRequest, 2);
   client.stop();

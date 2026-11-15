@@ -3,13 +3,15 @@ import { execFile, spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import http from "node:http";
+import { stripTypeScriptTypes } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { CdpPipeBrowser } from "./helpers/cdp-pipe.mjs";
+import { CdpPipeBrowser, type CdpPipeSession } from "./helpers/cdp-pipe.ts";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -25,10 +27,14 @@ const source = sourceRef
     ).stdout
   : await readFile(new URL("../crates/codex/assets/broadcast.user.js", import.meta.url), "utf8");
 const embeddedHostSource = await readFile(
-  new URL("../apps/web/src/embeddedHost.mjs", import.meta.url),
+  new URL("../apps/web/src/embeddedHost.ts", import.meta.url),
   "utf8",
 );
-const embeddedHostClassicSource = embeddedHostSource.replaceAll("export ", "");
+// The fixture page runs the module as a classic script.
+const embeddedHostClassicSource = stripTypeScriptTypes(embeddedHostSource).replaceAll(
+  "export ",
+  "",
+);
 
 async function chromeExecutable() {
   const candidates = [
@@ -39,7 +45,7 @@ async function chromeExecutable() {
     "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
-  ].filter(Boolean);
+  ].filter((candidate) => candidate !== undefined);
   for (const candidate of candidates) {
     try {
       await access(candidate);
@@ -49,7 +55,7 @@ async function chromeExecutable() {
   return null;
 }
 
-function fixtureHtml(origin) {
+function fixtureHtml(origin: string) {
   const encodedSource = Buffer.from(source).toString("base64");
   return `<!doctype html>
 <html>
@@ -324,7 +330,9 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
       );
       response.setHeader(
         "x-broadcast-proof",
-        createHmac("sha256", instanceSecret).update(challenge).digest("hex"),
+        createHmac("sha256", instanceSecret)
+          .update(challenge ?? "")
+          .digest("hex"),
       );
       response.setHeader("content-type", "text/html; charset=utf-8");
       response.end(
@@ -332,22 +340,22 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
       );
       return;
     }
-    const origin = `http://127.0.0.1:${server.address().port}`;
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     response.setHeader("content-type", "text/html; charset=utf-8");
     response.end(fixtureHtml(origin));
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(
     () =>
-      new Promise((resolve) => {
-        server.close(resolve);
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
         server.closeAllConnections();
       }),
   );
 
   const profile = await mkdtemp(path.join(os.tmpdir(), "broadcast-fullheight-chrome-"));
   t.after(() => rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
-  const url = `http://127.0.0.1:${server.address().port}/fixture`;
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/fixture`;
   const child = spawn(
     chrome,
     [
@@ -363,7 +371,7 @@ test("Broadcast fills the workspace, opens HTTPS links and revokes hostile ifram
     },
   );
   const browser = new CdpPipeBrowser(child);
-  let session;
+  let session: CdpPipeSession | undefined;
   let encodedResult = "";
   try {
     await browser.open();

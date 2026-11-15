@@ -5,10 +5,13 @@ import vm from "node:vm";
 
 const sourceUrl = new URL("../crates/codex/assets/broadcast.user.js", import.meta.url);
 const source = (await readFile(sourceUrl, "utf8")).replaceAll("\r\n", "\n");
+
+type NativeFetch = (path: string, body: Record<string, unknown>) => Promise<unknown>;
+
 const webStyles = await readFile(new URL("../apps/web/src/styles.css", import.meta.url), "utf8");
 const webApp = await readFile(new URL("../apps/web/src/App.tsx", import.meta.url), "utf8");
 const embeddedHost = await readFile(
-  new URL("../apps/web/src/embeddedHost.mjs", import.meta.url),
+  new URL("../apps/web/src/embeddedHost.ts", import.meta.url),
   "utf8",
 );
 
@@ -64,9 +67,9 @@ test("entry recognizes the Explore rail labels", () => {
     source.indexOf("function buttonMatches"),
     source.indexOf("\n\n  function replaceEntryIcon"),
   );
-  let currentButtons;
+  let currentButtons: unknown[] = [];
   const rail = {
-    querySelectorAll: (selector) => (selector === "button" ? currentButtons : []),
+    querySelectorAll: (selector: string) => (selector === "button" ? currentButtons : []),
   };
   const findReferenceButton = vm.runInNewContext(
     `(() => {
@@ -83,7 +86,7 @@ test("entry recognizes the Explore rail labels", () => {
 
   for (const textContent of ["探索", "Explore"]) {
     const currentButton = {
-      querySelector: (selector) => (selector === ".sr-only" ? { textContent } : null),
+      querySelector: (selector: string) => (selector === ".sr-only" ? { textContent } : null),
       getAttribute: () => null,
       parentElement: {},
     };
@@ -441,16 +444,16 @@ test("native fetch preserves successful null bodies and returns undefined when u
     source.indexOf("function requestNativeFetch"),
     source.indexOf("\n\n  async function selectedNativeProjectId"),
   );
-  const loadRequestNativeFetch = (window) =>
+  const loadRequestNativeFetch = (window: object) =>
     vm.runInNewContext(`(${functionSource})`, {
       crypto: { randomUUID: () => "request-id" },
       window,
     });
-  const responseWindow = (status, bodyJsonString) => {
-    let onMessage;
+  const responseWindow = (status: number, bodyJsonString: string) => {
+    let onMessage: (event: { data: unknown }) => void = () => {};
     return {
       electronBridge: {
-        sendMessageFromView(message) {
+        sendMessageFromView(message: { requestId: string }) {
           onMessage({
             data: {
               type: "fetch-response",
@@ -463,7 +466,7 @@ test("native fetch preserves successful null bodies and returns undefined when u
       },
       setTimeout,
       clearTimeout,
-      addEventListener(_type, listener) {
+      addEventListener(_type: string, listener: (event: { data: unknown }) => void) {
         onMessage = listener;
       },
       removeEventListener() {},
@@ -492,10 +495,10 @@ test("native fetch preserves successful null bodies and returns undefined when u
     undefined,
   );
 
-  let expire;
+  let expire: () => void = () => {};
   const timeoutWindow = {
     electronBridge: { sendMessageFromView() {} },
-    setTimeout(callback) {
+    setTimeout(callback: () => void) {
       expire = callback;
       return 1;
     },
@@ -619,7 +622,7 @@ test("Codex project metadata prefers the live global state over the startup boot
     source.indexOf("\n\n  async function activeNativeWorkspaceRoots"),
   );
   const readCodexProjectMetadata = vm.runInNewContext(`(${functionSource})`, {
-    requestNativeFetch: async (_path, body) => ({
+    requestNativeFetch: async (_path: string, body: Record<string, unknown>) => ({
       value:
         body.key === "local-projects"
           ? { live: { rootPaths: ["/Users/example/live"] } }
@@ -699,7 +702,7 @@ test("successful empty Codex project state does not revive startup metadata", as
       },
     ],
   };
-  const loadMetadata = (requestNativeFetch) =>
+  const loadMetadata = (requestNativeFetch: NativeFetch) =>
     vm.runInNewContext(`(${functionSource})`, {
       requestNativeFetch,
       window: {
@@ -710,7 +713,9 @@ test("successful empty Codex project state does not revive startup metadata", as
   for (const requestNativeFetch of [
     async () => null,
     async () => ({ value: null }),
-    async (_path, body) => ({ value: body.key === "local-projects" ? {} : [] }),
+    async (_path: string, body: Record<string, unknown>) => ({
+      value: body.key === "local-projects" ? {} : [],
+    }),
   ]) {
     assert.deepEqual(
       JSON.parse(JSON.stringify([...(await loadMetadata(requestNativeFetch)()).entries()])),
@@ -761,7 +766,7 @@ test("new Codex conversations only use startup projects when the live request is
       },
     ],
   };
-  const loadContext = (response) =>
+  const loadContext = (response: unknown) =>
     vm.runInNewContext(`(${functionSource})`, {
       requestNativeFetch: async () => response,
       window: {
@@ -789,7 +794,7 @@ test("native root canonicalization follows the filesystem's case sensitivity", a
     "/Volumes/LOCAL344CASE/Project",
     "/Volumes/LOCAL344CASE/project",
   ];
-  const loadCanonicalizer = (requestNativeFetch) =>
+  const loadCanonicalizer = (requestNativeFetch: NativeFetch) =>
     vm.runInNewContext(
       `(() => {
     ${functionSource}
@@ -797,7 +802,7 @@ test("native root canonicalization follows the filesystem's case sensitivity", a
   })()`,
       { requestNativeFetch },
     );
-  const calls = [];
+  const calls: { path: string; body: unknown }[] = [];
   const canonicalizer = loadCanonicalizer(async (path, body) => {
     calls.push({ path, body: JSON.parse(JSON.stringify(body)) });
     return {
@@ -851,7 +856,7 @@ test("native project resolution gives the explicit project ID priority over path
         { id: "expected", rootPaths: ["/Volumes/LOCAL344CASE/Project"] },
       ],
     }),
-    normalizeNativeRootPath: (value) => String(value || "").replace(/\/+$/, ""),
+    normalizeNativeRootPath: (value: unknown) => String(value || "").replace(/\/+$/, ""),
     canonicalNativeRootPaths: async () => {
       canonicalCalls += 1;
       return [];
@@ -878,9 +883,17 @@ test("native project confirmation composes exact IDs, root availability, and can
     waitStart,
     source.indexOf("\n\n  async function createThreadForTask", waitStart),
   );
-  const loadWait = ({ projectId, activeWorkspace, canonicalPathByRoot }) => {
+  const loadWait = ({
+    projectId,
+    activeWorkspace,
+    canonicalPathByRoot,
+  }: {
+    projectId: string;
+    activeWorkspace: { available: boolean; roots: string[] };
+    canonicalPathByRoot?: Record<string, string>;
+  }) => {
     let now = 0;
-    const canonicalCalls = [];
+    const canonicalCalls: { path: string; body: unknown }[] = [];
     const api = vm.runInNewContext(
       `(() => {
       ${canonicalSource}
@@ -890,14 +903,14 @@ test("native project confirmation composes exact IDs, root availability, and can
       {
         Date: { now: () => now },
         activeNativeWorkspaceRoots: async () => activeWorkspace,
-        hostText: (_chinese, english) => english,
-        requestNativeFetch: async (path, body) => {
+        hostText: (_chinese: string, english: string) => english,
+        requestNativeFetch: async (path: string, body: unknown) => {
           canonicalCalls.push({ path, body: JSON.parse(JSON.stringify(body)) });
           return canonicalPathByRoot === undefined ? undefined : { canonicalPathByRoot };
         },
         selectedNativeProjectId: async () => projectId,
         window: {
-          setTimeout(resolve) {
+          setTimeout(resolve: () => void) {
             now = 8_001;
             resolve();
           },

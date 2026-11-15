@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { composerReferencePersistence } from "../apps/web/src/composerReference.mjs";
+import { composerReferencePersistence } from "../apps/web/src/composerReference.ts";
 import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.mjs";
 
 test("composer rebind HTTP API returns send-ready documents and boundary errors", async () => {

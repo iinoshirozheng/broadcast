@@ -170,11 +170,11 @@ Run the one-time Wrangler adapter with an explicit remote-operation acknowledgem
 ```bash
 BROADCAST_MIGRATION_REMOTE=1 pixi run pnpm cloud:data import \
   --bundle cloud-migration-exports/initial \
-  --adapter ./scripts/wrangler-cloud-adapter.mjs
+  --adapter ./scripts/wrangler-cloud-adapter.ts
 
 BROADCAST_MIGRATION_REMOTE=1 pixi run pnpm cloud:data verify \
   --bundle cloud-migration-exports/initial \
-  --adapter ./scripts/wrangler-cloud-adapter.mjs
+  --adapter ./scripts/wrangler-cloud-adapter.ts
 ```
 
 `BROADCAST_MIGRATION_REMOTE=1` is a deliberate safety gate for these two commands. The adapter uses the current Wrangler login and the production resource names from `wrangler.jsonc`; it does not add a migration HTTP endpoint or store Cloudflare credentials. The commands are not run automatically by deployment, so having the repository does not mean data has already been imported.
@@ -182,5 +182,5 @@ BROADCAST_MIGRATION_REMOTE=1 pixi run pnpm cloud:data verify \
 The adapter has a local-persistence integration test that does not access remote Cloudflare resources:
 
 ```bash
-node --test test/cloud-migration.test.mjs
+node --test test/cloud-migration.test.ts
 ```

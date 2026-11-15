@@ -34,7 +34,7 @@ export async function openIssue(screen: Screen, title: string) {
   await expect(screen.getByLabel("Issue title")).toHaveValue(title);
 }
 
-export interface E2ETask {
+export type E2ETask = {
   id: string;
   projectId: string;
   identifier: string;
@@ -47,7 +47,7 @@ export interface E2ETask {
   startDate: string | null;
   dueDate: string | null;
   recurrence: { interval: number; unit: string } | null;
-}
+};
 
 export async function tasks(browser: Browser): Promise<E2ETask[]> {
   return browser.evaluate(async () => {

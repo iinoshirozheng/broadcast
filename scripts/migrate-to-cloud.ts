@@ -1,11 +1,83 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
+
+type Row = Record<string, SQLOutputValue>;
+type ProjectRow = Row & { id: string; labels: string | null };
+type ReadmeRow = Row & { project_id: string; content: string };
+type TaskRow = Row & { id: string; project_id: string; labels: string; description: string };
+type CommentRow = Row & { id: string; task_id: string; body: string };
+type RelationRow = Row & { source_task_id: string };
+type AttachmentRow = Row & {
+  id: string;
+  task_id: string;
+  comment_id: string | null;
+  kind: string | null;
+  content_type: string;
+  size: number;
+};
+export type Tables = {
+  projects: ProjectRow[];
+  project_readmes: ReadmeRow[];
+  tasks: TaskRow[];
+  comments: CommentRow[];
+  task_relations: RelationRow[];
+  attachments: AttachmentRow[];
+};
+type TableName = keyof Tables;
+type TableCounts = Record<TableName, number>;
+export type CountsByProject = Record<string, TableCounts>;
+type AttachmentPayload = {
+  id: string;
+  projectId: string | undefined;
+  objectKey: string;
+  size: number;
+  sha256: string;
+  body: Uint8Array;
+};
+export type MigrationBundle = {
+  schemaVersion: number;
+  createdAt: string;
+  counts: { byProject: CountsByProject };
+  tables: Tables;
+  attachments: AttachmentPayload[];
+};
+type ManifestAttachment = Omit<AttachmentPayload, "body"> & { file: string };
+type Manifest = Omit<MigrationBundle, "tables" | "attachments"> & {
+  tables: Record<TableName, { file: string; rows: number }>;
+  attachments?: ManifestAttachment[];
+};
+
+type R2PutOptions = {
+  customMetadata: Record<string, string>;
+  httpMetadata: { contentType: string };
+};
+export type D1Adapter = {
+  importTables(tables: Tables): Promise<unknown>;
+  countByProject(): Promise<CountsByProject>;
+  listProjectReadmes(): Promise<Record<string, unknown>[]>;
+};
+export type R2Adapter = {
+  put(key: string, body: Buffer, options?: R2PutOptions): Promise<unknown>;
+  head(key: string): Promise<{ size: number; customMetadata?: Record<string, string> } | null>;
+  delete?(key: string): Promise<unknown>;
+};
+export type MigrationAdapters = { d1: D1Adapter; r2: R2Adapter; cleanup?(): Promise<unknown> };
+export type AdapterContext = { bundle: MigrationBundle; command: string };
+// The slice of a Workers D1 binding the migration uses.
+export type D1Binding = {
+  prepare(sql: string): {
+    bind(...values: unknown[]): unknown;
+    all(): Promise<{ results: Record<string, unknown>[] }>;
+  };
+  batch(statements: unknown[]): Promise<unknown>;
+};
 
 // The labels a project without its own list starts with (`DEFAULT_LABEL_NAMES` in broadcast-domain).
 const DEFAULT_LABEL_NAMES = [
@@ -25,7 +97,7 @@ const DEFAULT_LABEL_NAMES = [
 const SCHEMA_VERSION = 2;
 const WRANGLER_D1_STATEMENT_MAX_BYTES = 90_000;
 const PROJECT_README_D1_CHUNK_CHARACTERS = 10_000;
-const TABLE_ORDER = [
+const TABLE_ORDER: TableName[] = [
   "projects",
   "project_readmes",
   "tasks",
@@ -33,7 +105,7 @@ const TABLE_ORDER = [
   "task_relations",
   "attachments",
 ];
-const SORT_FIELDS = {
+const SORT_FIELDS: Record<TableName, string[]> = {
   projects: ["id"],
   project_readmes: ["project_id"],
   tasks: ["project_id", "identifier", "id"],
@@ -41,14 +113,14 @@ const SORT_FIELDS = {
   task_relations: ["source_task_id", "target_task_id", "relation_type"],
   attachments: ["task_id", "comment_id", "created_at", "id"],
 };
-function compareValues(left, right) {
+function compareValues(left: unknown, right: unknown) {
   if (left === right) return 0;
   if (left == null) return -1;
   if (right == null) return 1;
   return String(left) < String(right) ? -1 : 1;
 }
 
-function sortRows(table, rows) {
+function sortRows(table: TableName, rows: Row[]) {
   const fields = SORT_FIELDS[table];
   return rows.sort((left, right) => {
     for (const field of fields) {
@@ -59,19 +131,19 @@ function sortRows(table, rows) {
   });
 }
 
-function sqliteString(value) {
+function sqliteString(value: string) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function projectRowsWithLabels(tables) {
-  const labelsByProject = new Map(
+function projectRowsWithLabels(tables: Tables) {
+  const labelsByProject = new Map<string, string[]>(
     tables.projects.map((project) => [
       project.id,
       project.labels == null ? [...DEFAULT_LABEL_NAMES] : JSON.parse(project.labels),
     ]),
   );
   for (const task of tables.tasks) {
-    const labels = labelsByProject.get(task.project_id);
+    const labels = labelsByProject.get(task.project_id)!;
     for (const label of JSON.parse(task.labels)) {
       if (!labels.includes(label)) labels.push(label);
     }
@@ -82,8 +154,8 @@ function projectRowsWithLabels(tables) {
   }));
 }
 
-function buildProjectCounts(tables) {
-  const counts = {};
+function buildProjectCounts(tables: Tables) {
+  const counts: CountsByProject = {};
   for (const project of tables.projects) {
     counts[project.id] = {
       projects: 1,
@@ -102,7 +174,7 @@ function buildProjectCounts(tables) {
     counts[readme.project_id].project_readmes += 1;
   }
 
-  const taskProjects = new Map();
+  const taskProjects = new Map<string, string>();
   for (const task of tables.tasks) {
     if (!counts[task.project_id]) {
       throw new Error(`Task '${task.id}' references unknown project '${task.project_id}'`);
@@ -137,7 +209,7 @@ function buildProjectCounts(tables) {
   );
 }
 
-function assertSafeAttachmentId(id) {
+function assertSafeAttachmentId(id: unknown) {
   if (
     typeof id !== "string" ||
     id.length === 0 ||
@@ -151,22 +223,22 @@ function assertSafeAttachmentId(id) {
   }
 }
 
-function attachmentObjectKey(attachmentId) {
+function attachmentObjectKey(attachmentId: string) {
   return attachmentId;
 }
 
-async function readAttachmentPayloads(tables, attachmentsDirectory) {
+async function readAttachmentPayloads(tables: Tables, attachmentsDirectory: string) {
   const taskProjects = new Map(tables.tasks.map((task) => [task.id, task.project_id]));
-  const payloads = [];
+  const payloads: AttachmentPayload[] = [];
 
   for (const attachment of tables.attachments) {
     assertSafeAttachmentId(attachment.id);
     const sourcePath = path.join(attachmentsDirectory, attachment.id);
-    let file;
+    let file: Stats;
     try {
       file = await lstat(sourcePath);
     } catch (error) {
-      if (error?.code === "ENOENT") {
+      if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
         throw new Error(`Attachment '${attachment.id}' is missing from '${attachmentsDirectory}'`);
       }
       throw error;
@@ -195,11 +267,11 @@ async function readAttachmentPayloads(tables, attachmentsDirectory) {
   return payloads;
 }
 
-async function readSnapshot(databasePath) {
+async function readSnapshot(databasePath: string): Promise<Tables> {
   const snapshotDirectory = await mkdtemp(path.join(os.tmpdir(), "broadcast-cloud-snapshot-"));
   const snapshotPath = path.join(snapshotDirectory, "broadcast.sqlite");
-  let source;
-  let snapshot;
+  let source: DatabaseSync | null = null;
+  let snapshot: DatabaseSync | null = null;
   try {
     source = new DatabaseSync(databasePath, { readOnly: true });
     source.exec(`PRAGMA busy_timeout = 5000; VACUUM INTO ${sqliteString(snapshotPath)}`);
@@ -220,9 +292,9 @@ async function readSnapshot(databasePath) {
     const tables = Object.fromEntries(
       TABLE_ORDER.map((table) => [
         table,
-        sortRows(table, snapshot.prepare(`SELECT * FROM "${table}"`).all()),
+        sortRows(table, snapshot!.prepare(`SELECT * FROM "${table}"`).all()),
       ]),
-    );
+    ) as Tables;
     snapshot.close();
     snapshot = null;
     return tables;
@@ -233,7 +305,7 @@ async function readSnapshot(databasePath) {
   }
 }
 
-function fillMissingAttachmentKinds(tables) {
+function fillMissingAttachmentKinds(tables: Tables) {
   const taskDescriptions = new Map(tables.tasks.map((task) => [task.id, task.description]));
   const commentBodies = new Map(tables.comments.map((comment) => [comment.id, comment.body]));
   tables.attachments = tables.attachments.map((attachment) => {
@@ -244,12 +316,12 @@ function fillMissingAttachmentKinds(tables) {
         : commentBodies.get(attachment.comment_id);
     const inline =
       attachment.content_type.toLowerCase().startsWith("image/") &&
-      body.includes(`api/attachments/${attachment.id}/content`);
+      body!.includes(`api/attachments/${attachment.id}/content`);
     return { ...attachment, kind: inline ? "inline" : "attachment" };
   });
 }
 
-function assertCountsMatch(expected, actual) {
+function assertCountsMatch(expected: CountsByProject, actual: CountsByProject | undefined) {
   const expectedProjects = Object.keys(expected).sort();
   const actualProjects = Object.keys(actual ?? {}).sort();
   if (JSON.stringify(expectedProjects) !== JSON.stringify(actualProjects)) {
@@ -260,7 +332,7 @@ function assertCountsMatch(expected, actual) {
   for (const projectId of expectedProjects) {
     for (const table of TABLE_ORDER) {
       const expectedCount = Number(expected[projectId][table]);
-      const actualCount = Number(actual[projectId]?.[table]);
+      const actualCount = Number(actual?.[projectId]?.[table]);
       if (actualCount !== expectedCount) {
         throw new Error(
           `Cloud count mismatch for project '${projectId}' table '${table}': expected ${expectedCount}, got ${actualCount}`,
@@ -270,7 +342,7 @@ function assertCountsMatch(expected, actual) {
   }
 }
 
-function validateBundle(bundle) {
+function validateBundle(bundle: MigrationBundle) {
   if (!bundle || bundle.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(`Unsupported cloud migration schema version '${bundle?.schemaVersion}'`);
   }
@@ -330,7 +402,13 @@ function validateBundle(bundle) {
   }
 }
 
-export async function createCloudMigrationBundle({ databasePath, attachmentsDirectory }) {
+export async function createCloudMigrationBundle({
+  databasePath,
+  attachmentsDirectory,
+}: {
+  databasePath: string;
+  attachmentsDirectory: string;
+}): Promise<MigrationBundle> {
   const tables = await readSnapshot(databasePath);
   fillMissingAttachmentKinds(tables);
   tables.projects = projectRowsWithLabels(tables).map((project) => ({
@@ -352,7 +430,7 @@ export async function createCloudMigrationBundle({ databasePath, attachmentsDire
   };
 }
 
-const CLOUD_COLUMNS = {
+const CLOUD_COLUMNS: Record<TableName, string[]> = {
   projects: [
     "id",
     "name",
@@ -428,7 +506,7 @@ const CLOUD_COLUMNS = {
   ],
 };
 
-function cloudTaskRow(task) {
+function cloudTaskRow(task: TaskRow) {
   const isWorktree = task.worktree_branch != null;
   return {
     ...task,
@@ -437,12 +515,12 @@ function cloudTaskRow(task) {
   };
 }
 
-function cloudRows(table, tables) {
+function cloudRows(table: TableName, tables: Tables): Row[] {
   if (table === "projects") return projectRowsWithLabels(tables);
   return table === "tasks" ? tables.tasks.map(cloudTaskRow) : tables[table];
 }
 
-function insertTableSql(table) {
+function insertTableSql(table: TableName) {
   const columns = CLOUD_COLUMNS[table];
   const operation = table === "projects" ? "INSERT OR REPLACE" : "INSERT";
   return `${operation} INTO "${table}" (${columns.map((column) => `"${column}"`).join(", ")})
@@ -450,7 +528,7 @@ function insertTableSql(table) {
        FROM json_each(?)`;
 }
 
-export function createCloudD1ImportPlan(tables) {
+export function createCloudD1ImportPlan(tables: Tables) {
   return TABLE_ORDER.map((table) => {
     const columns = CLOUD_COLUMNS[table];
     const values = cloudRows(table, tables).map((row) =>
@@ -465,18 +543,18 @@ export function createCloudD1ImportPlan(tables) {
   });
 }
 
-function inlineD1InsertStatement(table, values) {
+function inlineD1InsertStatement(table: TableName, values: Row[]) {
   const json = JSON.stringify(values);
   if (json.includes("\0")) throw new Error("D1 migration JSON cannot contain null bytes");
   return `${insertTableSql(table).replace("?", sqliteString(json))};`;
 }
 
-export function createCloudD1ImportSql(tables) {
-  const statements = [];
+export function createCloudD1ImportSql(tables: Tables) {
+  const statements: string[] = [];
   for (const { table, json } of createCloudD1ImportPlan(tables)) {
-    const values = JSON.parse(json);
+    const values: Row[] = JSON.parse(json);
     if (table === "project_readmes") {
-      for (const row of values) {
+      for (const row of values as ReadmeRow[]) {
         statements.push(inlineD1InsertStatement(table, [{ ...row, content: "" }]));
         const characters = Array.from(row.content);
         for (
@@ -505,7 +583,7 @@ export function createCloudD1ImportSql(tables) {
       continue;
     }
 
-    let chunk = [];
+    let chunk: Row[] = [];
     for (const row of values) {
       const candidate = [...chunk, row];
       const statement = inlineD1InsertStatement(table, candidate);
@@ -551,8 +629,8 @@ export const CLOUD_PROJECT_READMES_SQL = `
   FROM project_readmes ORDER BY project_id
 `;
 
-function assertProjectReadmesMatch(expected, actual) {
-  const normalize = (rows) =>
+function assertProjectReadmesMatch(expected: ReadmeRow[], actual: Record<string, unknown>[]) {
+  const normalize = (rows: Record<string, unknown>[]) =>
     rows.map((row) => ({
       project_id: row.project_id,
       content: row.content,
@@ -565,17 +643,23 @@ function assertProjectReadmesMatch(expected, actual) {
   }
 }
 
-export function createCloudBindingMigrationAdapters({ d1, r2 }) {
+export function createCloudBindingMigrationAdapters({
+  d1,
+  r2,
+}: {
+  d1: D1Binding;
+  r2: Required<R2Adapter>;
+}) {
   return {
     d1: {
       async importTables(tables) {
-        const statements = [];
+        const statements: unknown[] = [];
         for (const { table, sql, json } of createCloudD1ImportPlan(tables)) {
           if (table !== "project_readmes") {
             statements.push(d1.prepare(sql).bind(json));
             continue;
           }
-          const readmes = JSON.parse(json);
+          const readmes: ReadmeRow[] = JSON.parse(json);
           if (readmes.length === 0) {
             statements.push(d1.prepare(sql).bind(json));
             continue;
@@ -619,10 +703,10 @@ export function createCloudBindingMigrationAdapters({ d1, r2 }) {
       head: (key) => r2.head(key),
       delete: (key) => r2.delete(key),
     },
-  };
+  } satisfies MigrationAdapters;
 }
 
-async function verifyR2Attachments(bundle, r2) {
+async function verifyR2Attachments(bundle: MigrationBundle, r2: R2Adapter) {
   let verified = 0;
   for (const attachment of bundle.attachments) {
     const object = await r2.head(attachment.objectKey);
@@ -638,7 +722,10 @@ async function verifyR2Attachments(bundle, r2) {
   return verified;
 }
 
-export async function verifyCloudMigrationBundle(bundle, { d1, r2 }) {
+export async function verifyCloudMigrationBundle(
+  bundle: MigrationBundle,
+  { d1, r2 }: MigrationAdapters,
+) {
   validateBundle(bundle);
   const counts = await d1.countByProject();
   assertCountsMatch(bundle.counts.byProject, counts);
@@ -650,7 +737,10 @@ export async function verifyCloudMigrationBundle(bundle, { d1, r2 }) {
   };
 }
 
-export async function importCloudMigrationBundle(bundle, { d1, r2 }) {
+export async function importCloudMigrationBundle(
+  bundle: MigrationBundle,
+  { d1, r2 }: MigrationAdapters,
+) {
   validateBundle(bundle);
 
   const existingCounts = await d1.countByProject();
@@ -670,11 +760,11 @@ export async function importCloudMigrationBundle(bundle, { d1, r2 }) {
   }
 
   const attachmentRows = new Map(bundle.tables.attachments.map((row) => [row.id, row]));
-  const uploadedKeys = [];
+  const uploadedKeys: string[] = [];
   let d1Committed = false;
   try {
     for (const attachment of bundle.attachments) {
-      const row = attachmentRows.get(attachment.id);
+      const row = attachmentRows.get(attachment.id)!;
       await r2.put(attachment.objectKey, Buffer.from(attachment.body), {
         customMetadata: { sha256: attachment.sha256 },
         httpMetadata: { contentType: row.content_type },
@@ -694,12 +784,12 @@ export async function importCloudMigrationBundle(bundle, { d1, r2 }) {
     };
   } catch (error) {
     if (!d1Committed && typeof r2.delete === "function") {
-      const cleanup = await Promise.allSettled(uploadedKeys.map((key) => r2.delete(key)));
+      const cleanup = await Promise.allSettled(uploadedKeys.map((key) => r2.delete?.(key)));
       const failures = cleanup.filter((result) => result.status === "rejected");
       if (failures.length > 0) {
         throw new AggregateError(
           [error, ...failures.map((result) => result.reason)],
-          `${error.message}; cleanup failed for ${failures.length} R2 object(s)`,
+          `${(error as Error).message}; cleanup failed for ${failures.length} R2 object(s)`,
         );
       }
     }
@@ -707,7 +797,7 @@ export async function importCloudMigrationBundle(bundle, { d1, r2 }) {
   }
 }
 
-function bundleFile(outputDirectory, relativePath) {
+function bundleFile(outputDirectory: string, relativePath: string) {
   const resolvedRoot = path.resolve(outputDirectory);
   const resolved = path.resolve(resolvedRoot, relativePath);
   if (!resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
@@ -716,12 +806,12 @@ function bundleFile(outputDirectory, relativePath) {
   return resolved;
 }
 
-async function writePrivateFile(filename, contents) {
+async function writePrivateFile(filename: string, contents: string | Buffer) {
   await writeFile(filename, contents, { mode: 0o600, flag: "wx" });
   await chmod(filename, 0o600);
 }
 
-export async function writeCloudMigrationBundle(bundle, outputDirectory) {
+export async function writeCloudMigrationBundle(bundle: MigrationBundle, outputDirectory: string) {
   validateBundle(bundle);
   const parent = path.dirname(path.resolve(outputDirectory));
   await mkdir(parent, { recursive: true });
@@ -732,7 +822,7 @@ export async function writeCloudMigrationBundle(bundle, outputDirectory) {
     await mkdir(dataDirectory, { mode: 0o700 });
     await mkdir(attachmentsDirectory, { mode: 0o700 });
 
-    const tableFiles = {};
+    const tableFiles: Partial<Manifest["tables"]> = {};
     for (const table of TABLE_ORDER) {
       const relativePath = `data/${table}.json`;
       await writePrivateFile(
@@ -745,7 +835,7 @@ export async function writeCloudMigrationBundle(bundle, outputDirectory) {
       };
     }
 
-    const attachmentFiles = [];
+    const attachmentFiles: ManifestAttachment[] = [];
     for (const attachment of bundle.attachments) {
       const relativePath = `attachments/${encodeURIComponent(attachment.id)}`;
       await writePrivateFile(
@@ -780,24 +870,24 @@ export async function writeCloudMigrationBundle(bundle, outputDirectory) {
   }
 }
 
-async function readJsonFile(filename, label) {
+async function readJsonFile(filename: string, label: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(filename, "utf8"));
   } catch (error) {
-    throw new Error(`Cannot read ${label}: ${error.message}`);
+    throw new Error(`Cannot read ${label}: ${(error as Error).message}`);
   }
 }
 
-export async function readCloudMigrationBundle(inputDirectory) {
-  const manifest = await readJsonFile(
+export async function readCloudMigrationBundle(inputDirectory: string) {
+  const manifest = (await readJsonFile(
     path.join(inputDirectory, "manifest.json"),
     "cloud migration manifest",
-  );
+  )) as Manifest;
   if (manifest.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(`Unsupported cloud migration schema version '${manifest.schemaVersion}'`);
   }
 
-  const tables = {};
+  const tables = {} as Tables;
   for (const table of TABLE_ORDER) {
     const entry = manifest.tables?.[table];
     if (!entry?.file) throw new Error(`Cloud migration manifest is missing table '${table}'`);
@@ -809,12 +899,12 @@ export async function readCloudMigrationBundle(inputDirectory) {
   }
   fillMissingAttachmentKinds(tables);
 
-  const attachments = [];
+  const attachments: AttachmentPayload[] = [];
   for (const entry of manifest.attachments ?? []) {
     const body = await readFile(bundleFile(inputDirectory, entry.file));
     attachments.push({ ...entry, body });
   }
-  const bundle = {
+  const bundle: MigrationBundle = {
     schemaVersion: manifest.schemaVersion,
     createdAt: manifest.createdAt,
     counts: manifest.counts,
@@ -825,8 +915,8 @@ export async function readCloudMigrationBundle(inputDirectory) {
   return bundle;
 }
 
-function parseOptions(args, allowed, required) {
-  const options = {};
+function parseOptions(args: string[], allowed: Set<string>, required: string[]) {
+  const options: Record<string, string> = {};
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
@@ -845,14 +935,17 @@ function parseOptions(args, allowed, required) {
 }
 
 const HELP = `Usage:
-  node scripts/migrate-to-cloud.mjs export --database <sqlite> --attachments <directory> --output <directory>
-  node scripts/migrate-to-cloud.mjs import --bundle <directory> --adapter <module>
-  node scripts/migrate-to-cloud.mjs verify --bundle <directory> --adapter <module>
+  node scripts/migrate-to-cloud.ts export --database <sqlite> --attachments <directory> --output <directory>
+  node scripts/migrate-to-cloud.ts import --bundle <directory> --adapter <module>
+  node scripts/migrate-to-cloud.ts verify --bundle <directory> --adapter <module>
 
 The bundled Wrangler adapter uses Wrangler authentication without reading or
 storing credentials. Remote operations require BROADCAST_MIGRATION_REMOTE=1.`;
 
-async function loadAdapterModule(modulePath, context) {
+async function loadAdapterModule(
+  modulePath: string,
+  context: AdapterContext,
+): Promise<MigrationAdapters> {
   const loaded = await import(pathToFileURL(path.resolve(modulePath)).href);
   const factory = loaded.createCloudMigrationAdapters ?? loaded.default;
   if (typeof factory !== "function") {
@@ -862,8 +955,14 @@ async function loadAdapterModule(modulePath, context) {
 }
 
 export async function runCli(
-  argv,
-  { stdout = process.stdout, loadAdapters = loadAdapterModule } = {},
+  argv: string[],
+  {
+    stdout = process.stdout,
+    loadAdapters = loadAdapterModule,
+  }: {
+    stdout?: { write(chunk: string): unknown };
+    loadAdapters?: (modulePath: string, context: AdapterContext) => Promise<MigrationAdapters>;
+  } = {},
 ) {
   const [command, ...args] = argv;
   if (!command || command === "--help" || command === "help") {

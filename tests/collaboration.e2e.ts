@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import { attachmentFixture, createIssue, createProject, openIssue, tasks } from "./helpers";
+import { attachmentFixture, createIssue, createProject, openIssue, tasks } from "./helpers.ts";
 
 test("comment create, edit, delete and issue attachment upload, download, delete", async ({
   app,

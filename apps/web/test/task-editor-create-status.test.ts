@@ -44,7 +44,7 @@ test("a new status entry overrides the old draft status and restores the remaini
     const address = server.httpServer?.address();
     assert.ok(address && typeof address === "object");
     const url = `http://127.0.0.1:${address.port}/test/fixtures/task-editor-create-status.html`;
-    let stdout;
+    let stdout: string;
     try {
       ({ stdout } = await execFileAsync(
         chrome,
@@ -62,7 +62,7 @@ test("a new status entry overrides the old draft status and restores the remaini
         { maxBuffer: 2_000_000, timeout: 30_000 },
       ));
     } catch (error) {
-      if (!String(error?.stdout ?? "").trim()) {
+      if (!String((error as { stdout?: string } | null)?.stdout ?? "").trim()) {
         t.skip("Chrome or Chromium cannot run headless dump-dom in this environment");
         return;
       }
@@ -74,7 +74,7 @@ test("a new status entry overrides the old draft status and restores the remaini
     }
 
     const error = stdout.match(/data-error="([^"]+)"/);
-    assert.equal(error, null, error?.[1]);
+    assert.equal(error?.[1], undefined);
     const result = stdout.match(/data-result="([^"]+)"/);
     assert.ok(result, "TaskEditor did not submit a creation payload");
     const draft = JSON.parse(decodeURIComponent(result[1]));

@@ -7,22 +7,43 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
+  type AdapterContext,
   CLOUD_PROJECT_COUNTS_SQL,
   CLOUD_PROJECT_READMES_SQL,
   createCloudD1ImportSql,
-} from "./migrate-to-cloud.mjs";
+  type D1Adapter,
+  type R2Adapter,
+} from "./migrate-to-cloud.ts";
+
+type RunCommand = (
+  file: string,
+  args: string[],
+  options: { cwd: string; encoding: "utf8"; maxBuffer: number },
+) => Promise<{ stdout: string }>;
+type WranglerAdapterOptions = {
+  remote?: boolean;
+  persistTo?: string;
+  configPath?: string;
+  wranglerExecutable?: string;
+  database?: string;
+  bucket?: string;
+  preparedImportSql?: string;
+  environment?: NodeJS.ProcessEnv;
+  runCommand?: RunCommand;
+};
 
 const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultWrangler = path.join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 
-function parseD1Results(stdout) {
+function parseD1Results(stdout: string) {
   const parsed = JSON.parse(stdout);
   const resultSets = Array.isArray(parsed) ? parsed : [parsed];
   return resultSets.flatMap((result) => result.results ?? result.result?.[0]?.results ?? []);
 }
 
-function missingR2Object(error) {
+function missingR2Object(failure: unknown) {
+  const error = failure as { message?: string; stdout?: string; stderr?: string } | null;
   const output = `${error?.message ?? ""}\n${error?.stdout ?? ""}\n${error?.stderr ?? ""}`;
   return /not found|does not exist|NoSuchKey|10007/i.test(output);
 }
@@ -37,7 +58,7 @@ export function createWranglerCloudAdapters({
   preparedImportSql,
   environment = process.env,
   runCommand = execFile,
-} = {}) {
+}: WranglerAdapterOptions = {}) {
   const remoteEnabled = environment.BROADCAST_MIGRATION_REMOTE === "1";
   const useRemote = remote ?? remoteEnabled;
   if (useRemote && !remoteEnabled) {
@@ -55,17 +76,17 @@ export function createWranglerCloudAdapters({
   );
   const modeArguments = useRemote
     ? ["--remote"]
-    : ["--local", "--persist-to", path.resolve(resolvedPersistTo)];
+    : ["--local", "--persist-to", path.resolve(resolvedPersistTo!)];
   const temporaryDirectory = mkdtemp(path.join(os.tmpdir(), "broadcast-wrangler-migration-")).then(
     async (directory) => {
       await chmod(directory, 0o700);
       return directory;
     },
   );
-  let commandQueue = Promise.resolve();
+  let commandQueue: Promise<unknown> = Promise.resolve();
   let sequence = 0;
 
-  function run(args) {
+  function run(args: string[]) {
     const result = commandQueue.then(() =>
       runCommand(process.execPath, [wranglerExecutable, ...args], {
         cwd: projectRoot,
@@ -77,7 +98,7 @@ export function createWranglerCloudAdapters({
     return result;
   }
 
-  async function privateFile(extension, contents) {
+  async function privateFile(extension: string, contents: string | Buffer) {
     const directory = await temporaryDirectory;
     sequence += 1;
     const filename = path.join(directory, `${sequence}${extension}`);
@@ -131,7 +152,7 @@ export function createWranglerCloudAdapters({
       );
     },
     async listProjectReadmes() {
-      const readmes = [];
+      const readmes: Record<string, unknown>[] = [];
       for (let offset = 0; ; offset += 1) {
         const result = await run([
           "d1",
@@ -149,10 +170,10 @@ export function createWranglerCloudAdapters({
         readmes.push(rows[0]);
       }
     },
-  };
+  } satisfies D1Adapter;
 
   const r2 = {
-    async put(key, body, options) {
+    async put(key, body, options?) {
       const bodyPath = await privateFile(".attachment", Buffer.from(body));
       const contentType = options?.httpMetadata?.contentType;
       await run([
@@ -210,7 +231,7 @@ export function createWranglerCloudAdapters({
         resolvedConfig,
       ]);
     },
-  };
+  } satisfies R2Adapter;
 
   return {
     d1,
@@ -221,7 +242,7 @@ export function createWranglerCloudAdapters({
   };
 }
 
-export function createCloudMigrationAdapters({ bundle, command } = {}) {
+export function createCloudMigrationAdapters({ bundle, command }: AdapterContext) {
   const preparedImportSql =
     command === "import" ? createCloudD1ImportSql(bundle.tables) : undefined;
   return createWranglerCloudAdapters({ preparedImportSql });

@@ -1,4 +1,9 @@
-function frameCapability() {
+declare global {
+  // The embedding host sets this before the app loads.
+  var __BROADCAST_FRAME_CAPABILITY__: unknown;
+}
+
+function frameCapability(): string {
   return typeof globalThis.__BROADCAST_FRAME_CAPABILITY__ === "string"
     ? globalThis.__BROADCAST_FRAME_CAPABILITY__
     : "";
@@ -6,11 +11,11 @@ function frameCapability() {
 
 let activeFrameChallenge = "";
 
-export function setEmbeddedFrameChallenge(challenge) {
+export function setEmbeddedFrameChallenge(challenge: string): void {
   activeFrameChallenge = typeof challenge === "string" ? challenge : "";
 }
 
-export function postEmbeddedHostMessage(message) {
+export function postEmbeddedHostMessage(message: Record<string, unknown>): void {
   window.parent.postMessage(
     {
       ...message,
@@ -21,8 +26,8 @@ export function postEmbeddedHostMessage(message) {
   );
 }
 
-export function installEmbeddedExternalLinkHandler() {
-  const handleClick = (event) => {
+export function installEmbeddedExternalLinkHandler(): () => void {
+  const handleClick = (event: MouseEvent) => {
     const link =
       event.target instanceof Element ? event.target.closest('a[target="_blank"]') : null;
     if (!link) return;
@@ -30,7 +35,7 @@ export function installEmbeddedExternalLinkHandler() {
     const rawHref = link.getAttribute("href");
     if (!rawHref) return;
 
-    let url;
+    let url: URL;
     try {
       url = new URL(rawHref);
     } catch {

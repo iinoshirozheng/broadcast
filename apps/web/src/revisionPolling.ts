@@ -1,9 +1,42 @@
-export function getRevisionPollingInterval(metadata) {
+import type { BroadcastMetadata } from "./types.ts";
+
+type RevisionResult = { changed: boolean; revision: number };
+type ConnectionState = "connecting" | "live" | "reconnecting";
+
+// The timers and the socket are injectable so the lifecycle can be driven by tests.
+export interface RevisionSocket {
+  onopen: ((event: Event) => void) | null;
+  onmessage: ((event: MessageEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onclose: ((event: CloseEvent) => void) | null;
+  close(code?: number, reason?: string): void;
+}
+
+interface RevisionPollerOptions {
+  fetchRevision: (since: number) => Promise<RevisionResult>;
+  onInvalidate: () => void;
+  intervalMs?: number;
+  setInterval?(callback: () => void, delay: number): unknown;
+  clearInterval?(timer: unknown): void;
+}
+
+interface RevisionWebSocketClientOptions {
+  url: string;
+  fetchRevision: (since: number) => Promise<RevisionResult>;
+  onInvalidate: () => void;
+  onConnectionChange?: (state: ConnectionState) => void;
+  reconnectDelays?: number[];
+  createWebSocket?: (url: string) => RevisionSocket;
+  setTimeout?(callback: () => void, delay: number): unknown;
+  clearTimeout?(timer: unknown): void;
+}
+
+export function getRevisionPollingInterval(metadata: BroadcastMetadata | null | undefined) {
   if (metadata?.mode !== "cloud" || metadata.realtime?.transport !== "poll") return null;
   return metadata.realtime.intervalMs;
 }
 
-export function getRevisionWebSocketConfig(metadata) {
+export function getRevisionWebSocketConfig(metadata: BroadcastMetadata | null | undefined) {
   if (metadata?.mode !== "cloud" || metadata.realtime?.transport !== "websocket") return null;
   return {
     endpoint: metadata.realtime.endpoint,
@@ -16,9 +49,9 @@ export function createRevisionPoller({
   intervalMs = 2000,
   setInterval: scheduleInterval = globalThis.setInterval,
   clearInterval: cancelInterval = globalThis.clearInterval,
-}) {
+}: RevisionPollerOptions) {
   let revision = 0;
-  let timer;
+  let timer: unknown;
   let running = false;
   let requestPending = false;
 
@@ -60,13 +93,13 @@ export function createRevisionWebSocketClient({
   onInvalidate,
   onConnectionChange = () => {},
   reconnectDelays = [1_000, 2_000, 5_000, 10_000, 30_000],
-  createWebSocket = (target) => new WebSocket(target),
+  createWebSocket = (target: string): RevisionSocket => new WebSocket(target),
   setTimeout: scheduleTimeout = globalThis.setTimeout,
   clearTimeout: cancelTimeout = globalThis.clearTimeout,
-}) {
+}: RevisionWebSocketClientOptions) {
   let revision = 0;
-  let socket;
-  let reconnectTimer;
+  let socket: RevisionSocket | undefined;
+  let reconnectTimer: unknown;
   let running = false;
   let requestPending = false;
   let reconnectAttempt = 0;
@@ -98,7 +131,7 @@ export function createRevisionWebSocketClient({
     }, delay);
   }
 
-  function connect() {
+  function connect(): void {
     if (!running || socket) return;
     onConnectionChange(reconnectAttempt === 0 ? "connecting" : "reconnecting");
     try {

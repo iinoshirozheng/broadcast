@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, type ClipboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { attachmentContentUrl } from "../api";
-import { postEmbeddedHostMessage } from "../embeddedHost.mjs";
+import { postEmbeddedHostMessage } from "../embeddedHost.ts";
 import { useBroadcastI18n } from "../i18n";
 import type { Attachment, Task, TaskRelationSummary } from "../types";
 import { STATUS_DETAILS } from "./BoardColumn";

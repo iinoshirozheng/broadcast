@@ -21,7 +21,6 @@ const oldTodoDraft: NewTaskEditorDraft = {
   startDate: "",
   dueDate: "",
   recurrence: null,
-  attachments: [],
   relations: {
     parentId: null,
     relatedIds: [],
@@ -35,8 +34,9 @@ function publishResult(draft: TaskDraft) {
 
 createRoot(document.getElementById("root")!).render(
   <TaskEditor
-    task={null}
+    projectId="local"
     tasks={[]}
+    referenceTasks={[]}
     initialStatus="in_progress"
     initialDraft={oldTodoDraft}
     labels={["回归证据"]}

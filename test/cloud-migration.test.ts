@@ -10,17 +10,21 @@ import { promisify } from "node:util";
 
 import { Miniflare } from "miniflare";
 import {
+  type CountsByProject,
   createCloudBindingMigrationAdapters,
   createCloudD1ImportSql,
   createCloudMigrationBundle,
+  type D1Binding,
   importCloudMigrationBundle,
+  type MigrationBundle,
   readCloudMigrationBundle,
   runCli,
+  type Tables,
   writeCloudMigrationBundle,
-} from "../scripts/migrate-to-cloud.mjs";
-import { createCloudWorkerHarness } from "./helpers/cloud-worker-harness.mjs";
+} from "../scripts/migrate-to-cloud.ts";
+import { createCloudWorkerHarness } from "./helpers/cloud-worker-harness.ts";
 
-const fixtures = [];
+const fixtures: { database: DatabaseSync; directory: string }[] = [];
 const timestamp = "2026-07-24T12:00:00.000Z";
 const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(import.meta.dirname, "..");
@@ -29,7 +33,7 @@ const wranglerConfig = path.join(projectRoot, "wrangler.jsonc");
 
 afterEach(async () => {
   while (fixtures.length > 0) {
-    const fixture = fixtures.pop();
+    const fixture = fixtures.pop()!;
     fixture.database.close();
     await rm(fixture.directory, { recursive: true, force: true });
   }
@@ -38,21 +42,25 @@ afterEach(async () => {
 async function createMigrationFixture({
   missingAttachmentId = null,
   foreignKeyViolation = false,
+}: {
+  missingAttachmentId?: string | null;
+  foreignKeyViolation?: boolean;
 } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-cloud-migration-"));
   const databasePath = path.join(directory, "broadcast.sqlite");
   const attachmentsDirectory = path.join(directory, "attachments");
   const database = new DatabaseSync(databasePath);
+  const attachmentContents: Record<string, Buffer> = {
+    "attachment-a": Buffer.from("alpha issue attachment\n"),
+    "attachment-a-comment": Buffer.from("alpha comment attachment\n"),
+    "attachment-b": Buffer.from("beta attachment\n"),
+  };
   const fixture = {
     directory,
     database,
     databasePath,
     attachmentsDirectory,
-    attachmentContents: {
-      "attachment-a": Buffer.from("alpha issue attachment\n"),
-      "attachment-a-comment": Buffer.from("alpha comment attachment\n"),
-      "attachment-b": Buffer.from("beta attachment\n"),
-    },
+    attachmentContents,
   };
   fixtures.push(fixture);
 
@@ -384,15 +392,23 @@ function expectedCloudBaselineCounts() {
 }
 
 function createD1Adapter(
-  bundle,
-  { initialCounts = {}, importedCounts = bundle.counts.byProject, failImport = false } = {},
+  bundle: MigrationBundle,
+  {
+    initialCounts = {},
+    importedCounts = bundle.counts.byProject,
+    failImport = false,
+  }: {
+    initialCounts?: CountsByProject;
+    importedCounts?: CountsByProject;
+    failImport?: boolean;
+  } = {},
 ) {
-  const calls = [];
-  const state = { tables: null };
+  const calls: Tables[] = [];
+  const state: { tables: Tables | null } = { tables: null };
   return {
     calls,
     state,
-    async importTables(tables) {
+    async importTables(tables: Tables) {
       const staged = structuredClone(tables);
       calls.push(staged);
       if (failImport) throw new Error("Atomic D1 import failed");
@@ -407,13 +423,16 @@ function createD1Adapter(
   };
 }
 
-function createR2Adapter({ tamperHeadFor = null } = {}) {
-  const objects = new Map();
-  const deleted = [];
+function createR2Adapter({ tamperHeadFor = null }: { tamperHeadFor?: string | null } = {}) {
+  const objects = new Map<
+    string,
+    { bytes: Buffer; size: number; customMetadata: Record<string, string> }
+  >();
+  const deleted: string[] = [];
   return {
     objects,
     deleted,
-    async put(key, body, options) {
+    async put(key: string, body: Buffer, options?: { customMetadata?: Record<string, string> }) {
       const bytes = Buffer.from(body);
       objects.set(key, {
         bytes,
@@ -421,7 +440,7 @@ function createR2Adapter({ tamperHeadFor = null } = {}) {
         customMetadata: structuredClone(options?.customMetadata ?? {}),
       });
     },
-    async head(key) {
+    async head(key: string) {
       const object = objects.get(key);
       if (!object) return null;
       if (key === tamperHeadFor) {
@@ -435,7 +454,7 @@ function createR2Adapter({ tamperHeadFor = null } = {}) {
         customMetadata: structuredClone(object.customMetadata),
       };
     },
-    async delete(key) {
+    async delete(key: string) {
       deleted.push(key);
       objects.delete(key);
     },
@@ -451,7 +470,7 @@ test("migration snapshots live WAL data, counts each project, and strips local e
   await copyFile(fixture.databasePath, mainFileOnly);
   const staleDatabase = new DatabaseSync(mainFileOnly);
   assert.equal(
-    staleDatabase.prepare("SELECT COUNT(*) AS count FROM projects").get().count,
+    staleDatabase.prepare("SELECT COUNT(*) AS count FROM projects").get()?.count,
     0,
     "copying only the main file should prove the test data has not been checkpointed",
   );
@@ -471,10 +490,12 @@ test("migration snapshots live WAL data, counts each project, and strips local e
   );
 
   const alphaWorktreeTask = bundle.tables.tasks.find((task) => task.id === "task-a1");
+  assert.ok(alphaWorktreeTask);
   assert.equal(alphaWorktreeTask.worktree_path, null);
   assert.equal(alphaWorktreeTask.worktree_branch, "feature/cloud-share");
 
   const alphaBranchTask = bundle.tables.tasks.find((task) => task.id === "task-a2");
+  assert.ok(alphaBranchTask);
   assert.equal(alphaBranchTask.git_branch, "feature/plain-branch");
 
   const serializedBundle = JSON.stringify(bundle);
@@ -549,6 +570,7 @@ test("cloud import calls D1 and R2 adapters, then verifies project counts and ob
 
   for (const attachment of bundle.attachments) {
     const object = r2.objects.get(attachment.objectKey);
+    assert.ok(object);
     assert.deepEqual(object.bytes, Buffer.from(attachment.body));
     assert.equal(object.size, attachment.size);
     assert.equal(object.customMetadata.sha256, attachment.sha256);
@@ -627,19 +649,21 @@ test("D1 binding import uses one JSON statement per table for 100+ rows", async 
     identifier: `BULK-${index + 1}`,
     sort_order: index + 1,
   }));
-  const batches = [];
+  type BoundStatement = { sql: string; values: string[] };
+  const batches: BoundStatement[][] = [];
+  // Records what the adapter binds; it never reads results, so it has no `all()`.
   const d1 = {
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...values) {
+        bind(...values: string[]) {
           return { sql, values };
         },
       };
     },
-    async batch(statements) {
+    async batch(statements: BoundStatement[]) {
       batches.push(statements);
     },
-  };
+  } as unknown as D1Binding;
 
   const adapters = createCloudBindingMigrationAdapters({
     d1,
@@ -793,6 +817,7 @@ test("real D1 batch atomically imports a bundle containing local and maps develo
     const migratedAttachment = bundle.attachments.find(
       (attachment) => attachment.id === "attachment-a",
     );
+    assert.ok(migratedAttachment);
     const downloaded = await cloud.request(
       `/api/attachments/${encodeURIComponent(migratedAttachment.id)}/content`,
       { actorName: "Alice" },
@@ -856,7 +881,7 @@ test("cloud import refuses non-empty D1 and pre-existing R2 targets", async () =
     /R2.*already exists|already exists.*R2/i,
   );
   assert.equal(emptyD1.calls.length, 0);
-  assert.deepEqual(occupiedR2.objects.get(occupiedKey).bytes, Buffer.from("existing"));
+  assert.deepEqual(occupiedR2.objects.get(occupiedKey)?.bytes, Buffer.from("existing"));
   assert.equal(occupiedR2.deleted.length, 0);
 });
 
@@ -934,10 +959,10 @@ test("CLI import and verify require and use an explicit adapter module", async (
   await writeCloudMigrationBundle(bundle, outputDirectory);
   const d1 = createD1Adapter(bundle);
   const r2 = createR2Adapter();
-  const output = [];
+  const output: string[] = [];
   const options = {
-    stdout: { write: (value) => output.push(value) },
-    loadAdapters: async (modulePath) => {
+    stdout: { write: (value: string) => output.push(value) },
+    loadAdapters: async (modulePath: string) => {
       assert.equal(modulePath, "./cloud-adapter.mjs");
       return { d1, r2 };
     },
@@ -957,7 +982,7 @@ test("CLI import and verify require and use an explicit adapter module", async (
 
 test("Wrangler adapter requires remote opt-in and keeps transfer files private", async () => {
   const { createCloudMigrationAdapters, createWranglerCloudAdapters } = await import(
-    "../scripts/wrangler-cloud-adapter.mjs"
+    "../scripts/wrangler-cloud-adapter.ts"
   );
   assert.throws(
     () =>
@@ -983,8 +1008,8 @@ test("Wrangler adapter requires remote opt-in and keeps transfer files private",
       }),
     /single row.*90,?000 bytes/i,
   );
-  const calls = [];
-  const transferFiles = [];
+  const calls: string[][] = [];
+  const transferFiles: string[] = [];
   const downloadedBody = Buffer.from("downloaded R2 body");
   const adapters = createWranglerCloudAdapters({
     remote: true,
@@ -1044,7 +1069,7 @@ test("Wrangler adapter requires remote opt-in and keeps transfer files private",
 });
 
 test("one-time Wrangler adapter migrates and verifies local persistence without remote access", async () => {
-  const { createWranglerCloudAdapters } = await import("../scripts/wrangler-cloud-adapter.mjs");
+  const { createWranglerCloudAdapters } = await import("../scripts/wrangler-cloud-adapter.ts");
   assert.throws(
     () =>
       createWranglerCloudAdapters({
@@ -1087,9 +1112,9 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
   assert.ok(Buffer.byteLength(createCloudD1ImportSql(bundle.tables), "utf8") > 100_000);
   const bundleDirectory = path.join(fixture.directory, "wrangler-bundle-v1");
   await writeCloudMigrationBundle(bundle, bundleDirectory);
-  const adapterPath = path.join(projectRoot, "scripts", "wrangler-cloud-adapter.mjs");
+  const adapterPath = path.join(projectRoot, "scripts", "wrangler-cloud-adapter.ts");
 
-  async function applyMigrations(persistTo) {
+  async function applyMigrations(persistTo: string) {
     await execFile(
       process.execPath,
       [
@@ -1108,10 +1133,10 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
     );
   }
 
-  async function runMigration(command, directory, persistTo) {
+  async function runMigration(command: string, directory: string, persistTo: string) {
     return execFile(
       process.execPath,
-      ["scripts/migrate-to-cloud.mjs", command, "--bundle", directory, "--adapter", adapterPath],
+      ["scripts/migrate-to-cloud.ts", command, "--bundle", directory, "--adapter", adapterPath],
       {
         cwd: projectRoot,
         env: {

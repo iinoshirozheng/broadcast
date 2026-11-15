@@ -3,19 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Miniflare } from "miniflare";
+import { Headers, Miniflare, type RequestInit } from "miniflare";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const ENTRY_PATH = path.join(PROJECT_ROOT, "apps", "cloud", "build", "index.js");
 const MIGRATIONS_PATH = path.join(PROJECT_ROOT, "apps", "cloud", "migrations");
 
+type Credentials = { actorName?: string; password?: string };
+type RequestOptions = RequestInit & Credentials & { json?: unknown };
+
 async function requireCloudImplementation() {
-  const missing = [];
+  const missing: string[] = [];
   for (const filename of [ENTRY_PATH, MIGRATIONS_PATH]) {
     try {
       await access(filename);
     } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       missing.push(path.relative(PROJECT_ROOT, filename));
     }
   }
@@ -75,8 +78,14 @@ export async function createCloudWorkerHarness({ sharedSecret = "two-person-shar
     const attachments = await miniflare.getR2Bucket("ATTACHMENTS");
 
     async function request(
-      pathname,
-      { actorName, password = sharedSecret, json, headers: inputHeaders, ...init } = {},
+      pathname: string,
+      {
+        actorName,
+        password = sharedSecret,
+        json,
+        headers: inputHeaders,
+        ...init
+      }: RequestOptions = {},
     ) {
       const headers = new Headers(inputHeaders);
       if (actorName !== undefined) {
@@ -95,7 +104,8 @@ export async function createCloudWorkerHarness({ sharedSecret = "two-person-shar
         },
       );
       const contentType = response.headers.get("content-type") ?? "";
-      const body =
+      // biome-ignore lint/suspicious/noExplicitAny: tests read API JSON shapes directly, as supertest's `body` does.
+      const body: any =
         response.status === 204
           ? undefined
           : contentType.includes("application/json")
@@ -106,7 +116,7 @@ export async function createCloudWorkerHarness({ sharedSecret = "two-person-shar
 
     async function connectWebSocket(
       pathname = "/api/events",
-      { actorName, password = sharedSecret, cookie } = {},
+      { actorName, password = sharedSecret, cookie }: Credentials & { cookie?: string } = {},
     ) {
       const headers = new Headers({ upgrade: "websocket" });
       if (actorName !== undefined) {
