@@ -2,7 +2,7 @@
 // - Data lives in a throwaway temp directory (never the developer's `.data`).
 // - The Codex executable is pointed at a nonexistent path and PATH is empty, so a test can
 //   never reach Codex or the network.
-// - Static web UI is served from dist/web (build the web app first).
+// - Static web UI is served from apps/web/dist (build the web app first).
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';

@@ -14,7 +14,7 @@ const macTargets = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
 const universalTarget = "universal-apple-darwin";
 const supportedTargets = new Set([...macTargets, universalTarget, windowsTarget, linuxTarget]);
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const tauriRoot = path.join(projectRoot, "src-tauri");
+const tauriRoot = path.join(projectRoot, "apps", "desktop");
 const binariesDirectory = path.join(tauriRoot, "binaries");
 const resourcesDirectory = path.join(tauriRoot, "resources");
 const target = parseTarget(process.argv.slice(2));
@@ -85,7 +85,7 @@ async function prepareResources() {
   await rm(resourcesDirectory, { recursive: true, force: true });
   await mkdir(resourcesDirectory, { recursive: true });
   await Promise.all([
-    cp(path.join(projectRoot, "dist", "web"), path.join(resourcesDirectory, "web"), { recursive: true }),
+    cp(path.join(projectRoot, "apps", "web", "dist"), path.join(resourcesDirectory, "web"), { recursive: true }),
     cp(
       path.join(projectRoot, "skills", "manage-broadcast"),
       path.join(resourcesDirectory, "skills", "manage-broadcast"),

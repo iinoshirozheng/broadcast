@@ -19,12 +19,12 @@ const sourceRef = process.env.BROADCAST_INJECTION_SOURCE_REF;
 const source = sourceRef
   ? (await execFileAsync(
       "git",
-      ["show", `${sourceRef}:inject/broadcast.user.js`],
+      ["show", `${sourceRef}:crates/codex/assets/broadcast.user.js`],
       { cwd: projectRoot, maxBuffer: 2 * 1024 * 1024 },
     )).stdout
-  : await readFile(new URL("../inject/broadcast.user.js", import.meta.url), "utf8");
+  : await readFile(new URL("../crates/codex/assets/broadcast.user.js", import.meta.url), "utf8");
 const embeddedHostSource = await readFile(
-  new URL("../web/src/embeddedHost.mjs", import.meta.url),
+  new URL("../apps/web/src/embeddedHost.mjs", import.meta.url),
   "utf8",
 );
 const embeddedHostClassicSource = embeddedHostSource.replaceAll("export ", "");

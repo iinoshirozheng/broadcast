@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["apps/cloud", "crates/*"]
-# Joins the workspace at cutover, when it moves to apps/desktop and embeds the server.
-exclude = ["src-tauri"]
+members = ["apps/cloud", "apps/desktop", "crates/*"]
+# The cloud worker builds only for wasm32 and the desktop needs staged bundle resources, so
+# plain `cargo build` covers the native crates; the apps build through their pixi tasks.
+default-members = ["crates/*"]
 
 [workspace.package]
 version = "1.1.27"
@@ -15,6 +16,7 @@ publish = false
 broadcast-domain = { path = "crates/domain" }
 broadcast-agents = { path = "crates/agents" }
 broadcast-codex = { path = "crates/codex" }
+broadcast-server = { path = "crates/server" }
 broadcast-store = { path = "crates/store" }
 
 anyhow = "1"

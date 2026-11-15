@@ -15,7 +15,7 @@ use crate::cdp::{Browser, Event, Session};
 use crate::host::{Bridge, Context};
 use crate::process::is_codex_target;
 
-const USER_SCRIPT: &str = include_str!("../../../inject/broadcast.user.js");
+const USER_SCRIPT: &str = include_str!("../assets/broadcast.user.js");
 const SOURCE_HASH: &str = "__BROADCAST_SOURCE_HASH__";
 const SCRIPT_IDENTIFIER: &str = "__BROADCAST_SCRIPT_IDENTIFIER__";
 

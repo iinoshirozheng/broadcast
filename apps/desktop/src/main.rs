@@ -548,8 +548,11 @@ fn take_macos_bundle_migration_marker() -> Result<Option<MacosBundleMigration>, 
         std::env::var_os(MACOS_BUNDLE_MIGRATION_SOURCE_ENV).map(PathBuf::from);
     let beta_autostart_marker =
         std::env::var_os(MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV);
-    std::env::remove_var(MACOS_BUNDLE_MIGRATION_SOURCE_ENV);
-    std::env::remove_var(MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV);
+    // SAFETY: `main` calls this before Tauri or tokio start any thread.
+    unsafe {
+        std::env::remove_var(MACOS_BUNDLE_MIGRATION_SOURCE_ENV);
+        std::env::remove_var(MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV);
+    }
     let Some(source_executable) = source_executable else {
         return Ok(None);
     };
@@ -1812,11 +1815,10 @@ async fn prepare_available_update(
         *pending = None;
         return Ok(None);
     };
-    if let Some(current) = pending.as_ref() {
-        if current.update.version == update.version {
+    if let Some(current) = pending.as_ref()
+        && current.update.version == update.version {
             return Ok(Some(current.clone()));
         }
-    }
 
     let dialog = Arc::new(Mutex::new(None));
     let download = {
@@ -2056,10 +2058,13 @@ fn configure_process(resource_directory: &Path) {
         std::iter::once(resource_directory.join("bin"))
             .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
     );
-    if let Ok(path) = path {
-        std::env::set_var("PATH", path);
+    // SAFETY: `main` calls this before Tauri or tokio start any thread.
+    unsafe {
+        if let Ok(path) = path {
+            std::env::set_var("PATH", path);
+        }
+        std::env::remove_var("CODEX_API_KEY");
     }
-    std::env::remove_var("CODEX_API_KEY");
     let _ = std::env::set_current_dir(resource_directory);
 }
 
@@ -2179,20 +2184,18 @@ fn main() {
             redirect_output(&state.log_path)?;
             app.manage(state.clone());
             #[cfg(target_os = "macos")]
-            if let Some(migration) = macos_bundle_migration.as_ref() {
-                if let Err(error) =
+            if let Some(migration) = macos_bundle_migration.as_ref()
+                && let Err(error) =
                     sync_macos_autostart_path(app.handle(), &home_directory, migration)
                 {
                     append_log(&state, &format!("autostart path sync failed: {error}"));
                 }
-            }
             // A development build must not repoint the installed app's command.
             #[cfg(target_os = "macos")]
-            if !cfg!(debug_assertions) {
-                if let Err(error) = install_broadcast_symlink(app.handle()) {
+            if !cfg!(debug_assertions)
+                && let Err(error) = install_broadcast_symlink(app.handle()) {
                     append_log(&state, &format!("broadcast sync failed: {error}"));
                 }
-            }
 
             let app_info = MenuItem::with_id(
                 app,

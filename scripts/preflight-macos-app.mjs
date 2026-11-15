@@ -20,10 +20,10 @@ const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!appPath) throw new Error("Usage: preflight-macos-app.mjs <App.app>");
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releasePolicy = JSON.parse(await readFile(
-  path.join(projectRoot, "src-tauri", "release.json"),
+  path.join(projectRoot, "apps", "desktop", "release.json"),
   "utf8",
 ));
-const entitlementsPath = path.join(projectRoot, "src-tauri", "Entitlements.plist");
+const entitlementsPath = path.join(projectRoot, "apps", "desktop", "Entitlements.plist");
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: "utf8", ...options });

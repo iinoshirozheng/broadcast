@@ -29,9 +29,8 @@ Rust (launcher). Toolchains are installed ad hoc (rustup + nvm/npm).
    `apps/cloud/migrations`: wrangler records applied files by name in the deployed
    database, so collapsing the chain would mean rewriting production state.
 5. **API parity is the acceptance bar.** Rust validation runs over `serde_json::Value`
-   and reproduces the Node `ApiError` status, code and message exactly. The existing
-   `test/server.test.mjs` suite runs against the Rust binary when
-   `BROADCAST_SERVER_BIN` is set.
+   and reproduces the Node `ApiError` status, code and message exactly. The
+   `test/*.test.mjs` suites run against the Rust binaries over HTTP and the CLI.
 
 ## Target layout
 
@@ -146,6 +145,12 @@ so packaging infrastructure is edited only once.
         runs only inside the desktop app, so `npm run codex*` is gone.
         `scripts/migrate-to-cloud.mjs` and its wrangler adapter stay Node: they are ops
         tooling that drives wrangler, not runtime.
+  - [x] `apps/desktop` (from `src-tauri/`) joins the Cargo workspace on edition 2024, so one
+        `Cargo.lock` and one `target/` serve every crate and Tauri writes bundles to
+        `target/<triple>/release/bundle`. `default-members` is `crates/*`: the cloud
+        worker builds only for wasm32 and the desktop needs staged resources.
+        `apps/web` (from `web/`) builds into `apps/web/dist`, the server's default static
+        directory and the worker's assets. The userscript moves to `crates/codex/assets`.
 - [ ] Release check — universal DMG build, signing and notarization with pixi Rust
 
 ## Consequences

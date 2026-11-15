@@ -9,9 +9,9 @@
 流程复用 `npm run app:build:windows`，运行环境与现有 Windows CI 一致：
 GitHub-hosted `windows-2025`、Node 22、Rust 1.88.0。
 该命令通过 `scripts/prepare-tauri-app.mjs` 和 `scripts/tauri-build.mjs`，
-按 `src-tauri/tauri.windows.conf.json` 生成 NSIS 安装程序。
+按 `apps/desktop/tauri.windows.conf.json` 生成 NSIS 安装程序。
 
-| 构建文件（相对于 `src-tauri/target/x86_64-pc-windows-msvc/release/`） | ZIP 根目录文件 |
+| 构建文件（相对于 `target/x86_64-pc-windows-msvc/release/`） | ZIP 根目录文件 |
 | --- | --- |
 | `broadcast-launcher.exe` | `broadcast-launcher.exe` |
 | `bundle/nsis/*-setup.exe`（必须恰好一个） | `broadcast-test-setup.exe` |

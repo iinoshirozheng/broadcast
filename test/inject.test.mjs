@@ -4,11 +4,11 @@ import { test } from "node:test";
 import vm from "node:vm";
 
 
-const sourceUrl = new URL("../inject/broadcast.user.js", import.meta.url);
+const sourceUrl = new URL("../crates/codex/assets/broadcast.user.js", import.meta.url);
 const source = (await readFile(sourceUrl, "utf8")).replaceAll("\r\n", "\n");
-const webStyles = await readFile(new URL("../web/src/styles.css", import.meta.url), "utf8");
-const webApp = await readFile(new URL("../web/src/App.tsx", import.meta.url), "utf8");
-const embeddedHost = await readFile(new URL("../web/src/embeddedHost.mjs", import.meta.url), "utf8");
+const webStyles = await readFile(new URL("../apps/web/src/styles.css", import.meta.url), "utf8");
+const webApp = await readFile(new URL("../apps/web/src/App.tsx", import.meta.url), "utf8");
+const embeddedHost = await readFile(new URL("../apps/web/src/embeddedHost.mjs", import.meta.url), "utf8");
 
 test("injection is an idempotent IIFE guarded by its current source hash", () => {
   assert.match(source, /^\(\(\) => \{/);

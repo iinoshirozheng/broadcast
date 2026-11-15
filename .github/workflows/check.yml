@@ -39,8 +39,8 @@ jobs:
           const { appendFileSync } = require('node:fs');
           const paths = execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD'], { encoding: 'utf8' }).split('\0').filter(Boolean);
           const webOrDocsOnly = paths.every(path =>
-            path.startsWith('web/src/') || path === 'web/index.html' ||
-            (path.startsWith('web/public/') && path !== 'web/public/codex-app-icon.png') ||
+            path.startsWith('apps/web/src/') || path === 'apps/web/index.html' ||
+            (path.startsWith('apps/web/public/') && path !== 'apps/web/public/codex-app-icon.png') ||
             path.startsWith('docs/') ||
             /^(?:README(?:\.[^/]+)?\.md|AGENTS\.md|LICENSE(?:\.[^/]+)?)$/.test(path));
           const docsOnly = paths.every(path =>
@@ -315,7 +315,7 @@ jobs:
         run: rustup toolchain uninstall stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: macos-universal
           cache-bin: false
       - run: npm ci
@@ -327,15 +327,15 @@ jobs:
           --bundles app
           --no-sign
           --config '{"bundle":{"createUpdaterArtifacts":false}}'
-      - run: test -d "src-tauri/target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
+      - run: test -d "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
       - name: Verify packaged broadcast and inherited listener
         run: >-
           npm run app:verify-packaged-broadcast --
-          "src-tauri/target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
+          "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
       - name: Verify secretless App, updater, and DMG preflight
         run: >-
           npm run app:preflight --
-          "src-tauri/target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
+          "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
 
   windows-launcher:
     name: Windows x64 launcher
@@ -356,7 +356,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: windows-x64
           cache-bin: false
       - run: npm ci
@@ -368,7 +368,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-x64-nsis-${{ github.sha }}
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
 
   linux-launcher:
@@ -390,7 +390,7 @@ jobs:
           targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: ubuntu-24.04-x64
           cache-bin: false
       - name: Install Ubuntu build dependencies
@@ -413,13 +413,13 @@ jobs:
       - name: Verify the Ubuntu 24.04 x64 package contents
         run: >-
           node scripts/verify-linux-packages.mjs
-          src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-          src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
       - name: Preserve the Ubuntu 24.04 x64 packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-x64-deb-appimage-${{ github.sha }}
           path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+            target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
           if-no-files-found: error

@@ -30,11 +30,11 @@ if (!appPath || !dmgPath || !releaseDirectory || !releaseTag) {
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
 const tauriConfig = JSON.parse(await readFile(
-  path.join(projectRoot, "src-tauri", "tauri.conf.json"),
+  path.join(projectRoot, "apps", "desktop", "tauri.conf.json"),
   "utf8",
 ));
 const releasePolicy = JSON.parse(await readFile(
-  path.join(projectRoot, "src-tauri", "release.json"),
+  path.join(projectRoot, "apps", "desktop", "release.json"),
   "utf8",
 ));
 const { releaseVersion, productName, appName, assets } = releaseMetadata(

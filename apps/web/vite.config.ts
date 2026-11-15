@@ -7,7 +7,7 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   build: {
-    outDir: fileURLToPath(new URL("../dist/web", import.meta.url)),
+    outDir: fileURLToPath(new URL("dist", import.meta.url)),
     emptyOutDir: true,
   },
   server: {

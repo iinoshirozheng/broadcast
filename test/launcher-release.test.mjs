@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const launcherSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-const tauriConfig = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+const launcherSource = await readFile(new URL("../apps/desktop/src/main.rs", import.meta.url), "utf8");
+const tauriConfig = JSON.parse(await readFile(new URL("../apps/desktop/tauri.conf.json", import.meta.url), "utf8"));
 const releaseWorkflow = await readFile(new URL("../.github/workflows/release-macos.yml", import.meta.url), "utf8");
 const checkWorkflow = await readFile(new URL("../.github/workflows/check.yml", import.meta.url), "utf8");
 

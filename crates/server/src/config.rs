@@ -46,7 +46,7 @@ impl Config {
         };
         Ok(Self {
             data_dir: path("BROADCAST_DATA_DIR", ".data")?,
-            static_dir: path("BROADCAST_STATIC_DIR", "dist/web")?,
+            static_dir: path("BROADCAST_STATIC_DIR", "apps/web/dist")?,
             skill_path: path("BROADCAST_SKILL_PATH", "skills/manage-broadcast/SKILL.md")?,
             codex_home,
             codex_executable: broadcast_codex::executable(variable("CODEX_EXECUTABLE").as_deref(), None),

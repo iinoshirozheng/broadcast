@@ -68,8 +68,8 @@ jobs:
           fi
 
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          CARGO_VERSION="$(node -e 'const fs=require("fs"); const source=fs.readFileSync("src-tauri/Cargo.toml","utf8"); console.log(source.match(/^version = "([^"]+)"/m)[1])')"
-          TAURI_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          CARGO_VERSION="$(node -e 'const fs=require("fs"); const source=fs.readFileSync("Cargo.toml","utf8"); console.log(source.match(/^version = "([^"]+)"/m)[1])')"
+          TAURI_VERSION="$(node -p "require('./apps/desktop/tauri.conf.json').version")"
           if [[ "$PACKAGE_VERSION" != "$CARGO_VERSION" || "$PACKAGE_VERSION" != "$TAURI_VERSION" ]]; then
             echo "package.json、Cargo.toml 和 tauri.conf.json 的版本必须一致。" >&2
             exit 1
@@ -215,7 +215,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: ubuntu-24.04-x64
           cache-bin: false
 
@@ -248,8 +248,8 @@ jobs:
       - name: Verify Ubuntu 24.04 x64 package contents
         run: >-
           node scripts/verify-linux-packages.mjs
-          src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-          src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
 
       - name: Stage Ubuntu 24.04 x64 release assets
         run: |
@@ -258,16 +258,16 @@ jobs:
           LINUX_RELEASE="$RUNNER_TEMP/linux-release"
           mkdir -p "$LINUX_RELEASE"
           cp \
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb \
+            target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb \
             "$LINUX_RELEASE/$LINUX_DEB_NAME"
           cp \
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb.sig \
+            target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb.sig \
             "$LINUX_RELEASE/$LINUX_DEB_NAME.sig"
           cp \
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage \
+            target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage \
             "$LINUX_RELEASE/$LINUX_APPIMAGE_NAME"
           cp \
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig \
+            target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig \
             "$LINUX_RELEASE/$LINUX_APPIMAGE_NAME.sig"
 
       - name: Preserve Ubuntu 24.04 x64 release assets
@@ -305,7 +305,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: windows-x64
           cache-bin: false
 
@@ -319,7 +319,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-preview-${{ github.sha }}
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
 
   release-macos:
@@ -358,7 +358,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: macos-universal
           cache-bin: false
 
@@ -415,14 +415,14 @@ jobs:
       - name: Sign App with separate Node.js policy
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: node scripts/sign-macos-app.mjs "src-tauri/target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
+        run: node scripts/sign-macos-app.mjs "target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
 
       - name: Notarize and staple App
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
-          APP_PATH="src-tauri/target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
+          APP_PATH="target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
           APP_ZIP="$RUNNER_TEMP/Codex.Broadcast.app.zip"
           /usr/bin/ditto -c -k --keepParent --sequesterRsrc "$APP_PATH" "$APP_ZIP"
           xcrun notarytool submit "$APP_ZIP" \
@@ -441,7 +441,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
-          BUNDLE_ROOT="src-tauri/target/universal-apple-darwin/release/bundle"
+          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
           RAW_DMG_NAME="$(jq -r '.rawDmgName' <<< "$RELEASE_METADATA")"
           RELEASE_DMG_NAME="$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
           rm -f "$BUNDLE_ROOT/dmg/$RAW_DMG_NAME" "$BUNDLE_ROOT/macos/$RAW_DMG_NAME"
@@ -475,7 +475,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          BUNDLE_ROOT="src-tauri/target/universal-apple-darwin/release/bundle"
+          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
           node scripts/create-macos-updater.mjs \
             "$BUNDLE_ROOT/macos/$APP_NAME" \
             "$BUNDLE_ROOT/release" \
@@ -484,7 +484,7 @@ jobs:
       - name: Verify signed release artifacts
         run: |
           set -euo pipefail
-          BUNDLE_ROOT="src-tauri/target/universal-apple-darwin/release/bundle"
+          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
           APP_PATH="$BUNDLE_ROOT/macos/$APP_NAME"
           DMG_PATH="$BUNDLE_ROOT/dmg/$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
           RELEASE_ROOT="$BUNDLE_ROOT/release"
@@ -492,7 +492,7 @@ jobs:
 
       - name: Stage final public macOS release assets
         run: |
-          BUNDLE_ROOT="src-tauri/target/universal-apple-darwin/release/bundle"
+          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
           MACOS_RELEASE="$RUNNER_TEMP/macos-release"
           BUILD_DMG_NAME="$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
           PUBLIC_DMG_NAME="$(jq -r '.assets.dmg' <<< "$RELEASE_METADATA")"

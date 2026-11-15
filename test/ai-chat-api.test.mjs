@@ -11,7 +11,7 @@ import {
   startAiChatTurn,
   subscribeAiChatThread,
   updateAiChatThread,
-} from "../web/src/api.ts";
+} from "../apps/web/src/api.ts";
 
 const broadcastBase = "http://127.0.0.1:43210/instance-token/";
 globalThis.document = { baseURI: broadcastBase };

@@ -5,9 +5,9 @@ import { test } from "node:test";
 import {
   buildIssueUrl,
   readIssueIdentifier,
-} from "../web/src/issueRoute.ts";
+} from "../apps/web/src/issueRoute.ts";
 
-const appSource = await readFile(new URL("../web/src/App.tsx", import.meta.url), "utf8");
+const appSource = await readFile(new URL("../apps/web/src/App.tsx", import.meta.url), "utf8");
 
 test("issue detail URLs preserve project context and unrelated query parameters", () => {
   const url = buildIssueUrl(

@@ -10,7 +10,7 @@ const projectRoot = path.resolve(path.dirname(scriptPath), "..");
 const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
 const releasePolicy = JSON.parse(readFileSync(
-  path.join(projectRoot, "src-tauri", "release.json"),
+  path.join(projectRoot, "apps", "desktop", "release.json"),
   "utf8",
 ));
 
@@ -19,7 +19,7 @@ if (!identity) throw new Error("APPLE_SIGNING_IDENTITY is required");
 
 const nodePath = path.join(appPath, "Contents", "MacOS", "node");
 const launcherPath = path.join(appPath, "Contents", "MacOS", "broadcast-launcher");
-const entitlementsPath = path.join(projectRoot, "src-tauri", "Entitlements.plist");
+const entitlementsPath = path.join(projectRoot, "apps", "desktop", "Entitlements.plist");
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {

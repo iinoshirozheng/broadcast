@@ -21,7 +21,7 @@ if (!debPath || !appImagePath || !latestPath || !releaseTag) {
 
 const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
 const tauriConfig = JSON.parse(await readFile(
-  path.join(projectRoot, "src-tauri", "tauri.conf.json"),
+  path.join(projectRoot, "apps", "desktop", "tauri.conf.json"),
   "utf8",
 ));
 const { releaseVersion } = releaseMetadata(packageJson.version, releaseTag);
