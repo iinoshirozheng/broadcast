@@ -168,7 +168,7 @@ Windows 上如果自行启动的 Codex 没有任务面板，通常是该实例�
 pixi run check
 ```
 
-该命令会运行 Clippy（本机与 wasm）、TypeScript 检查和 Biome，然后构建服务器、CLI、Web UI 和云端 Worker，并针对这些构建运行组件测试以及 HTTP、CLI、注入和云端测试套件。`pixi run test-e2e` 运行 Playwright 测试，`pixi run fmt` 格式化 Rust 和 JavaScript。
+该命令会运行 Clippy（本机与 wasm）、TypeScript 检查和 Biome，然后构建服务器、CLI、Web UI 和云端 Worker，并运行 Rust 服务器与 CLI 集成测试，再针对这些构建运行组件、注入和云端测试套件。`pixi run test-e2e` 运行 Playwright 测试，`pixi run fmt` 格式化 Rust 和 JavaScript。
 
 ## 议题 Markdown
 

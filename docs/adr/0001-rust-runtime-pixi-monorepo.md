@@ -29,8 +29,9 @@ Rust (launcher). Toolchains are installed ad hoc (rustup + nvm/npm).
    `apps/cloud/migrations`: wrangler records applied files by name in the deployed
    database, so collapsing the chain would mean rewriting production state.
 5. **API parity is the acceptance bar.** Rust validation runs over `serde_json::Value`
-   and reproduces the Node `ApiError` status, code and message exactly. The
-   `test/*.test.mjs` suites run against the Rust binaries over HTTP and the CLI.
+   and reproduces the Node `ApiError` status, code and message exactly. The HTTP and CLI
+   suites run against the Rust binaries; [ADR 0002](0002-test-and-tooling-languages.md)
+   moves them into Rust integration tests.
 
 ## Target layout
 

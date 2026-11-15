@@ -171,7 +171,7 @@ See [Cloud collaboration](docs/cloud-collaboration.md) for owner deployment, exi
 pixi run check
 ```
 
-This runs Clippy (native and wasm), TypeScript checking and Biome, then builds the server, CLI, web UI and cloud worker and runs the component tests and the HTTP, CLI, injection and cloud suites against those builds. `pixi run test-e2e` runs the Playwright suite and `pixi run fmt` formats Rust and JavaScript.
+This runs Clippy (native and wasm), TypeScript checking and Biome, then builds the server, CLI, web UI and cloud worker and runs the Rust server and CLI integration tests, then the component, injection and cloud suites against those builds. `pixi run test-e2e` runs the Playwright suite and `pixi run fmt` formats Rust and JavaScript.
 
 ## Task Markdown
 
