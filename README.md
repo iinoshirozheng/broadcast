@@ -8,39 +8,40 @@ A local-first issue board that runs in a browser and can be embedded in Codex th
 
 ## Requirements
 
-- Node.js 22.22.3 or newer in the 22.x line, or 24.8 or newer
-- macOS App and DMG builds: Xcode Command Line Tools and Rust 1.88 or newer with the `aarch64-apple-darwin` and `x86_64-apple-darwin` targets. `npm install` installs the Tauri CLI used by this project.
-- Windows NSIS builds: the Microsoft Store Codex App, Rust 1.88 or newer, and Visual Studio Build Tools with the C++ workload and Windows SDK.
+- [pixi](https://pixi.prefix.dev) 0.76 or newer. `pixi.toml` pins Rust 1.100, Node.js 26 and pnpm 12, and `pixi run` installs them on first use. No rustup, nvm or global npm packages are needed.
+- macOS App and DMG builds: Xcode Command Line Tools.
+- Windows NSIS builds: the Microsoft Store Codex App and Visual Studio Build Tools with the C++ workload and Windows SDK.
+- Ubuntu 24.04 packages: the WebKitGTK build packages listed under [Linux App](#linux-app-ubuntu-2404-x64-packages).
 
 ## Run locally
 
 ```bash
-npm install
-npm run build
-npm start
+pixi run start
 ```
 
-Open <http://127.0.0.1:47823>. The SQLite database is stored at `.data/broadcast.sqlite`.
+This builds the web UI and runs the Rust server. Open <http://127.0.0.1:47823>. The SQLite database is stored at `.data/broadcast.sqlite`.
 
 For development with live frontend reload:
 
 ```bash
-npm run dev
+pixi run dev
 ```
 
-The Vite UI runs at <http://127.0.0.1:5173> and proxies API requests to the local service.
+The Vite UI runs at <http://127.0.0.1:5173> and proxies API requests to the Rust server on <http://127.0.0.1:47823>.
 
 ## Use the CLI
 
-Run it from the project:
+Build it and run it from the project:
 
 ```bash
-npm run broadcast -- project create \
+pixi run build-native
+
+target/debug/broadcast project create \
   --id my-project \
   --name "My project" \
   --workspace-path /absolute/path/to/repository
 
-npm run broadcast -- issue create \
+target/debug/broadcast issue create \
   --project my-project \
   --title "Implement the next slice" \
   --status todo \
@@ -48,7 +49,7 @@ npm run broadcast -- issue create \
   --labels product,mvp
 ```
 
-Use `npm link` if you want `broadcast` on your shell path. Set `BROADCAST_URL` to point the CLI at another local or LAN service. Cloud deployments are configured through the **loopback companion** (device-local loopback service for auth and path mapping—not a chat persona) with `broadcast cloud login`.
+Run `pixi run cargo install --locked --path crates/cli` if you want `broadcast` on your shell path (`~/.cargo/bin`). Without a runtime descriptor the CLI talks to `http://127.0.0.1:47823`. Set `BROADCAST_URL` to point the CLI at another local or LAN service. Cloud deployments are configured through the **loopback companion** (device-local loopback service for auth and path mapping—not a chat persona) with `broadcast cloud login`.
 
 ## Install the Codex Skill
 
@@ -63,55 +64,27 @@ The desktop app keeps this same directory synchronized with its bundled Skill. T
 
 ## Embed in Codex
 
-### Manual: use a dedicated CDP port
-
-Keep the existing Codex window open. From the Broadcast repository, start a second Codex instance with a dedicated CDP port:
-
-```bash
-open -n -a /Applications/ChatGPT.app --args \
-  --remote-debugging-port=9231 \
-  --remote-allow-origins=http://127.0.0.1:9231
-```
-
-After the new Codex window appears, run the injector in another terminal:
-
-```bash
-BROADCAST_HOST=127.0.0.1 \
-npm run codex:inject -- --port 9231 --open
-```
-
-Keep the injector terminal running while using the embedded panel. The original Codex window remains unchanged, and the new window receives the Broadcast sidebar entry. If port `9231` is occupied, use another port in both commands.
-
-### Recommended: launch an independent Broadcast window with one command
-
-Keep existing Codex windows open and run:
-
-```bash
-BROADCAST_HOST=127.0.0.1 npm run codex
-```
-
-This starts the local Broadcast service when needed. It reuses an open Codex with a reachable CDP renderer, opens Broadcast in the native browser panel of an ordinary Codex without CDP, or launches the official macOS Codex app with an independent profile and loopback-only port `9231` when no Codex is open. It injects a native-looking Broadcast entry after Plugins when CDP is available and keeps watching both the service and replacement renderers. Keep this command running while using the embedded panel. The launcher does not modify `ChatGPT.app` or its `app.asar`.
-
-The source launcher writes its authenticated endpoint to `.data/launcher-runtime.json`. A `broadcast` command installed with `npm link` reads this file by default, so a normal shell and a Codex task opened from the panel use the same Broadcast service without an extra environment variable.
+The desktop app embeds Broadcast in Codex. It runs the Broadcast server in-process and starts or reuses Codex with a CDP port, then injects the sidebar entry; the injection script is compiled into the launcher. There is no separate injector command.
 
 ### macOS App: open and inject without a terminal
 
 For Tauri development, run:
 
 ```bash
-npm run app:dev
+pixi run install-js
+pixi run pnpm app:dev
 ```
 
-To build the local App and DMG, install the two Rust targets once, then run the build:
+To build the local universal App and DMG, run the build in the `macos-release` environment, which adds the `x86_64-apple-darwin` standard library:
 
 ```bash
-rustup target add aarch64-apple-darwin x86_64-apple-darwin
-npm run app:build
+pixi run install-js
+pixi run -e macos-release pnpm app:build
 ```
 
-Open `src-tauri/target/universal-apple-darwin/release/bundle/macos/Broadcast.app` from Finder. The DMG is in `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`. If you only want the stable App, download the current DMG from [GitHub Releases](https://github.com/iinoshirozheng/broadcast/releases/latest).
+Open `target/universal-apple-darwin/release/bundle/macos/Broadcast.app` from Finder. The DMG is in `target/universal-apple-darwin/release/bundle/dmg/`. If you only want the stable App, download the current DMG from [GitHub Releases](https://github.com/iinoshirozheng/broadcast/releases/latest).
 
-The App contains its own Node runtime, Broadcast service, built web UI, Skill, CLI wrapper, and injection script. It starts the service, reuses an open Codex with a reachable CDP renderer, opens Broadcast in the native browser panel of an ordinary Codex without CDP, or launches the official Codex app when no Codex is open. It waits for the renderer, injects the sidebar entry when CDP is available, and opens the panel without showing a terminal window. The App can be copied away from this checkout; the target Mac only needs the official Codex app and does not need this repository, a system Node installation, or a separate Codex CLI installation. Broadcast data is stored in `~/Library/Application Support/Broadcast`, and launcher output is written to `~/Library/Logs/Broadcast/broadcast-launcher.log`.
+The App runs the Broadcast service in-process and contains the built web UI, the Skill, and the `broadcast` CLI with its wrapper. It starts the service, reuses an open Codex with a reachable CDP renderer, opens Broadcast in the native browser panel of an ordinary Codex without CDP, or launches the official Codex app when no Codex is open. It waits for the renderer, injects the sidebar entry when CDP is available, and opens the panel without showing a terminal window. The App can be copied away from this checkout; the target Mac only needs the official Codex app and does not need this repository, Node.js, or a separate Codex CLI installation. Broadcast data is stored in `~/Library/Application Support/Broadcast`, and launcher output is written to `~/Library/Logs/Broadcast/broadcast-launcher.log`.
 
 ### Linux App: Ubuntu 24.04 x64 packages
 
@@ -130,11 +103,13 @@ chmod +x ./<file>.AppImage
 ./<file>.AppImage
 ```
 
-To build both packages on Ubuntu 24.04 x64, run:
+To build both packages on Ubuntu 24.04 x64, install the WebKitGTK build packages, then run the build:
 
 ```bash
-npm ci
-npm run app:build:linux:x64
+sudo apt-get install -y build-essential curl file libayatana-appindicator3-dev \
+  librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf wget
+pixi run install-js
+pixi run pnpm app:build:linux:x64
 ```
 
 This first release does not support ARM64, Fedora, RPM packages, or other Linux distributions.
@@ -150,23 +125,15 @@ The local build uses ad-hoc code signing for direct verification. A public macOS
 Install the official Codex App from the Microsoft Store. To build the current-user NSIS installer on Windows x64, run:
 
 ```powershell
-npm ci
-npm run app:build:windows
+pixi run install-js
+pixi run pnpm app:build:windows
 ```
 
-The installer is written to `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`. It installs a tray launcher, bundled Node runtime, local service, built web UI, Skill, `broadcast.cmd`, and injection script. Broadcast data is stored in `%APPDATA%\Broadcast`; logs are stored in `%LOCALAPPDATA%\Broadcast\Logs`; the Skill is copied to `%USERPROFILE%\.agents\skills\manage-broadcast`.
+The installer is written to `target/x86_64-pc-windows-msvc/release/bundle/nsis/`. It installs a tray launcher that runs the Broadcast service in-process, the built web UI, the Skill, and `broadcast.cmd` with the `broadcast` CLI. Broadcast data is stored in `%APPDATA%\Broadcast`; logs are stored in `%LOCALAPPDATA%\Broadcast\Logs`; the Skill is copied to `%USERPROFILE%\.agents\skills\manage-broadcast`.
 
 Windows CI artifacts are intentionally unsigned and do not auto-update. Review [the code-signing policy](docs/code-signing-policy.md) before distributing a build. See [Windows uninstall](docs/windows-uninstall.md) for retained-data behavior.
 
 Codex 26.715.52143 ships a renderer CSP that blocks arbitrary HTTP iframes. The launcher therefore enables CDP CSP bypass, reloads that renderer once, installs the document-start script, and waits until the Broadcast OOPIF is actually loaded. CDP is unauthenticated to other processes on the same machine, so only run trusted local code while the launcher is active.
-
-To inject into a Codex instance that was already launched with CDP by another method, run:
-
-```bash
-npm run codex:inject -- --port 9229 --open
-```
-
-This command also stays resident so the injected tab can restart Broadcast after a service exit. Stop it with `Ctrl-C`.
 
 The script adds a Broadcast entry to the Codex sidebar and renders the iframe across Codex's complete main workspace, including the contextual titlebar area so Broadcast's own header does not leave an empty strip. That full rectangular header is placed above Electron's draggable layer and marked `no-drag`; because the native contextual actions are suppressed while Broadcast is active, its own actions use their normal edge padding without an artificial right-side gap. The native sidebar stays mounted, while the previous page selection and contextual header are temporarily suppressed; choosing another Codex page restores them.
 
@@ -184,7 +151,7 @@ To use a different UI origin, set `window.__BROADCAST_URL__` before the user scr
 | `BROADCAST_DATA_DIR` | `.data` | SQLite data directory |
 | `BROADCAST_URL` | `http://127.0.0.1:47823` | CLI API origin |
 
-`npm start` prints both the local URL and the available LAN URLs. Teammates on the same trusted network can open one of those LAN URLs and use the same broadcast service. Task, comment, and attachment changes are broadcast to every open client through server-sent events; reconnecting clients perform a full refresh so changes made while disconnected are not missed. A teammate using `broadcast` can point it at the shared service with `BROADCAST_URL=http://<host-ip>:47823`.
+The server prints both the local URL and the available LAN URLs. Teammates on the same trusted network can open one of those LAN URLs and use the same broadcast service. Task, comment, and attachment changes are broadcast to every open client through server-sent events; reconnecting clients perform a full refresh so changes made while disconnected are not missed. A teammate using `broadcast` can point it at the shared service with `BROADCAST_URL=http://<host-ip>:47823`.
 
 LAN mode has no account authentication: anyone on the trusted local network who can reach the URL can read and write the broadcast. Public internet and cloud deployment require an authenticated deployment boundary.
 
@@ -201,10 +168,10 @@ See [Cloud collaboration](docs/cloud-collaboration.md) for owner deployment, exi
 ## Verify
 
 ```bash
-npm run check
+pixi run check
 ```
 
-This runs TypeScript checking, a production frontend build, the component tests, and the server/CLI/injection test suite.
+This runs Clippy (native and wasm), TypeScript checking and Biome, then builds the server, CLI, web UI and cloud worker and runs the component tests and the HTTP, CLI, injection and cloud suites against those builds. `pixi run test-e2e` runs the Playwright suite and `pixi run fmt` formats Rust and JavaScript.
 
 ## Task Markdown
 

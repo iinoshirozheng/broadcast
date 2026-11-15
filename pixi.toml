@@ -19,6 +19,8 @@ cargo-nextest = "*"
 install-js = { cmd = "pnpm install --frozen-lockfile", inputs = ["package.json", "apps/web/package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"], outputs = ["node_modules/.modules.yaml"] }
 build-native = "cargo build -p broadcast-server -p broadcast-cli"
 build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
+# The release server on 0.0.0.0:47823, serving the built web app; data in .data/.
+start = { cmd = "cargo run --release -p broadcast-server", depends-on = ["build-web"] }
 # The Rust server on 127.0.0.1:47823 and the Vite dev server.
 dev = { cmd = "pnpm dev", depends-on = ["install-js"] }
 # The HTTP, CLI, injector and cloud suites run against target/debug and apps/cloud/build.

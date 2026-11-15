@@ -1,4 +1,4 @@
-//! Composer references (`ComposerCatalog`, `web/src/composerReference.mjs`): the Skills, agents
+//! Composer references (`ComposerCatalog`, `apps/web/src/composerReference.mjs`): the Skills, agents
 //! and slash actions a composer offers, with per-workspace candidate refs that a turn resolves.
 
 use std::collections::HashMap;
