@@ -295,7 +295,8 @@ const DEFAULT_USER_ACTOR: ActorIdentity = {
 
 const GLOBAL_PROJECT_ID = "local";
 const ALL_PROJECTS_ID = "__all_projects__";
-const ALL_PROJECTS_DEFAULT_BOARD_DISPLAY_SETTINGS: BoardDisplaySettings = {
+/** All Projects and the global ad-hoc board, which has no project intake, show backlog as a column. */
+const BACKLOG_COLUMN_BOARD_DISPLAY_SETTINGS: BoardDisplaySettings = {
   ...DEFAULT_BOARD_DISPLAY_SETTINGS,
   mainStatuses: ["backlog", ...DEFAULT_BOARD_DISPLAY_SETTINGS.mainStatuses],
   sidebarStatuses: DEFAULT_BOARD_DISPLAY_SETTINGS.sidebarStatuses.filter(
@@ -956,11 +957,12 @@ export function App() {
   );
   const isAllProjects = selectedProjectId === ALL_PROJECTS_ID;
   const isJiraProject = selectedProject?.source === "jira";
+  const backlogColumn = isAllProjects || selectedProjectId === GLOBAL_PROJECT_ID;
   const storedBoardDisplaySettings =
     projectBoardDisplaySettings[selectedProjectId] ??
-    (isAllProjects ? ALL_PROJECTS_DEFAULT_BOARD_DISPLAY_SETTINGS : DEFAULT_BOARD_DISPLAY_SETTINGS);
+    (backlogColumn ? BACKLOG_COLUMN_BOARD_DISPLAY_SETTINGS : DEFAULT_BOARD_DISPLAY_SETTINGS);
   const boardDisplaySettings: BoardDisplaySettings =
-    isAllProjects &&
+    backlogColumn &&
     storedBoardDisplaySettings.sidebarStatuses.includes("backlog") &&
     !storedBoardDisplaySettings.mainStatuses.includes("backlog")
       ? {
