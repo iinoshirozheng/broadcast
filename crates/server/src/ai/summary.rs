@@ -1,4 +1,4 @@
-//! Daily project summaries written by Codex (`server/project-summary.mjs`).
+//! Daily project summaries written by Codex.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

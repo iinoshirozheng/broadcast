@@ -1,4 +1,4 @@
-//! The packaged Codex on Windows (`windows-codex.mjs`): its processes from WMI, launching it
+//! The packaged Codex on Windows: its processes from WMI, launching it
 //! through `IApplicationActivationManager`, stopping its process tree and raising its window.
 
 use std::path::Path;

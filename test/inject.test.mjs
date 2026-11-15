@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import vm from "node:vm";
 
-import { parseBroadcastAutomationHostRequest } from "../shared/broadcast-automation.mjs";
 
 const sourceUrl = new URL("../inject/broadcast.user.js", import.meta.url);
 const source = (await readFile(sourceUrl, "utf8")).replaceAll("\r\n", "\n");
@@ -258,47 +257,6 @@ test("the iframe automation contract is forwarded through the fixed host binding
   assert.match(source, /capability: HOST_CAPABILITY/);
   assert.match(source, /event\.source !== window/);
   assert.doesNotMatch(source, /window\[HOST_BINDING_NAME\]/);
-});
-
-test("complete App automation payloads cross the injected forwarder into the current parser", () => {
-  const functionSource = source.slice(
-    source.indexOf("function buildAutomationHostPayload"),
-    source.indexOf("\n\n  async function handleAutomationRequest"),
-  );
-  assert.ok(functionSource.startsWith("function buildAutomationHostPayload"));
-  const buildAutomationHostPayload = vm.runInNewContext(`(${functionSource})`);
-  const basePayload = {
-    requestId: "request-1",
-    broadcastProjectId: "local",
-    codexProjectId: "codex-project",
-    codexProjectKind: "local",
-    codexHostId: "local",
-    projectName: "Local",
-    workspacePath: "/tmp/local-project",
-    remoteProjects: [],
-    skillPath: "/tmp/manage-broadcast/SKILL.md",
-    automationId: "automation-1",
-    enabledByUser: true,
-    quotaAware: true,
-    intervalMinutes: 10,
-    model: "gpt-5.6-sol",
-    reasoningEffort: "ultra",
-    enabledByUser: true,
-    quotaAware: false,
-  };
-
-  for (const operation of ["list", "pause", "ensure-active"]) {
-    const forwarded = {
-      id: `host-${operation}`,
-      action: "automation",
-      ...buildAutomationHostPayload({ ...basePayload, operation }),
-    };
-    assert.deepEqual(
-      parseBroadcastAutomationHostRequest(forwarded),
-      forwarded,
-      `${operation} must retain model and reasoningEffort`,
-    );
-  }
 });
 
 test("only a loopback Broadcast iframe can request native automation", () => {

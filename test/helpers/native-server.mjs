@@ -4,10 +4,18 @@ import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 
-// Runs the same request against the native server build instead of the in-process app.
-// In-process options map to the environment the native server reads.
-export async function startNativeServer(binary, directory, options, listenOptions) {
+// `pixi run test` builds this binary first; BROADCAST_SERVER_BIN points at another build.
+export const SERVER_BIN = process.env.BROADCAST_SERVER_BIN
+  ?? fileURLToPath(new URL("../../target/debug/broadcast-server", import.meta.url));
+export const CLI_BIN = process.env.BROADCAST_CLI_BIN
+  ?? fileURLToPath(new URL("../../target/debug/broadcast", import.meta.url));
+
+// Starts the server binary on an ephemeral loopback port with its data in `directory`.
+// Options map to the environment the server reads.
+export async function startNativeServer(directory, options = {}, listenOptions = {}) {
+  const binary = SERVER_BIN;
   const env = {
     ...(options.processEnv ?? process.env),
     BROADCAST_DATA_DIR: directory,
@@ -71,14 +79,16 @@ export async function startNativeServer(binary, directory, options, listenOption
         this.database.prepare(`
           INSERT INTO ai_chat_threads (
             id, title, status, origin_project_id, origin_project_name, origin_workspace_path,
-            model, reasoning_effort, sandbox, created_at, updated_at
-          ) VALUES (?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)
+            origin_issue_id, origin_issue_identifier, model, reasoning_effort, sandbox, created_at, updated_at
+          ) VALUES (?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           input.id,
           input.title,
           input.origin.projectId,
           input.origin.projectName,
           input.origin.workspacePath,
+          input.origin.issueId ?? null,
+          input.origin.issueIdentifier ?? null,
           input.model,
           input.reasoningEffort,
           input.sandbox,

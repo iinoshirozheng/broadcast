@@ -1,4 +1,4 @@
-//! Cloud mode (`server/cloud-proxy.mjs`): business APIs go to the cloud board under this
+//! Cloud mode: business APIs go to the cloud board under this
 //! device's Basic credentials, while workspace paths stay on this device.
 
 use std::collections::HashMap;

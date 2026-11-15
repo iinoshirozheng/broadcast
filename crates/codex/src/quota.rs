@@ -1,5 +1,5 @@
-//! `scripts/codex-rate-limits.mjs`: whether the signed-in account can run Codex right now, read
-//! from a short-lived `codex app-server`.
+//! Codex quota: whether the signed-in account can run Codex right now, read from a short-lived
+//! `codex app-server`.
 
 use std::process::Stdio;
 use std::time::Duration;

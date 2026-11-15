@@ -1,4 +1,4 @@
-//! Field validators ported from `shared/api-fields.mjs`.
+//! Field validators for API request bodies.
 //!
 //! A field read is `Option<&Value>`: `None` is JavaScript `undefined`.
 //! A three-state result is `Option<Option<T>>`: `None` is undefined, `Some(None)` is null.

@@ -1,6 +1,6 @@
-//! Codex app-server JSON-RPC over stdio (`codex-app-server.mjs`): a lazily started local
-//! `codex app-server --stdio` child, and the per-host client for remote Codex projects, whose
-//! requests travel through the desktop host bridge.
+//! Codex app-server JSON-RPC over stdio: a lazily started local `codex app-server --stdio`
+//! child, and the per-host client for remote Codex projects, whose requests travel through the
+//! desktop host bridge.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

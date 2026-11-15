@@ -8,7 +8,6 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 import { WebSocket, WebSocketServer } from "ws";
 
-import { createBroadcastServer, resolveServerOptions } from "../server/index.mjs";
 import { startNativeServer } from "./helpers/native-server.mjs";
 
 const runningApps = [];
@@ -24,19 +23,10 @@ afterEach(async () => {
 async function startServer(configure, listenOptions = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-test-"));
   const options = configure ? await configure(directory) : {};
-  if (process.env.BROADCAST_SERVER_BIN) {
-    const { app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, options, listenOptions);
-    runningApps.push({ app, directory });
-    return `http://127.0.0.1:${port}`;
-  }
-  const app = createBroadcastServer({ dataDirectory: directory, ...options });
-  const address = await app.listen({ port: 0, ...listenOptions });
+  const { app, port } = await startNativeServer(directory, options, listenOptions);
   runningApps.push({ app, directory });
-  return `http://127.0.0.1:${address.port}`;
+  return `http://127.0.0.1:${port}`;
 }
-
-// Node-era schema upgrades are not ported to the native server (ADR 0001, rule 4).
-const legacySchema = { skip: process.env.BROADCAST_SERVER_BIN ? "Node-era schema upgrade" : false };
 
 async function request(baseUrl, pathname, options = {}) {
   const headers = new Headers(options.headers);
@@ -163,223 +153,6 @@ test("launcher mode proves service identity and hides every route behind its ins
   });
   assert.equal(launcherApi.response.status, 200);
   assert.equal(launcherApi.response.headers.get("access-control-allow-origin"), "null");
-});
-
-test("existing task and comment thread attribution remains content-specific", legacySchema, async () => {
-  const baseUrl = await startServer(async (directory) => {
-    const databasePath = path.join(directory, "broadcast.sqlite");
-    const database = new DatabaseSync(databasePath);
-    database.exec(`
-      CREATE TABLE projects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        workspace_path TEXT,
-        next_task_number INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE tasks (
-        id TEXT PRIMARY KEY,
-        identifier TEXT NOT NULL UNIQUE,
-        project_id TEXT NOT NULL REFERENCES projects(id),
-        title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL CHECK (status IN ('backlog', 'todo', 'in_progress', 'done')),
-        priority TEXT NOT NULL,
-        labels TEXT NOT NULL DEFAULT '[]',
-        sort_order REAL NOT NULL,
-        thread_id TEXT,
-        git_branch TEXT,
-        worktree_path TEXT,
-        worktree_branch TEXT,
-        due_date TEXT,
-        recurrence_interval INTEGER,
-        recurrence_unit TEXT,
-        archived_at TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE comments (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        body TEXT NOT NULL,
-        thread_id TEXT,
-        author_id TEXT NOT NULL,
-        author_name TEXT NOT NULL,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE attachments (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        filename TEXT NOT NULL,
-        content_type TEXT NOT NULL,
-        size INTEGER NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      INSERT INTO projects VALUES ('local', 'Local', NULL, 2, '2026-07-20T00:00:00.000Z', '2026-07-20T00:00:00.000Z');
-      INSERT INTO tasks VALUES (
-        'legacy-task', 'LOCAL-1', 'local', 'Legacy task', '', 'todo', 'none', '[]', 1000,
-        'legacy-thread', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1,
-        '2026-07-20T00:00:00.000Z', '2026-07-20T00:00:00.000Z'
-      );
-      INSERT INTO comments VALUES (
-        'legacy-comment', 'legacy-task', 'Legacy comment', 'legacy-comment-thread', 'local', '本地用户', 1,
-        '2026-07-20T00:00:00.000Z', '2026-07-20T00:00:00.000Z'
-      );
-      INSERT INTO attachments VALUES (
-        'legacy-attachment', 'legacy-task', 'legacy.txt', 'text/plain', 0,
-        '2026-07-20T00:00:00.000Z'
-      );
-    `);
-    database.close();
-    return { databasePath };
-  });
-
-  const result = await request(baseUrl, "/api/tasks/legacy-task");
-  assert.equal(result.response.status, 200);
-  assert.equal(result.body.task.threadId, "legacy-thread");
-  assert.equal(result.body.task.threadBinding, null);
-  assert.equal(result.body.task.legacyLocalThreadId, "legacy-thread");
-  assert.deepEqual(result.body.task.conversationRefs.map((ref) => ({
-    threadId: ref.threadId,
-    legacyLocal: ref.legacyLocal,
-  })), [
-    { threadId: "legacy-thread", legacyLocal: true },
-    { threadId: "legacy-comment-thread", legacyLocal: true },
-  ]);
-  assert.equal(result.body.task.creatorType, "agent");
-  assert.equal(result.body.task.creatorId, "codex-agent");
-  assert.equal(result.body.task.creatorName, "Codex Agent");
-  assert.deepEqual(result.body.task.assignee, {
-    type: "agent",
-    id: "codex-agent",
-    name: "Codex Agent",
-    avatarUrl: null,
-  });
-  assert.equal(Object.hasOwn(result.body.task, "linkedThreadId"), false);
-  const columns = runningApps.at(-1).app.database.database.prepare("PRAGMA table_info(tasks)").all();
-  assert.equal(columns.some((column) => column.name === "thread_id"), true);
-  assert.equal(columns.some((column) => column.name === "assignee_type"), true);
-  assert.equal(columns.some((column) => column.name === "assignee_id"), true);
-  assert.equal(columns.some((column) => column.name === "assignee_name"), true);
-  assert.equal(columns.some((column) => column.name === "assignee_avatar_url"), true);
-  assert.equal(columns.some((column) => column.name === "linked_thread_id"), false);
-  const taskThreads = runningApps.at(-1).app.database.database.prepare(`
-    SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'task_threads'
-  `).get();
-  assert.equal(taskThreads, undefined);
-  const comments = await request(baseUrl, "/api/tasks/legacy-task/comments");
-  assert.equal(comments.body.comments[0].threadId, "legacy-comment-thread");
-  assert.equal(comments.body.comments[0].threadBinding, null);
-  assert.equal(comments.body.comments[0].legacyLocalThreadId, "legacy-comment-thread");
-  assert.equal(comments.body.comments[0].authorType, "agent");
-  assert.equal(comments.body.comments[0].authorId, "codex-agent");
-  assert.equal(comments.body.comments[0].authorName, "Codex Agent");
-  assert.deepEqual(comments.body.comments[0].attachments, []);
-  const attachments = await request(baseUrl, "/api/tasks/legacy-task/attachments");
-  assert.equal(attachments.body.attachments[0].commentId, null);
-
-  let version = result.body.task.version;
-  for (const status of ["in_review", "blocked", "canceled"]) {
-    const moveResult = await request(baseUrl, "/api/tasks/legacy-task/move", {
-      method: "POST",
-      body: { version, status },
-    });
-    assert.equal(moveResult.response.status, 200);
-    assert.equal(moveResult.body.task.status, status);
-    version = moveResult.body.task.version;
-  }
-  const tasksSql = runningApps.at(-1).app.database.database.prepare(`
-    SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'tasks'
-  `).get().sql;
-  assert.match(tasksSql, /'in_review'/);
-  assert.match(tasksSql, /'blocked'/);
-  assert.match(tasksSql, /'canceled'/);
-  const commentForeignKeys = runningApps.at(-1).app.database.database
-    .prepare("PRAGMA foreign_key_list(comments)")
-    .all();
-  assert.equal(commentForeignKeys.some((foreignKey) => foreignKey.table === "tasks"), true);
-});
-
-test("task thread migration excludes comment-only aggregate entries", legacySchema, async () => {
-  const baseUrl = await startServer(async (directory) => {
-    const databasePath = path.join(directory, "broadcast.sqlite");
-    const database = new DatabaseSync(databasePath);
-    database.exec(`
-      CREATE TABLE projects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        workspace_path TEXT,
-        next_task_number INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE tasks (
-        id TEXT PRIMARY KEY,
-        identifier TEXT NOT NULL UNIQUE,
-        project_id TEXT NOT NULL REFERENCES projects(id),
-        title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL,
-        priority TEXT NOT NULL,
-        labels TEXT NOT NULL DEFAULT '[]',
-        sort_order REAL NOT NULL,
-        git_branch TEXT,
-        worktree_path TEXT,
-        worktree_branch TEXT,
-        due_date TEXT,
-        recurrence_interval INTEGER,
-        recurrence_unit TEXT,
-        archived_at TEXT,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE TABLE task_threads (
-        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        thread_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY (task_id, thread_id)
-      );
-      CREATE TABLE comments (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        body TEXT NOT NULL,
-        thread_id TEXT,
-        author_id TEXT NOT NULL,
-        author_name TEXT NOT NULL,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      INSERT INTO projects VALUES ('local', 'Local', NULL, 2, '2026-07-20T00:00:00.000Z', '2026-07-20T00:00:00.000Z');
-      INSERT INTO tasks VALUES (
-        'aggregate-task', 'LOCAL-1', 'local', 'Aggregate task', '', 'todo', 'none', '[]', 1000,
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1,
-        '2026-07-20T00:00:00.000Z', '2026-07-20T03:00:00.000Z'
-      );
-      INSERT INTO task_threads VALUES ('aggregate-task', 'thread-subject', '2026-07-20T01:00:00.000Z');
-      INSERT INTO task_threads VALUES ('aggregate-task', 'thread-comment-only', '2026-07-20T02:00:00.000Z');
-      INSERT INTO comments VALUES (
-        'aggregate-comment', 'aggregate-task', 'Comment', 'thread-comment-only', 'local', '本地用户', 1,
-        '2026-07-20T02:00:00.000Z', '2026-07-20T02:00:00.000Z'
-      );
-    `);
-    database.close();
-    return { databasePath };
-  });
-
-  const task = await request(baseUrl, "/api/tasks/aggregate-task");
-  assert.equal(task.body.task.threadId, "thread-subject");
-  const taskThreads = runningApps.at(-1).app.database.database.prepare(`
-    SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'task_threads'
-  `).get();
-  assert.equal(taskThreads, undefined);
-  const comments = await request(baseUrl, "/api/tasks/aggregate-task/comments");
-  assert.equal(comments.body.comments[0].threadId, "thread-comment-only");
 });
 
 test("development context scan resolves the current Codex conversation workspace", async () => {
@@ -616,8 +389,7 @@ test("trusted HTTPS origins apply to cloud WebSocket upgrades without widening l
   });
   await new Promise((resolve) => upstreamServer.listen(0, "127.0.0.1", resolve));
   const upstreamAddress = upstreamServer.address();
-  const app = createBroadcastServer({
-    dataDirectory: directory,
+  const { app, port } = await startNativeServer(directory, {
     processEnv: { ...process.env, BROADCAST_TRUSTED_ORIGINS: trustedOrigin },
     cloudConfigStore: {
       async read() {
@@ -628,11 +400,10 @@ test("trusted HTTPS origins apply to cloud WebSocket upgrades without widening l
         };
       },
     },
-  });
-  const address = await app.listen({ host: "127.0.0.1", port: 0 });
+  }, { host: "127.0.0.1" });
 
   try {
-    const url = `ws://127.0.0.1:${address.port}/api/events`;
+    const url = `ws://127.0.0.1:${port}/api/events`;
     for (const [host, origin, expectedStatus] of [
       ["board.example.test", trustedOrigin, 101],
       ["board.example.test", undefined, 101],
@@ -649,40 +420,6 @@ test("trusted HTTPS origins apply to cloud WebSocket upgrades without widening l
     upstreamWebSockets.close();
     await new Promise((resolve) => upstreamServer.close(resolve));
     await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("trusted origin configuration rejects non-origin URLs", () => {
-  const valid = resolveServerOptions({
-    processEnv: {
-      ...process.env,
-      BROADCAST_TRUSTED_ORIGINS: "https://board.example.test, https://second.example.test/",
-    },
-  });
-  assert.deepEqual(valid.trustedOrigins, new Set([
-    "https://board.example.test",
-    "https://second.example.test",
-  ]));
-
-  for (const value of [
-    "",
-    " \t ",
-    "http://board.example.test",
-    "https://board.example.test/path",
-    "https://board.example.test?query=value",
-    "https://user@board.example.test",
-    "https://*.example.test",
-    "https://board.example.test,,https://second.example.test",
-    "https://board.example.test,https://board.example.test",
-    "https://board.example.test,https://board.example.test/",
-    "https://board.example.test,https://board.example.test:443",
-  ]) {
-    assert.throws(
-      () => resolveServerOptions({
-        processEnv: { ...process.env, BROADCAST_TRUSTED_ORIGINS: value },
-      }),
-      /BROADCAST_TRUSTED_ORIGINS/,
-    );
   }
 });
 

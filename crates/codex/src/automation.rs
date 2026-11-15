@@ -1,4 +1,4 @@
-//! `shared/broadcast-automation.mjs`: the frame's automation request, the Codex cron it stands
+//! Broadcast automations: the frame's automation request, the Codex cron it stands
 //! for, and reconciling it against Codex's own automations through the renderer bridge.
 
 use std::sync::Arc;

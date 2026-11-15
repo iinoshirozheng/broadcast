@@ -1,4 +1,4 @@
-//! SQLite persistence for the Broadcast board, ported from `server/database.mjs`.
+//! SQLite persistence for the Broadcast board.
 //!
 //! One connection behind a mutex: SQLite serializes writers anyway, and every
 //! mutation runs in a `BEGIN IMMEDIATE` transaction.

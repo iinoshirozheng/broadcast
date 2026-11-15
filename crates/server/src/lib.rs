@@ -1,4 +1,4 @@
-//! HTTP API and web host for the Broadcast board, ported from `server/app.mjs`.
+//! HTTP API and web host for the Broadcast board.
 
 mod actor;
 mod ai;

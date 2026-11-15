@@ -1,5 +1,5 @@
-//! One `codex exec --json` turn: arguments, prompt, JSONL normalization and the turn-owner process
-//! (`ai-chat-process.mjs`, `ai-turn-owner.mjs`).
+//! One `codex exec --json` turn: arguments, prompt, JSONL normalization and the turn-owner
+//! process.
 //!
 //! The server starts `<self> __turn-owner <codex> <args-json>` as its own process group and writes
 //! the prompt as one JSON line to its stdin, keeping stdin open as a control channel. The owner

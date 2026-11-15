@@ -17,7 +17,6 @@ import {
   CLOUD_PROJECT_READMES_SQL,
   createCloudD1ImportSql,
 } from "./migrate-to-cloud.mjs";
-import { executableCommand } from "../shared/executable-command.mjs";
 
 const execFile = promisify(execFileCallback);
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,10 +74,9 @@ export function createWranglerCloudAdapters({
   let sequence = 0;
 
   function run(args) {
-    const command = executableCommand(wranglerExecutable, args);
     const result = commandQueue.then(() => runCommand(
-      command.executable,
-      command.args,
+      process.execPath,
+      [wranglerExecutable, ...args],
       {
         cwd: projectRoot,
         encoding: "utf8",

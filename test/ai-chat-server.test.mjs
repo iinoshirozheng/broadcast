@@ -5,9 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { createBroadcastServer } from "../server/index.mjs";
 import { startNativeServer } from "./helpers/native-server.mjs";
-import { AI_SANDBOX_MODES } from "../shared/domain.mjs";
 
 // The fake Codex CLI the fixture installs. Kept at module scope so the
 // template literal is not nested inside the fixture body.
@@ -59,14 +57,7 @@ async function createServerFixture(host = "127.0.0.1", { withCodex = true } = {}
     codexStatePath,
     skillPath: "/fixture/manage-broadcast/SKILL.md",
   };
-  let app;
-  let port;
-  if (process.env.BROADCAST_SERVER_BIN) {
-    ({ app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, options, { host }));
-  } else {
-    app = createBroadcastServer({ dataDirectory: directory, ...options });
-    ({ port } = await app.listen({ host, port: 0 }));
-  }
+  const { app, port } = await startNativeServer(directory, options, { host });
   return {
     app,
     port,
@@ -132,7 +123,7 @@ test("a missing Codex CLI reports an unavailable catalog instead of a 500", asyn
     assert.deepEqual(catalog.body.models, []);
     assert.deepEqual(catalog.body.skills, []);
     assert.deepEqual(catalog.body.commands, []);
-    assert.deepEqual(catalog.body.sandboxes, AI_SANDBOX_MODES);
+    assert.deepEqual(catalog.body.sandboxes, ["read-only", "workspace-write", "danger-full-access"]);
   } finally {
     await fixture.close();
   }
@@ -438,36 +429,5 @@ test("AI SSE is live-only and thread snapshots remain the durable source", async
     controller.abort();
   } finally {
     await fixture.close();
-  }
-});
-
-// Replaces the in-process AI close, which the native server does not expose.
-const inProcessOnly = { skip: process.env.BROADCAST_SERVER_BIN ? "patches in-process aiChat.close" : false };
-
-test("server close stops accepting requests before AI shutdown completes", inProcessOnly, async () => {
-  const fixture = await createServerFixture();
-  let appClosed = false;
-  try {
-    let releaseAiClose;
-    const aiCloseGate = new Promise((resolve) => {
-      releaseAiClose = resolve;
-    });
-    fixture.app.aiChat.close = () => aiCloseGate;
-
-    const closing = fixture.app.close();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const acceptedDuringClose = await fetch(`${fixture.baseUrl}/health`)
-      .then(() => true, () => false);
-    releaseAiClose();
-    await closing;
-    appClosed = true;
-
-    assert.equal(acceptedDuringClose, false);
-  } finally {
-    if (appClosed) {
-      await rm(fixture.directory, { recursive: true, force: true });
-    } else {
-      await fixture.close();
-    }
   }
 });

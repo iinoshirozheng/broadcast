@@ -1,5 +1,5 @@
-//! Jira Data Center integration, ported from `server/jira-integration.mjs`: issues assigned to the
-//! connected user mirror into the `jira-my-tasks` project, and edits there write through to Jira.
+//! Jira Data Center integration: issues assigned to the connected user mirror into the
+//! `jira-my-tasks` project, and edits there write through to Jira.
 
 pub mod config;
 mod issue;

@@ -1,4 +1,4 @@
-//! The kept-alive launcher (`codex-injector --launch --watch`): start or reuse Codex, keep the
+//! The kept-alive launcher: start or reuse Codex, keep the
 //! board injected in every window, carry the server's App Server requests to a window and stop
 //! what it started.
 

@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { CdpPipeBrowser } from "../scripts/codex-cdp-pipe.mjs";
+import { CdpPipeBrowser } from "./helpers/cdp-pipe.mjs";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));

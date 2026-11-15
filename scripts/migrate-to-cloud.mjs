@@ -15,7 +15,20 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-import { DEFAULT_LABEL_NAMES } from "../shared/domain.mjs";
+// The labels a project without its own list starts with (`DEFAULT_LABEL_NAMES` in broadcast-domain).
+const DEFAULT_LABEL_NAMES = [
+  "缺陷",
+  "特性",
+  "for-claude",
+  "hold",
+  "改进",
+  "phase-1",
+  "phase-2",
+  "phase-3",
+  "phase-4",
+  "phase-5",
+  "phase-6",
+];
 
 const SCHEMA_VERSION = 2;
 const WRANGLER_D1_STATEMENT_MAX_BYTES = 90_000;

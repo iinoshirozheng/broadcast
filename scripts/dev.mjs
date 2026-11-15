@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 
 const children = [
-  spawn(process.execPath, ["--watch", "server/index.mjs", "--dev"], {
+  spawn("cargo", ["run", "-p", "broadcast-server"], {
     stdio: "inherit",
+    env: { BROADCAST_HOST: "127.0.0.1", ...process.env },
   }),
   spawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "dev:web"], {
     stdio: "inherit",

@@ -1,4 +1,4 @@
-//! The AI chat catalog (`ai-chat-catalog.mjs`): the models, skills and slash commands a Codex
+//! The AI chat catalog: the models, skills and slash commands a Codex
 //! CLI offers for a workspace.
 
 use std::process::Stdio;
@@ -27,7 +27,7 @@ const PLATFORM: &str = if cfg!(target_os = "macos") {
 };
 
 static SLASH_COMMANDS: LazyLock<Option<Value>> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../../server/codex-slash-commands-0.139.0.json")).ok()
+    serde_json::from_str(include_str!("../../assets/codex-slash-commands-0.139.0.json")).ok()
 });
 
 #[derive(Clone, Serialize)]

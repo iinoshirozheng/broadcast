@@ -1,4 +1,4 @@
-//! Local AI chat (`server/ai-chat.mjs`): conversations with Codex on this device or on a remote
+//! Local AI chat: conversations with Codex on this device or on a remote
 //! Codex host, the turns they run and the events those turns stream to the board.
 //!
 //! A turn on this device runs `codex exec` under a turn owner; a composer turn, or any turn on a

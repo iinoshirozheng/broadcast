@@ -1,4 +1,4 @@
-import { encodeComposerReferenceKey, readComposerReferenceId } from "../../shared/composer-reference.mjs";
+import { encodeComposerReferenceKey, readComposerReferenceId } from "./composerReference.mjs";
 import { definitions } from "mdast-util-definitions";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";

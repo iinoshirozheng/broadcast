@@ -1,5 +1,5 @@
-//! Request parsers ported from `shared/task-input.mjs` and the server's body parsers.
-//! Each parser evaluates fields in the JavaScript order so the first error matches.
+//! Request body parsers. Each parser evaluates fields in a fixed order, so the first error it
+//! reports is stable.
 
 use serde_json::Value;
 

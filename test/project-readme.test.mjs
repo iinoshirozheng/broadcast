@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 
-import { createBroadcastServer } from "../server/index.mjs";
-import { BroadcastDatabase } from "../server/database.mjs";
-import { main } from "../cli/broadcast.mjs";
-import { startNativeServer } from "./helpers/native-server.mjs";
+import { CLI_BIN, startNativeServer } from "./helpers/native-server.mjs";
 
 const runningApps = [];
 
@@ -21,19 +19,9 @@ afterEach(async () => {
 
 async function startServer() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-readme-test-"));
-  if (process.env.BROADCAST_SERVER_BIN) {
-    const { app, port } = await startNativeServer(process.env.BROADCAST_SERVER_BIN, directory, {}, {});
-    runningApps.push({ app, directory });
-    return { baseUrl: `http://127.0.0.1:${port}`, app, directory };
-  }
-  const app = createBroadcastServer({ dataDirectory: directory });
-  const address = await app.listen({ port: 0 });
+  const { app, port } = await startNativeServer(directory);
   runningApps.push({ app, directory });
-  return {
-    baseUrl: `http://127.0.0.1:${address.port}`,
-    app,
-    directory,
-  };
+  return { baseUrl: `http://127.0.0.1:${port}`, app, directory };
 }
 
 async function request(baseUrl, pathname, options = {}) {
@@ -55,80 +43,19 @@ async function request(baseUrl, pathname, options = {}) {
   };
 }
 
-function capture() {
-  let value = "";
-  return {
-    stream: { write(chunk) { value += chunk; } },
-    json() { return JSON.parse(value); },
-  };
-}
-
-async function runCli(argv, baseUrl, overrides = {}) {
-  const stdout = capture();
-  const stderr = capture();
-  const exitCode = await main(argv, {
-    stdout: stdout.stream,
-    stderr: stderr.stream,
-    env: {
-      BROADCAST_URL: baseUrl,
-      CODEX_THREAD_ID: "test-thread",
-    },
-    ...overrides,
+async function runCli(argv, baseUrl) {
+  const env = { PATH: process.env.PATH, BROADCAST_URL: baseUrl, CODEX_THREAD_ID: "test-thread" };
+  const { exitCode, stdout, stderr } = await new Promise((resolve) => {
+    execFile(CLI_BIN, argv, { env }, (error, stdout, stderr) => {
+      resolve({ exitCode: error ? error.code : 0, stdout, stderr });
+    });
   });
   return {
     exitCode,
-    stdout: exitCode === 0 ? stdout.json() : null,
-    stderr: exitCode === 0 ? null : stderr.json(),
+    stdout: exitCode === 0 ? JSON.parse(stdout) : null,
+    stderr: exitCode === 0 ? null : JSON.parse(stderr),
   };
 }
-
-test("Database: getProjectReadme returns empty record for fresh project", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "db-readme-test-"));
-  let db;
-  try {
-    db = new BroadcastDatabase(path.join(directory, "broadcast.sqlite"));
-    db.createProject({ id: "demo-project", name: "Demo Project", workspacePath: null });
-
-    const readme = db.getProjectReadme("demo-project");
-    assert.equal(readme.projectId, "demo-project");
-    assert.equal(readme.content, "");
-    assert.equal(readme.version, 0);
-    assert.equal(readme.createdAt, null);
-    assert.equal(readme.updatedAt, null);
-  } finally {
-    db?.database.close();
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("Database: saveProjectReadme creates version 1 and subsequent updates increment version", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "db-readme-test-"));
-  let db;
-  try {
-    db = new BroadcastDatabase(path.join(directory, "broadcast.sqlite"));
-    db.createProject({ id: "proj-1", name: "Project 1", workspacePath: null });
-
-    const saved1 = db.saveProjectReadme("proj-1", "# Hello World");
-    assert.equal(saved1.projectId, "proj-1");
-    assert.equal(saved1.content, "# Hello World");
-    assert.equal(saved1.version, 1);
-    assert.ok(saved1.createdAt);
-    assert.ok(saved1.updatedAt);
-
-    const saved2 = db.saveProjectReadme("proj-1", "# Hello World 2", 1);
-    assert.equal(saved2.version, 2);
-    assert.equal(saved2.content, "# Hello World 2");
-
-    // Optimistic locking conflict
-    assert.throws(
-      () => db.saveProjectReadme("proj-1", "# Conflict", 1),
-      (err) => err.code === "VERSION_CONFLICT",
-    );
-  } finally {
-    db?.database.close();
-    await rm(directory, { recursive: true, force: true });
-  }
-});
 
 test("API: GET and PUT /api/projects/:id/readme", async () => {
   const { baseUrl } = await startServer();

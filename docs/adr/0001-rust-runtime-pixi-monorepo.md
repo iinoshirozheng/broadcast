@@ -137,11 +137,20 @@ so packaging infrastructure is edited only once.
 - [ ] Cutover — `apps/*` moves, pnpm workspace, `packages/api-types`, biome, CI on
       setup-pixi with path-aware lanes, delete obsolete JS, scripts,
       `rust-toolchain.toml`, `package-lock.json`
+  - [x] Delete the JS runtime: the Node server, CLI, Claude runner, injector, supervisor and
+        JS worker go with the unit tests of their internals. The HTTP, CLI and cloud
+        suites run only against the Rust builds (`target/debug`, or `BROADCAST_SERVER_BIN`
+        and `BROADCAST_CLI_BIN`); `tests/server.mjs` (e2e) and `npm run dev` start
+        `broadcast-server`. The composer-reference module moves to `web/src`, its only
+        user, and the Codex slash-command snapshot to `crates/server/assets`. The launcher
+        runs only inside the desktop app, so `npm run codex*` is gone.
+        `scripts/migrate-to-cloud.mjs` and its wrangler adapter stay Node: they are ops
+        tooling that drives wrangler, not runtime.
 - [ ] Release check — universal DMG build, signing and notarization with pixi Rust
 
 ## Consequences
 
 - One language for runtime behavior; the desktop bundle drops the Node binary.
-- Validation parity is tedious but mechanical; the existing Node test suite is the
-  oracle until the Node server is deleted.
+- Validation parity is tedious but mechanical; the Node test suite was the oracle while
+  both servers ran, and now drives the Rust binaries over HTTP and the CLI.
 - Contributors need only pixi: `pixi install && pixi run dev`.
