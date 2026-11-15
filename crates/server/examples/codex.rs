@@ -28,8 +28,10 @@ async fn main() -> anyhow::Result<()> {
     let mut server = Server::open(config)?;
     let bridge = server.host_bridge().context("host bridge already taken")?;
     let (events, mut received) = mpsc::unbounded_channel();
+    let app_path = PathBuf::from(variable("BROADCAST_CODEX_APP")?);
     let options = Options {
-        app_path: PathBuf::from(variable("BROADCAST_CODEX_APP")?),
+        codex_executable: broadcast_codex::executable(std::env::var("CODEX_EXECUTABLE").ok().as_deref(), Some(&app_path)),
+        app_path,
         cdp,
         profile: PathBuf::from(variable("BROADCAST_CODEX_PROFILE")?),
         source_profile: None,

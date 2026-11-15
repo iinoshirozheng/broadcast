@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 use tower::Layer;
 
 pub use ai::exec::{TURN_OWNER_ARG, turn_owner};
-pub use config::Config;
+pub use config::{Config, Launcher};
 use events::EventHub;
 
 pub(crate) struct App {

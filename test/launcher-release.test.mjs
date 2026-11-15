@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const launcherSource = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-const prepareSource = await readFile(new URL("../scripts/prepare-tauri-app.mjs", import.meta.url), "utf8");
 const tauriConfig = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 const releaseWorkflow = await readFile(new URL("../.github/workflows/release-macos.yml", import.meta.url), "utf8");
 const checkWorkflow = await readFile(new URL("../.github/workflows/check.yml", import.meta.url), "utf8");
@@ -21,11 +20,9 @@ test("the launcher keeps CDP random and prefers the Broadcast port with a fallba
     launcherSource,
     /fn broadcast_loopback_listener\(\)[\s\S]*?TcpListener::bind\(\("127\.0\.0\.1", BROADCAST_PREFERRED_PORT\)\)[\s\S]*?\.or_else\(\|_\| TcpListener::bind\(\("127\.0\.0\.1", 0\)\)\)/,
   );
-  assert.equal(
-    launcherSource.match(
-      /fn broadcast_listener\([^)]*\)[\s\S]*?broadcast_loopback_listener\(\)\?/g,
-    )?.length,
-    2,
+  assert.match(
+    launcherSource,
+    /fn broadcast_listener\([^)]*\)[\s\S]*?broadcast_loopback_listener\(\)\?/,
   );
   assert.match(launcherSource, /codex_port: Mutex<Option<u16>>/);
   assert.match(
@@ -34,17 +31,13 @@ test("the launcher keeps CDP random and prefers the Broadcast port with a fallba
   );
   assert.match(
     launcherSource,
-    /#\[cfg\(any\(target_os = "macos", target_os = "windows"\)\)\]\s+command\.args\(\["--launch", "--watch", "--open", "--port", &codex_port\]\);/,
+    /#\[cfg\(any\(target_os = "macos", target_os = "windows"\)\)\]\s+let cdp = broadcast_codex::Cdp::Port\(codex_port\);/,
   );
   assert.match(
     launcherSource,
-    /#\[cfg\(target_os = "linux"\)\]\s+command\.args\(\["--launch", "--watch", "--open", "--cdp-pipe"\]\);/,
+    /#\[cfg\(target_os = "linux"\)\]\s+let cdp = broadcast_codex::Cdp::Pipe;/,
   );
   assert.doesNotMatch(launcherSource, /const LAUNCHER_PORT/);
-});
-
-test("the packaged injector includes its Windows Store activation module", () => {
-  assert.match(prepareSource, /"windows-codex\.mjs"/);
 });
 
 test("release signing is tag-only and PR CI builds the real unsigned app bundle", () => {

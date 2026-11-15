@@ -17,7 +17,7 @@ use crate::cdp::Browser;
 use crate::host::{self, Context, Routes};
 use crate::inject::{self, Injected, Source};
 use crate::process::{self, App, Record, SpawnFailure};
-use crate::{HostNotification, HostRequest, profile};
+use crate::{HostNotification, HostRequest, profile, runtime};
 
 /// How the launcher reaches Codex's DevTools.
 #[derive(Clone, Copy)]
@@ -45,8 +45,11 @@ pub struct Options {
     pub open: bool,
     /// The `broadcast` executable automation prompts run.
     pub cli: PathBuf,
-    /// The runtime descriptor that executable reads (`BROADCAST_RUNTIME_FILE`).
+    /// The runtime descriptor the launcher publishes while it runs and that executable reads
+    /// (`BROADCAST_RUNTIME_FILE`).
     pub runtime_file: Option<PathBuf>,
+    /// The Codex CLI quota reads and remote runs start (`CODEX_EXECUTABLE`).
+    pub codex_executable: String,
 }
 
 /// What the desktop shows for the launcher (`emitLauncherEvent`).
@@ -99,7 +102,7 @@ impl Launcher {
             routes: Routes::default(),
             notifications,
             cli_command: cli_command(&options),
-            codex: crate::executable(std::env::var("CODEX_EXECUTABLE").ok().as_deref(), Some(&options.app_path)),
+            codex: options.codex_executable.clone(),
             policies: Default::default(),
             turns: Default::default(),
         });
@@ -192,6 +195,9 @@ struct Runner {
 
 impl Runner {
     async fn serve(mut self, requests: mpsc::UnboundedReceiver<HostRequest>) -> Result<()> {
+        if let Some(file) = &self.options.runtime_file {
+            runtime::publish(file, &self.context.base_url).await?;
+        }
         let stop = self.signals.stop.subscribe();
         tokio::spawn(serve_requests(Arc::clone(&self.context), requests, stop.clone()));
         let result = tokio::select! {
@@ -200,7 +206,10 @@ impl Runner {
         };
         // Nothing waits on a route once the launcher is gone.
         self.signals.stop.send_replace(true);
-        let cleanup = self.cleanup().await;
+        let mut cleanup = self.cleanup().await;
+        if let Some(file) = &self.options.runtime_file {
+            cleanup = cleanup.and(runtime::remove(file, &self.context.base_url).await);
+        }
         if let Err(error) = &cleanup {
             eprintln!("Cleanup failed: {error:#}");
         }
@@ -331,6 +340,13 @@ impl Runner {
     }
 
     /// `launchCodexWithPipe`.
+    #[cfg(not(unix))]
+    async fn launch_with_pipe(&mut self) -> Result<()> {
+        bail!("The Codex DevTools pipe needs a Unix platform")
+    }
+
+    /// `launchCodexWithPipe`.
+    #[cfg(unix)]
     async fn launch_with_pipe(&mut self) -> Result<()> {
         let (child, pipe) = self.app.spawn_with_pipe()?;
         let pid = child.id();
@@ -357,7 +373,7 @@ impl Runner {
         let Some((_, replacement)) = self.app.update_replacement(pid, Some(&build)).await? else { return Ok(false) };
         self.exited = None;
         let restarted = async {
-            process::stop(&replacement).await?;
+            self.app.stop(&replacement).await?;
             self.managed = None;
             self.build = None;
             self.app_pid = None;
@@ -620,11 +636,12 @@ impl Runner {
             managed = self.app.managed().await?.filter(|record| process::uses_port(record, port));
         }
         if let Some(managed) = managed {
-            process::stop(&managed).await?;
+            self.app.stop(&managed).await?;
         }
         if let Some(mut child) = child
             && child.try_wait()?.is_none()
         {
+            #[cfg(unix)]
             if let Some(pid) = child.id() {
                 process::signal(pid, nix::sys::signal::Signal::SIGTERM)?;
             }

@@ -86,7 +86,7 @@ so packaging infrastructure is edited only once.
       `cli` crate (same `claude` calls, comments, moves and log lines as
       `runner/claude-runner.mjs` on one scenario run against the native server). The
       process-group signalling stays in the server, its only user.
-- [ ] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
+- [x] Phase 5 — `codex` injector; desktop embeds server; remove bundled Node
   - [x] 5a — the kept-alive launcher (`--launch --watch`): one browser-level CDP
         connection over `--remote-debugging-port` or `--remote-debugging-pipe`, userscript
         injection and reload handling, the host bridge (binding requests, frame loading,
@@ -104,8 +104,20 @@ so packaging infrastructure is edited only once.
         Automations are created and updated through the same `vscode://codex/*` fetches with
         a spec identical to `buildBroadcastAutomationSpec`. Verified on the fake Codex page:
         explicit apply, timer → start → create, `list`, restart restore and wait → paused.
-  - [ ] 5d — the desktop embeds server and launcher, writes `launcher-runtime.json`,
-        Windows launch paths, stops bundling Node
+  - [x] 5d — the desktop runs `broadcast-server` and the launcher in-process on Tauri's tokio
+        runtime: a server or launcher exit restarts both after 2 s, a normal quit stops them
+        and the managed Codex. The launcher publishes `launcher-runtime.json` (0600) while it
+        runs. The bundle carries the `broadcast-cli` sidecar, `web/`, `skills/` and the `bin/`
+        wrappers, and no Node. tauri 2.12 / tauri-build 2.7 are required: cargo 1.100's new
+        build-dir layout broke where older tauri-build put dev resources. `rust-toolchain.toml`
+        is gone; the workflows still pin 1.88 until cutover. Windows: WMI process listing, the
+        packaged-app activation, `taskkill`, window activation and the `WindowsApps` CLI copy are
+        ported from `windows-codex.mjs`; the workspace and the desktop pass clippy for
+        `x86_64-pc-windows-gnu` (zig as C compiler), but nothing has run on Windows yet.
+        Verified on macOS with a fake Codex: injection, the served board, CLI reads and writes
+        through the descriptor, recovery, quit cleanup and the skill install. The final
+        `activateWithOptions` was skipped by a temporary `open: false`, because activation fails
+        while the screen is locked (the JS does the same).
 - [x] Phase 6 — the `broadcast` binary carries every `cli/broadcast.mjs` command with the
       same JSON results, error codes, messages, exit codes and help text (120 argument
       cases run through both CLIs against two native servers print the same output;

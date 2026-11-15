@@ -5,13 +5,15 @@ mod automation;
 pub mod cdp;
 mod host;
 mod inject;
-#[cfg(unix)]
 pub mod launcher;
 mod process;
 mod policy;
 mod profile;
 mod quota;
 mod remote;
+mod runtime;
+#[cfg(windows)]
+mod windows;
 
 use std::path::{Path, PathBuf};
 
@@ -19,7 +21,6 @@ use serde_json::Value;
 use tokio::process::Command;
 use tokio::sync::oneshot;
 
-#[cfg(unix)]
 pub use launcher::{Cdp, Event, Launcher, Options};
 
 /// A request from the Broadcast server to a Codex host's App Server through the renderer bridge.
@@ -89,6 +90,32 @@ pub fn executable(explicit: Option<&str>, app: Option<&Path>) -> String {
         }
     }
     "codex".to_owned()
+}
+
+/// `resolveRunnableCodexExecutable`: a CLI inside a `WindowsApps` package runs from a copy in
+/// `<data_dir>/codex-runtime`, refreshed when a file's size or modification time changes.
+pub fn runnable_executable(executable: String, data_dir: &Path) -> std::io::Result<String> {
+    if !cfg!(windows) || !executable.to_lowercase().contains("\\windowsapps\\") {
+        return Ok(executable);
+    }
+    let source_directory = Path::new(&executable).parent().unwrap_or(Path::new(""));
+    let cache = data_dir.join("codex-runtime");
+    std::fs::create_dir_all(&cache)?;
+    for name in ["codex.exe", "codex-code-mode-host.exe", "codex-command-runner.exe", "codex-windows-sandbox-setup.exe"] {
+        let source_path = source_directory.join(name);
+        let cached_path = cache.join(name);
+        let source = std::fs::metadata(&source_path)?;
+        match std::fs::metadata(&cached_path) {
+            Ok(cached) if cached.len() == source.len() && cached.modified()? == source.modified()? => continue,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        std::fs::copy(&source_path, &cached_path)?;
+        let times = std::fs::FileTimes::new().set_accessed(source.accessed()?).set_modified(source.modified()?);
+        std::fs::File::options().write(true).open(&cached_path)?.set_times(times)?;
+    }
+    Ok(cache.join("codex.exe").to_string_lossy().into_owned())
 }
 
 /// A command whose environment drops the launcher's `BROADCAST_*` variables.

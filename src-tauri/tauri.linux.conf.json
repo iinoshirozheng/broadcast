@@ -3,7 +3,6 @@
   "bundle": {
     "targets": ["deb", "appimage"],
     "createUpdaterArtifacts": false,
-    "externalBin": ["binaries/broadcast-node"],
     "icon": ["../web/public/codex-app-icon.png"]
   }
 }

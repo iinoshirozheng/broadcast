@@ -1,11 +1,15 @@
 //! The Codex desktop app's processes: discovery from `ps`, the managed instance launched with
 //! Broadcast's own profile, stopping it and bringing it to the front.
 
-use std::path::{Path, PathBuf};
+#[cfg(not(windows))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+#[cfg(not(windows))]
+use anyhow::Context;
+use anyhow::{Result, bail};
 use regex::Regex;
 
 use crate::command;
@@ -32,6 +36,7 @@ async fn output(program: &str, args: &[&str]) -> Option<String> {
 
 impl App {
     /// `codexExecutablePath`: the binary `ps` reports for the app.
+    #[cfg(not(windows))]
     pub fn executable(&self) -> PathBuf {
         if cfg!(target_os = "linux") {
             return if self.path == Path::new("/usr/bin/chatgpt") { PathBuf::from("/usr/lib/chatgpt/ChatGPT") } else { self.path.clone() };
@@ -58,6 +63,13 @@ impl App {
     }
 
     /// `codexAppProcesses`: every process running the app's binary.
+    #[cfg(windows)]
+    pub async fn processes(&self) -> Result<Vec<Record>> {
+        Ok(crate::windows::processes(&self.path).await?.into_iter().map(|(record, _)| record).collect())
+    }
+
+    /// `codexAppProcesses`: every process running the app's binary.
+    #[cfg(not(windows))]
     pub async fn processes(&self) -> Result<Vec<Record>> {
         let listing = output("/bin/ps", &["-ww", "-axo", "pid=,command="]).await.context("Unable to inspect the launched Codex process")?;
         let executable = self.executable().to_string_lossy().into_owned();
@@ -93,8 +105,13 @@ impl App {
 
     /// `managedCodexProcess`: the instance running Broadcast's profile.
     pub async fn managed(&self) -> Result<Option<Record>> {
-        let profile = format!(" {} ", self.profile_argument());
-        let mut managed: Vec<Record> = self.processes().await?.into_iter().filter(|record| record.command.contains(&profile)).collect();
+        #[cfg(windows)]
+        let mut managed = crate::windows::managed(&self.path, &self.profile).await?;
+        #[cfg(not(windows))]
+        let mut managed: Vec<Record> = {
+            let profile = format!(" {} ", self.profile_argument());
+            self.processes().await?.into_iter().filter(|record| record.command.contains(&profile)).collect()
+        };
         if managed.len() > 1 {
             bail!("Multiple managed Codex processes are running");
         }
@@ -108,11 +125,30 @@ impl App {
             if uses_port(&existing, port) {
                 return Ok(existing);
             }
-            stop(&existing).await?;
+            self.stop(&existing).await?;
         }
         if reachable(http, port).await {
             bail!("Codex CDP port {port} is already in use");
         }
+        #[cfg(windows)]
+        crate::windows::launch(&self.path, &self.profile, port).await?;
+        #[cfg(not(windows))]
+        self.open_with_launch_services(port).await?;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        while tokio::time::Instant::now() < deadline {
+            if let Some(launched) = self.managed().await? {
+                if uses_port(&launched, port) {
+                    return Ok(launched);
+                }
+                bail!("The platform launcher started Codex on an unexpected CDP port");
+            }
+            tokio::time::sleep(POLL).await;
+        }
+        bail!("The platform launcher did not start the managed Codex process")
+    }
+
+    #[cfg(not(windows))]
+    async fn open_with_launch_services(&self, port: u16) -> Result<()> {
         let status = command("/usr/bin/open")
             .arg("-a")
             .arg(&self.path)
@@ -129,17 +165,33 @@ impl App {
         if !status.success() {
             bail!("LaunchServices failed to start Codex ({})", exit_reason(status));
         }
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-        while tokio::time::Instant::now() < deadline {
-            if let Some(launched) = self.managed().await? {
-                if uses_port(&launched, port) {
-                    return Ok(launched);
-                }
-                bail!("The platform launcher started Codex on an unexpected CDP port");
-            }
-            tokio::time::sleep(POLL).await;
+        Ok(())
+    }
+
+    /// `stopManagedCodex`: end the process tree.
+    #[cfg(windows)]
+    pub async fn stop(&self, record: &Record) -> Result<()> {
+        if !self.processes().await?.contains(record) {
+            return Ok(());
         }
-        bail!("The platform launcher did not start the managed Codex process")
+        crate::windows::stop(record.pid).await
+    }
+
+    /// `stopManagedCodex`: SIGTERM, then SIGKILL after 3 s.
+    #[cfg(unix)]
+    pub async fn stop(&self, record: &Record) -> Result<()> {
+        use nix::sys::signal::Signal;
+
+        if !is_running(record).await {
+            return Ok(());
+        }
+        if !signal(record.pid, Signal::SIGTERM)? || exits_within(record, Duration::from_secs(3)).await {
+            return Ok(());
+        }
+        if signal(record.pid, Signal::SIGKILL)? && !exits_within(record, Duration::from_secs(1)).await {
+            bail!("Unable to stop the managed Codex process");
+        }
+        Ok(())
     }
 
     /// `launchCodexWithPipe`'s spawn: the binary with Broadcast's profile, debugging over fds 3/4.
@@ -173,6 +225,7 @@ impl std::fmt::Display for SpawnFailure {
     }
 }
 
+#[cfg(not(windows))]
 fn exit_reason(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
@@ -198,7 +251,8 @@ pub fn uses_port(record: &Record, port: u16) -> bool {
 }
 
 /// `isManagedCodexRunning`: the pid still runs the same command line.
-pub async fn is_running(record: &Record) -> bool {
+#[cfg(unix)]
+async fn is_running(record: &Record) -> bool {
     output("/bin/ps", &["-ww", "-p", &record.pid.to_string(), "-o", "command="])
         .await
         .is_some_and(|command| command.trim_end() == record.command)
@@ -214,6 +268,7 @@ pub(crate) fn signal(pid: u32, signal: nix::sys::signal::Signal) -> Result<bool>
     }
 }
 
+#[cfg(unix)]
 async fn exits_within(record: &Record, timeout: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
@@ -225,24 +280,17 @@ async fn exits_within(record: &Record, timeout: Duration) -> bool {
     !is_running(record).await
 }
 
-/// `stopManagedCodex`: SIGTERM, then SIGKILL after 3 s.
-#[cfg(unix)]
-pub async fn stop(record: &Record) -> Result<()> {
-    use nix::sys::signal::Signal;
-
-    if !is_running(record).await {
-        return Ok(());
-    }
-    if !signal(record.pid, Signal::SIGTERM)? || exits_within(record, Duration::from_secs(3)).await {
-        return Ok(());
-    }
-    if signal(record.pid, Signal::SIGKILL)? && !exits_within(record, Duration::from_secs(1)).await {
-        bail!("Unable to stop the managed Codex process");
+/// `activateCodexApp`: bring the window to the front; Windows may refuse, which only logs.
+#[cfg(windows)]
+pub async fn activate(pid: u32) -> Result<()> {
+    if let Err(error) = crate::windows::activate_window(pid).await {
+        eprintln!("Unable to activate the Codex window: {error:#}");
     }
     Ok(())
 }
 
 /// `activateCodexApp`: bring the app's window to the front.
+#[cfg(not(windows))]
 pub async fn activate(pid: u32) -> Result<()> {
     if !cfg!(target_os = "macos") {
         return Ok(());

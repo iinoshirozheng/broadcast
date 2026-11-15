@@ -22,25 +22,27 @@ use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use std::cell::RefCell;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::os::{fd::AsRawFd, unix::process::CommandExt};
+use std::os::fd::AsRawFd;
+#[cfg(target_os = "macos")]
+use std::os::unix::process::CommandExt;
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Write},
-    net::TcpListener,
+    io::Write,
+    net::{Ipv4Addr, TcpListener},
     path::{Path, PathBuf},
-    process::{Command as StdCommand, Stdio},
+    process::Command as StdCommand,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::time::Instant;
 #[cfg(target_os = "windows")]
-use std::{
-    os::windows::{fs::OpenOptionsExt, process::CommandExt},
-    process::ChildStdin,
-};
+use std::os::windows::fs::OpenOptionsExt;
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
 use tauri::{
@@ -63,14 +65,13 @@ use windows::{
                 RM_UNIQUE_PROCESS,
             },
             Threading::{
-                GetProcessTimes, OpenProcess, WaitForSingleObject, CREATE_NO_WINDOW,
+                GetProcessTimes, OpenProcess, WaitForSingleObject,
                 PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
             },
         },
     },
 };
 
-const STOP_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 const LAUNCHER_STOP_TIMEOUT: Duration = Duration::from_secs(36);
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
@@ -86,8 +87,6 @@ const KNOWN_BROADCAST_SKILL_DIGESTS: [&str; 6] = [
     "ae74aec793decf6d9013c36f4b53e01723796a45567b77e9e9f22b4a168d3fbe",
 ];
 const BROADCAST_PREFERRED_PORT: u16 = 47823;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-const BROADCAST_LISTEN_FD: i32 = 5;
 #[cfg(target_os = "macos")]
 const MACOS_BUNDLE_MIGRATION_SOURCE_ENV: &str =
     "BROADCAST_MACOS_BUNDLE_MIGRATION_SOURCE";
@@ -118,17 +117,6 @@ struct LauncherSnapshot {
     update_available: bool,
     version: String,
     app_path: Option<String>,
-    child_pid: Option<u32>,
-    open_signal_pid: Option<u32>,
-    open_request_pending: bool,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LauncherPidRecord {
-    pid: u32,
-    node_path: PathBuf,
-    injector_path: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -136,19 +124,16 @@ struct LauncherRuntimeDescriptor {
     url: String,
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "launcherEvent", rename_all = "camelCase")]
-enum LauncherEvent {
-    WaitingForCodex,
-    ServiceReady,
-    OpenSignalReady,
-    OpenSignalQueued,
-    OpenedInExistingCodex,
-    Injected,
+/// The embedded server and the Codex launcher that serves it, started together.
+struct Service {
+    generation: u64,
+    launcher: broadcast_codex::Launcher,
+    /// Receives once both have stopped.
+    stopped: std::sync::mpsc::Receiver<()>,
 }
 
 struct LauncherState {
-    child: Mutex<Option<u32>>,
+    service: Mutex<Option<Service>>,
     snapshot: Mutex<LauncherSnapshot>,
     status_menu: Mutex<Option<MenuItem<tauri::Wry>>>,
     intentional_stop: AtomicBool,
@@ -157,16 +142,12 @@ struct LauncherState {
     pending_update: tauri::async_runtime::Mutex<Option<PendingUpdate>>,
     generation: AtomicU64,
     lifecycle: Mutex<()>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     broadcast_listener: Mutex<Option<TcpListener>>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     codex_port: Mutex<Option<u16>>,
-    #[cfg(target_os = "windows")]
-    child_control: Mutex<Option<ChildStdin>>,
     _instance_lock: File,
     data_directory: PathBuf,
     log_path: PathBuf,
-    pid_record_path: PathBuf,
 }
 
 #[derive(Clone)]
@@ -404,7 +385,7 @@ impl LauncherState {
         instance_lock: File,
     ) -> Self {
         Self {
-            child: Mutex::new(None),
+            service: Mutex::new(None),
             snapshot: Mutex::new(LauncherSnapshot {
                 phase: "starting".into(),
                 message: "正在启动任务面板…".into(),
@@ -412,9 +393,6 @@ impl LauncherState {
                 update_available: false,
                 version,
                 app_path: None,
-                child_pid: None,
-                open_signal_pid: None,
-                open_request_pending: false,
             }),
             status_menu: Mutex::new(None),
             intentional_stop: AtomicBool::new(false),
@@ -423,14 +401,10 @@ impl LauncherState {
             pending_update: tauri::async_runtime::Mutex::new(None),
             generation: AtomicU64::new(0),
             lifecycle: Mutex::new(()),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
             broadcast_listener: Mutex::new(None),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             codex_port: Mutex::new(None),
-            #[cfg(target_os = "windows")]
-            child_control: Mutex::new(None),
             _instance_lock: instance_lock,
-            pid_record_path: data_directory.join("launcher-child.json"),
             data_directory,
             log_path: log_directory.join("broadcast-launcher.log"),
         }
@@ -441,6 +415,7 @@ impl LauncherState {
 fn acquire_instance_lock(path: &Path) -> Result<Option<File>, std::io::Error> {
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(path)?;
@@ -722,6 +697,7 @@ fn migrate_macos_beta_app_bundle_name() -> Result<Option<MacosBundleMigration>, 
 fn acquire_instance_lock(path: &Path) -> Result<Option<File>, std::io::Error> {
     match OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .share_mode(0)
@@ -864,29 +840,17 @@ fn broadcast_loopback_listener() -> Result<TcpListener, String> {
         .map_err(|error| error.to_string())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn broadcast_listener(state: &LauncherState) -> Result<(Option<i32>, u16), String> {
+/// One loopback listener for the app's lifetime, so the board keeps its port across restarts.
+fn broadcast_listener(state: &LauncherState) -> Result<TcpListener, String> {
     let mut listener = state.broadcast_listener.lock().unwrap();
     if listener.is_none() {
         *listener = Some(broadcast_loopback_listener()?);
     }
-    let listener = listener.as_ref().unwrap();
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
-    Ok((Some(listener.as_raw_fd()), port))
-}
-
-#[cfg(target_os = "windows")]
-fn broadcast_listener(_state: &LauncherState) -> Result<(Option<i32>, u16), String> {
-    let listener = broadcast_loopback_listener()?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
-    drop(listener);
-    Ok((None, port))
+    listener
+        .as_ref()
+        .unwrap()
+        .try_clone()
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -894,6 +858,15 @@ fn codex_port(state: &LauncherState) -> Result<u16, String> {
     let mut port = state.codex_port.lock().unwrap();
     if let Some(port) = *port {
         return Ok(port);
+    }
+    // Development builds can attach to a stand-in app already listening on a known port.
+    #[cfg(debug_assertions)]
+    if let Some(selected) = std::env::var("BROADCAST_CODEX_PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        *port = Some(selected);
+        return Ok(selected);
     }
     let listener = loopback_listener()?;
     let selected = listener
@@ -967,7 +940,7 @@ fn macos_launch_agent_executable(entry: &Path) -> Option<PathBuf> {
         return None;
     }
     let executable = String::from_utf8(output.stdout).ok()?;
-    let executable = executable.trim_end_matches(|character| matches!(character, '\r' | '\n'));
+    let executable = executable.trim_end_matches(['\r', '\n']);
     (!executable.is_empty()).then(|| PathBuf::from(executable))
 }
 
@@ -1321,312 +1294,106 @@ fn missing_codex_app_message() -> String {
     "未找到官方 ChatGPT App。请先安装 Ubuntu x64 .deb。".to_string()
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn send_process_group_signal(pid: u32, signal: i32) {
-    unsafe {
-        if libc::kill(-(pid as i32), signal) != 0 {
-            libc::kill(pid as i32, signal);
-        }
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn process_group_is_running(pid: u32) -> bool {
-    unsafe { libc::kill(-(pid as i32), 0) == 0 }
-}
-
-#[cfg(target_os = "windows")]
-fn process_group_is_running(pid: u32) -> bool {
-    StdCommand::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!(
-                "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
-            ),
-        ])
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn signal_pending_broadcast_open(
-    _state: &LauncherState,
-    snapshot: &mut LauncherSnapshot,
-) -> Result<(), String> {
-    if !snapshot.open_request_pending {
-        return Ok(());
-    }
-    let Some(pid) = snapshot.open_signal_pid else {
-        return Ok(());
-    };
-    if unsafe { libc::kill(pid as i32, libc::SIGUSR2) } != 0 {
-        snapshot.open_signal_pid = None;
-        return Err(std::io::Error::last_os_error().to_string());
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn signal_pending_broadcast_open(
-    state: &LauncherState,
-    snapshot: &mut LauncherSnapshot,
-) -> Result<(), String> {
-    if !snapshot.open_request_pending {
-        return Ok(());
-    }
-    if snapshot.open_signal_pid.is_none() {
-        return Ok(());
-    }
-    let result = state
-        .child_control
-        .lock()
-        .unwrap()
-        .as_mut()
-        .ok_or_else(|| "Launcher control pipe is unavailable".to_string())
-        .and_then(|control| {
-            control
-                .write_all(b"open\n")
-                .and_then(|_| control.flush())
-                .map_err(|error| error.to_string())
-        });
-    if result.is_err() {
-        snapshot.open_signal_pid = None;
-    }
-    result
-}
-
-fn wait_for_process_group_exit(pid: u32, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while process_group_is_running(pid) && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(100));
-    }
-    !process_group_is_running(pid)
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn terminate_process_group(pid: u32) {
-    send_process_group_signal(pid, libc::SIGTERM);
-    if !wait_for_process_group_exit(pid, STOP_TIMEOUT) {
-        send_process_group_signal(pid, libc::SIGKILL);
-        let _ = wait_for_process_group_exit(pid, Duration::from_secs(1));
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn terminate_process_group(pid: u32) {
-    if process_group_is_running(pid) {
-        let _ = StdCommand::new("taskkill.exe")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .status();
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn stop_launcher_process_group(pid: u32) {
-    unsafe {
-        libc::kill(pid as i32, libc::SIGTERM);
-    }
-    if !wait_for_process_group_exit(pid, LAUNCHER_STOP_TIMEOUT) {
-        send_process_group_signal(pid, libc::SIGKILL);
-        let _ = wait_for_process_group_exit(pid, Duration::from_secs(1));
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn stop_launcher_process_group(pid: u32) {
-    terminate_process_group(pid);
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn process_matches_record(record: &LauncherPidRecord) -> bool {
-    let output = StdCommand::new("/bin/ps")
-        .args(["-p", &record.pid.to_string(), "-o", "command="])
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    let command = String::from_utf8_lossy(&output.stdout);
-    let command = command.trim_start();
-    command.starts_with(&*record.node_path.to_string_lossy())
-        && command.contains(&*record.injector_path.to_string_lossy())
-}
-
-#[cfg(target_os = "windows")]
-fn process_matches_record(record: &LauncherPidRecord) -> bool {
-    let output = StdCommand::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!(
-                "(Get-CimInstance Win32_Process -Filter 'ProcessId = {}').CommandLine",
-                record.pid
-            ),
-        ])
-        .output();
-    let Ok(output) = output else {
-        return false;
-    };
-    let command = String::from_utf8_lossy(&output.stdout);
-    command.contains(&*record.node_path.to_string_lossy())
-        && command.contains(r"scripts\codex-injector.mjs")
-}
-
-fn stop_recorded_child(state: &LauncherState) {
-    let record = fs::read_to_string(&state.pid_record_path)
-        .ok()
-        .and_then(|content| serde_json::from_str::<LauncherPidRecord>(&content).ok());
-    if let Some(record) = record {
-        if process_matches_record(&record) {
-            stop_launcher_process_group(record.pid);
-        }
-    }
-    let _ = fs::remove_file(&state.pid_record_path);
-}
-
-fn write_pid_record(
-    state: &LauncherState,
-    pid: u32,
-    node_path: PathBuf,
-    injector_path: PathBuf,
-) -> Result<(), String> {
-    let record = LauncherPidRecord {
-        pid,
-        node_path,
-        injector_path,
-    };
-    let content = serde_json::to_vec(&record).map_err(|error| error.to_string())?;
-    fs::write(&state.pid_record_path, content).map_err(|error| error.to_string())
-}
-
-fn clear_pid_record(state: &LauncherState, pid: u32) {
-    let matches = fs::read_to_string(&state.pid_record_path)
-        .ok()
-        .and_then(|content| serde_json::from_str::<LauncherPidRecord>(&content).ok())
-        .is_some_and(|record| record.pid == pid);
-    if matches {
-        let _ = fs::remove_file(&state.pid_record_path);
-    }
-}
-
-fn stop_managed_child_locked(app: &AppHandle, state: &Arc<LauncherState>) {
+fn stop_service_locked(app: &AppHandle, state: &Arc<LauncherState>) {
     state.generation.fetch_add(1, Ordering::SeqCst);
     state.intentional_stop.store(true, Ordering::SeqCst);
-    #[cfg(target_os = "windows")]
-    if let Some(mut control) = state.child_control.lock().unwrap().take() {
-        let _ = control.write_all(b"stop\n").and_then(|_| control.flush());
-    }
-    if let Some(pid) = state.child.lock().unwrap().take() {
-        append_log(state, &format!("Stopping launcher child {pid}"));
-        #[cfg(target_os = "windows")]
-        if !wait_for_process_group_exit(pid, STOP_TIMEOUT) {
-            terminate_process_group(pid);
+    let service = state.service.lock().unwrap().take();
+    if let Some(service) = service {
+        append_log(state, "Stopping Broadcast service");
+        service.launcher.stop();
+        if service.stopped.recv_timeout(LAUNCHER_STOP_TIMEOUT).is_err() {
+            append_log(state, "Broadcast service did not stop in time");
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        stop_launcher_process_group(pid);
-        clear_pid_record(state, pid);
     }
     update_snapshot(app, state, |snapshot| {
         snapshot.phase = "stopped".into();
         snapshot.message = "任务面板已停止。".into();
-        snapshot.child_pid = None;
-        snapshot.open_signal_pid = None;
     });
 }
 
-fn stop_managed_child(app: &AppHandle, state: &Arc<LauncherState>) {
+fn stop_service(app: &AppHandle, state: &Arc<LauncherState>) {
     let _lifecycle = state.lifecycle.lock().unwrap();
-    stop_managed_child_locked(app, state);
+    stop_service_locked(app, state);
 }
 
-fn watch_launcher_output<R: std::io::Read + Send + 'static>(
-    reader: R,
-    is_stderr: bool,
-    app: AppHandle,
-    state: Arc<LauncherState>,
-    pid: u32,
-    generation: u64,
-) {
-    thread::spawn(move || {
-        for line in BufReader::new(reader).lines().map_while(Result::ok) {
-            append_log(&state, &line);
-            if is_stderr {
-                continue;
-            }
-            let Ok(event) = serde_json::from_str::<LauncherEvent>(&line) else {
-                continue;
-            };
-            update_snapshot(&app, &state, |snapshot| {
-                if state.generation.load(Ordering::SeqCst) != generation
-                    || snapshot.child_pid != Some(pid)
-                {
-                    return;
-                }
-                match event {
-                    LauncherEvent::WaitingForCodex => {
-                        snapshot.phase = "starting".into();
-                        snapshot.message = "正在等待 Codex 窗口…".into();
-                    }
-                    LauncherEvent::ServiceReady => {
-                        snapshot.phase = "starting".into();
-                        snapshot.message = "任务面板服务已启动，正在注入 Codex…".into();
-                    }
-                    LauncherEvent::OpenSignalReady => {
-                        snapshot.open_signal_pid = Some(pid);
-                        if let Err(error) = signal_pending_broadcast_open(&state, snapshot) {
-                            append_log(&state, &format!("Broadcast open signal failed: {error}"));
-                        }
-                    }
-                    LauncherEvent::OpenSignalQueued => {
-                        if snapshot.open_signal_pid == Some(pid) {
-                            snapshot.open_request_pending = false;
-                        }
-                    }
-                    LauncherEvent::OpenedInExistingCodex => {
-                        snapshot.phase = "running".into();
-                        snapshot.message = "任务面板已在现有 Codex 的浏览面板中打开。".into();
-                    }
-                    LauncherEvent::Injected => {
-                        snapshot.phase = "running".into();
-                        snapshot.message = "任务面板已在 Codex 客户端中打开。".into();
-                    }
-                }
-            });
+/// The server or the launcher of `generation` ended on its own: restart both, as the
+/// supervisor of the old Node child did.
+fn service_exited(app: AppHandle, state: Arc<LauncherState>, generation: u64) {
+    let recovery_token = generation + 1;
+    {
+        let mut service = state.service.lock().unwrap();
+        if service.as_ref().map(|service| service.generation) != Some(generation)
+            || state
+                .generation
+                .compare_exchange(generation, recovery_token, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+        {
+            return;
+        }
+        *service = None;
+    }
+    update_snapshot(&app, &state, |snapshot| {
+        if state.generation.load(Ordering::SeqCst) == recovery_token {
+            snapshot.phase = "error".into();
+            snapshot.message = "任务面板进程已退出，正在恢复…".into();
         }
     });
+    thread::sleep(Duration::from_secs(2));
+    let (recovery_result, recovery_generation) = {
+        let _lifecycle = state.lifecycle.lock().unwrap();
+        if state.generation.load(Ordering::SeqCst) != recovery_token
+            || state.intentional_stop.load(Ordering::SeqCst)
+            || state.update_in_progress.load(Ordering::SeqCst)
+        {
+            return;
+        }
+        let result = start_launcher_locked(&app, &state);
+        (result, state.generation.load(Ordering::SeqCst))
+    };
+    if let Err(error) = recovery_result {
+        append_log(&state, &format!("Launcher recovery failed: {error}"));
+        let stopped = state.service.lock().unwrap().is_none();
+        update_snapshot(&app, &state, |snapshot| {
+            if state.generation.load(Ordering::SeqCst) == recovery_generation && stopped {
+                snapshot.phase = "error".into();
+                snapshot.message = error.clone();
+            }
+        });
+        show_error_dialog(
+            &app,
+            "Broadcast 恢复失败",
+            &format!("任务面板进程无法恢复：{error}\n\n请重新打开 App。"),
+        );
+    }
 }
 
 fn start_launcher_locked(
     app: &AppHandle,
     state: &Arc<LauncherState>,
 ) -> Result<LauncherSnapshot, String> {
-    if state.child.lock().unwrap().is_some() {
+    if state.service.lock().unwrap().is_some() {
         return Ok(state.snapshot.lock().unwrap().clone());
     }
 
     let home_directory = app.path().home_dir().map_err(|error| error.to_string())?;
-    let codex_app = find_codex_app(&home_directory).ok_or_else(missing_codex_app_message)?;
+    // Development builds can point at a stand-in app instead of the installed Codex.
+    #[cfg(debug_assertions)]
+    let codex_app = std::env::var_os("BROADCAST_CODEX_APP")
+        .map(PathBuf::from)
+        .or_else(|| find_codex_app(&home_directory));
+    #[cfg(not(debug_assertions))]
+    let codex_app = find_codex_app(&home_directory);
+    let codex_app = codex_app.ok_or_else(missing_codex_app_message)?;
     let resource_directory = app
         .path()
         .resource_dir()
         .map_err(|error| error.to_string())?;
-    let app_root = resource_directory.join("app");
-    let injector_path = app_root.join("scripts/codex-injector.mjs");
-    let node_path = std::env::current_exe()
+    let cli_path = std::env::current_exe()
         .map_err(|error| error.to_string())?
         .parent()
         .ok_or_else(|| "无法定位 App 可执行文件目录".to_string())?
-        .join(if cfg!(target_os = "windows") {
-            "node.exe"
-        } else if cfg!(target_os = "linux") {
-            "broadcast-node"
-        } else {
-            "node"
-        });
+        .join(format!("broadcast-cli{}", std::env::consts::EXE_SUFFIX));
     let codex_profile = state.data_directory.join("codex-profile");
-    stop_recorded_child(state);
     #[cfg(target_os = "macos")]
     let ordinary_codex_pid = ordinary_codex_process(&codex_app)?;
     #[cfg(target_os = "windows")]
@@ -1650,8 +1417,6 @@ fn start_launcher_locked(
                 snapshot.phase = "stopped".into();
                 snapshot.message = "已取消重新启动 Codex，任务面板未注入。".into();
                 snapshot.app_path = Some(codex_app.display().to_string());
-                snapshot.open_signal_pid = None;
-                snapshot.open_request_pending = false;
             }));
         }
         append_log(
@@ -1666,31 +1431,22 @@ fn start_launcher_locked(
         snapshot.phase = "starting".into();
         snapshot.message = "正在启动任务面板服务…".into();
         snapshot.app_path = Some(codex_app.display().to_string());
-        snapshot.open_signal_pid = None;
     });
 
-    #[cfg(target_os = "macos")]
-    let path_value = format!(
-        "{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        resource_directory.join("bin").display()
-    );
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    let path_value = {
-        let current_path = std::env::var_os("PATH").unwrap_or_default();
-        std::env::join_paths(
-            std::iter::once(resource_directory.join("bin"))
-                .chain(std::env::split_paths(&current_path)),
-        )
+    let listener = broadcast_listener(state)?;
+    let broadcast_port = listener
+        .local_addr()
         .map_err(|error| error.to_string())?
-    };
-    let (_broadcast_listener_fd, broadcast_port) = broadcast_listener(state)?;
+        .port();
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let codex_port = codex_port(state)?.to_string();
+    let codex_port = codex_port(state)?;
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let cdp = broadcast_codex::Cdp::Port(codex_port);
+    #[cfg(target_os = "linux")]
+    let cdp = broadcast_codex::Cdp::Pipe;
     let instance_token = Uuid::new_v4().to_string();
     let instance_secret = Uuid::new_v4().to_string();
     let version = state.snapshot.lock().unwrap().version.clone();
-    let manage_broadcast_skill_path =
-        home_directory.join(".agents/skills/manage-broadcast/SKILL.md");
     #[cfg(target_os = "macos")]
     let codex_source_profile = home_directory.join("Library/Application Support/Codex");
     #[cfg(target_os = "windows")]
@@ -1704,196 +1460,133 @@ fn start_launcher_locked(
         .map(PathBuf::from)
         .unwrap_or_else(|| home_directory.join(".config"))
         .join("Codex");
-    let mut command = StdCommand::new(&node_path);
-    #[cfg(target_os = "windows")]
-    command.creation_flags(CREATE_NO_WINDOW.0);
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    command.arg(&injector_path);
-    #[cfg(target_os = "windows")]
-    command.arg(r"scripts\codex-injector.mjs");
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    command.args(["--launch", "--watch", "--open", "--port", &codex_port]);
-    #[cfg(target_os = "linux")]
-    command.args(["--launch", "--watch", "--open", "--cdp-pipe"]);
-    command
-        .args(["--startup-token", &instance_token, "--app-path"])
-        .arg(&codex_app)
-        .env("BROADCAST_DATA_DIR", &state.data_directory)
-        .env(
-            "BROADCAST_RUNTIME_FILE",
-            state.data_directory.join("launcher-runtime.json"),
-        )
-        .env("BROADCAST_HOST", "127.0.0.1")
-        .env("BROADCAST_PORT", broadcast_port.to_string())
-        .env("BROADCAST_INSTANCE_TOKEN", &instance_token)
-        .env("BROADCAST_INSTANCE_SECRET", &instance_secret)
-        .env("BROADCAST_VERSION", &version)
-        .env("BROADCAST_SKILL_PATH", &manage_broadcast_skill_path)
-        .env_remove("CODEX_API_KEY")
-        .env(
-            "BROADCAST_CODEX_PROFILE",
-            codex_profile.to_string_lossy().as_ref(),
-        )
-        .env(
-            "BROADCAST_CODEX_SOURCE_PROFILE",
-            codex_source_profile.to_string_lossy().as_ref(),
-        )
-        .env("HOST", "127.0.0.1")
-        .env("PATH", path_value)
-        .current_dir(&app_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(target_os = "windows")]
-    command.stdin(Stdio::piped());
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    unsafe {
-        let broadcast_listener_fd = _broadcast_listener_fd.unwrap();
-        command
-            .env("BROADCAST_LISTEN_FD", BROADCAST_LISTEN_FD.to_string())
-            .process_group(0);
-        command.pre_exec(move || {
-            if libc::dup2(broadcast_listener_fd, BROADCAST_LISTEN_FD) < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            if libc::fcntl(BROADCAST_LISTEN_FD, libc::F_SETFD, 0) < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = command.spawn().map_err(|error| error.to_string())?;
-    let pid = child.id();
-    #[cfg(target_os = "windows")]
-    let child_control = child.stdin.take();
-    if let Err(error) = write_pid_record(state, pid, node_path, injector_path) {
-        terminate_process_group(pid);
-        let _ = child.wait();
-        return Err(error);
-    }
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    *state.child.lock().unwrap() = Some(pid);
-    #[cfg(target_os = "windows")]
-    {
-        *state.child_control.lock().unwrap() = child_control;
-    }
-    let snapshot = update_snapshot(app, state, |snapshot| {
-        snapshot.child_pid = Some(pid);
+    let codex_executable = broadcast_codex::runnable_executable(
+        broadcast_codex::executable(
+            std::env::var("CODEX_EXECUTABLE").ok().as_deref(),
+            Some(&codex_app),
+        ),
+        &state.data_directory,
+    )
+    .map_err(|error| format!("无法准备 Codex CLI：{error}"))?;
+    let config = broadcast_server::Config {
+        data_dir: state.data_directory.clone(),
+        static_dir: resource_directory.join("web"),
+        skill_path: home_directory.join(".agents/skills/manage-broadcast/SKILL.md"),
+        codex_home: std::env::var_os("CODEX_HOME")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home_directory.join(".codex")),
+        codex_executable: codex_executable.clone(),
+        host: Ipv4Addr::LOCALHOST.into(),
+        port: broadcast_port,
+        trusted_origins: HashSet::new(),
+        launcher: Some(broadcast_server::Launcher {
+            token: instance_token.clone(),
+            secret: instance_secret.clone(),
+        }),
+        version,
+    };
+    let options = broadcast_codex::Options {
+        app_path: codex_app,
+        cdp,
+        profile: codex_profile,
+        source_profile: Some(codex_source_profile),
+        data_dir: state.data_directory.clone(),
+        port: broadcast_port,
+        token: instance_token,
+        secret: instance_secret,
+        open: true,
+        cli: cli_path,
+        runtime_file: Some(state.data_directory.join("launcher-runtime.json")),
+        codex_executable,
+    };
+
+    let runtime = tauri::async_runtime::handle();
+    let _runtime = runtime.inner().enter();
+    let mut server =
+        broadcast_server::Server::open(config).map_err(|error| format!("{error:#}"))?;
+    let bridge = server
+        .host_bridge()
+        .expect("a new server still has its host bridge");
+    listener
+        .set_nonblocking(true)
+        .map_err(|error| error.to_string())?;
+    let listener =
+        tokio::net::TcpListener::from_std(listener).map_err(|error| error.to_string())?;
+    let (shutdown, shutdown_requested) = tokio::sync::oneshot::channel::<()>();
+    let mut serving = tokio::spawn(server.serve(listener, async move {
+        let _ = shutdown_requested.await;
+    }));
+    update_snapshot(app, state, |snapshot| {
+        snapshot.message = "任务面板服务已启动，正在注入 Codex…".into();
     });
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    append_log(
-        state,
-        &format!(
-            "Started launcher child {pid} on Broadcast {broadcast_port} with Codex CDP {codex_port}"
-        ),
+    let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
+    let (launcher, mut launching) = broadcast_codex::Launcher::start(
+        options,
+        bridge.requests,
+        bridge.notifications,
+        events,
     );
-    #[cfg(target_os = "linux")]
-    append_log(
-        state,
-        &format!(
-            "Started launcher child {pid} on Broadcast {broadcast_port} with a private Codex CDP pipe"
-        ),
-    );
-    if let Some(stdout) = stdout {
-        watch_launcher_output(stdout, false, app.clone(), state.clone(), pid, generation);
-    }
-    if let Some(stderr) = stderr {
-        watch_launcher_output(stderr, true, app.clone(), state.clone(), pid, generation);
-    }
+    let (stopped_sender, stopped) = std::sync::mpsc::channel();
+    *state.service.lock().unwrap() = Some(Service {
+        generation,
+        launcher: launcher.clone(),
+        stopped,
+    });
+
+    let service_app = app.clone();
+    let service_state = Arc::clone(state);
+    tokio::spawn(async move {
+        let (launched, served) = tokio::select! {
+            launched = &mut launching => {
+                let _ = shutdown.send(());
+                (launched, serving.await)
+            }
+            served = &mut serving => {
+                launcher.stop();
+                (launching.await, served)
+            }
+        };
+        append_log(
+            &service_state,
+            &format!("Broadcast service exited: launcher {launched:?}, server {served:?}"),
+        );
+        let _ = stopped_sender.send(());
+        thread::spawn(move || service_exited(service_app, service_state, generation));
+    });
 
     let event_app = app.clone();
-    let event_state = state.clone();
-    thread::spawn(move || {
-        let status = child.wait();
-        let recovery_token = {
-            let mut current_child = event_state.child.lock().unwrap();
-            if *current_child != Some(pid) {
-                None
-            } else {
-                let recovery_token = generation + 1;
-                if event_state
-                    .generation
-                    .compare_exchange(
-                        generation,
-                        recovery_token,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
-                    .is_ok()
-                {
-                    *current_child = None;
-                    Some(recovery_token)
-                } else {
-                    None
+    let event_state = Arc::clone(state);
+    tokio::spawn(async move {
+        while let Some(event) = received.recv().await {
+            let (phase, message) = match event {
+                broadcast_codex::Event::WaitingForCodex => ("starting", "正在等待 Codex 窗口…"),
+                broadcast_codex::Event::Injected => ("running", "任务面板已在 Codex 客户端中打开。"),
+                broadcast_codex::Event::OpenedInExistingCodex => {
+                    ("running", "任务面板已在现有 Codex 的浏览面板中打开。")
                 }
-            }
-        };
-        #[cfg(target_os = "windows")]
-        if recovery_token.is_some() {
-            let _ = event_state.child_control.lock().unwrap().take();
-        }
-        let Some(recovery_token) = recovery_token else {
-            append_log(
-                &event_state,
-                &format!("Launcher child {pid} exited: {status:?}"),
-            );
-            terminate_process_group(pid);
-            return;
-        };
-        let intentional = event_state.intentional_stop.load(Ordering::SeqCst);
-        update_snapshot(&event_app, &event_state, |snapshot| {
-            if event_state.generation.load(Ordering::SeqCst) == recovery_token
-                && snapshot.child_pid == Some(pid)
-            {
-                snapshot.child_pid = None;
-                snapshot.open_signal_pid = None;
-                if !intentional {
-                    snapshot.phase = "error".into();
-                    snapshot.message = "任务面板进程已退出，正在恢复…".into();
-                }
-            }
-        });
-        append_log(
-            &event_state,
-            &format!("Launcher child {pid} exited: {status:?}"),
-        );
-        terminate_process_group(pid);
-        clear_pid_record(&event_state, pid);
-        if intentional {
-            return;
-        }
-        thread::sleep(Duration::from_secs(2));
-        let (recovery_result, recovery_generation) = {
-            let _lifecycle = event_state.lifecycle.lock().unwrap();
-            if event_state.generation.load(Ordering::SeqCst) != recovery_token
-                || event_state.intentional_stop.load(Ordering::SeqCst)
-                || event_state.update_in_progress.load(Ordering::SeqCst)
-            {
-                return;
-            }
-            let result = start_launcher_locked(&event_app, &event_state);
-            let generation = event_state.generation.load(Ordering::SeqCst);
-            (result, generation)
-        };
-        if let Err(error) = recovery_result {
-            append_log(&event_state, &format!("Launcher recovery failed: {error}"));
+                broadcast_codex::Event::OpenSignalQueued => continue,
+            };
             update_snapshot(&event_app, &event_state, |snapshot| {
-                if event_state.generation.load(Ordering::SeqCst) == recovery_generation
-                    && snapshot.child_pid.is_none()
-                {
-                    snapshot.phase = "error".into();
-                    snapshot.message = error.clone();
-                    snapshot.open_signal_pid = None;
+                if event_state.generation.load(Ordering::SeqCst) == generation {
+                    snapshot.phase = phase.into();
+                    snapshot.message = message.into();
                 }
             });
-            show_error_dialog(
-                &event_app,
-                "Broadcast 恢复失败",
-                &format!("任务面板进程无法恢复：{error}\n\n请重新打开 App。"),
-            );
         }
     });
-    Ok(snapshot)
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    append_log(
+        state,
+        &format!("Started Broadcast on {broadcast_port} with Codex CDP {codex_port}"),
+    );
+    #[cfg(target_os = "linux")]
+    append_log(
+        state,
+        &format!("Started Broadcast on {broadcast_port} with a private Codex CDP pipe"),
+    );
+    Ok(state.snapshot.lock().unwrap().clone())
 }
 
 fn start_launcher(app: &AppHandle, state: &Arc<LauncherState>) -> Result<LauncherSnapshot, String> {
@@ -1919,7 +1612,7 @@ fn restart_launcher(
             append_log(state, "Launcher reopen ignored during update installation");
             return Ok(state.snapshot.lock().unwrap().clone());
         }
-        stop_managed_child_locked(app, state);
+        stop_service_locked(app, state);
         let result = start_launcher_locked(app, state);
         state.intentional_stop.store(false, Ordering::SeqCst);
         let generation = state.generation.load(Ordering::SeqCst);
@@ -1927,23 +1620,21 @@ fn restart_launcher(
     };
     if let Err(error) = &result {
         let error = error.clone();
+        let stopped = state.service.lock().unwrap().is_none();
         update_snapshot(app, state, |snapshot| {
-            if state.generation.load(Ordering::SeqCst) == result_generation
-                && snapshot.child_pid.is_none()
-            {
+            if state.generation.load(Ordering::SeqCst) == result_generation && stopped {
                 snapshot.phase = "error".into();
                 snapshot.message = format!("任务面板启动失败：{error}");
-                snapshot.open_signal_pid = None;
             }
         });
     }
     result
 }
 
-fn open_broadcast(state: &LauncherState) -> Result<(), String> {
-    let mut snapshot = state.snapshot.lock().unwrap();
-    snapshot.open_request_pending = true;
-    signal_pending_broadcast_open(state, &mut snapshot)
+fn open_broadcast(state: &LauncherState) {
+    if let Some(service) = state.service.lock().unwrap().as_ref() {
+        service.launcher.open();
+    }
 }
 
 fn open_broadcast_in_browser(state: &LauncherState) -> Result<(), String> {
@@ -2171,7 +1862,7 @@ fn install_update(
         if state.intentional_stop.load(Ordering::SeqCst) {
             return Err("App exit is in progress".into());
         }
-        stop_managed_child_locked(app, state);
+        stop_service_locked(app, state);
     }
     if let Err(error) = update.install(bytes) {
         append_log(state, &format!("Update installation failed: {error}"));
@@ -2331,7 +2022,7 @@ async fn offer_update(
         }
         Err(error) => {
             append_log(state, &format!("Update installation failed: {error}"));
-            let service_recovered = state.snapshot.lock().unwrap().child_pid.is_some();
+            let service_recovered = state.service.lock().unwrap().is_some();
             let service_message = if service_recovered {
                 "任务面板服务已恢复。"
             } else {
@@ -2350,7 +2041,70 @@ async fn offer_update(
     }
 }
 
+/// The embedded server and launcher inherit the environment the Node child was given: the
+/// app's `bin` first on `PATH`, no `CODEX_API_KEY`, and the resources as working directory.
+fn configure_process(resource_directory: &Path) {
+    #[cfg(target_os = "macos")]
+    let path = std::env::join_paths(
+        std::iter::once(resource_directory.join("bin")).chain(
+            ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+                .map(PathBuf::from),
+        ),
+    );
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let path = std::env::join_paths(
+        std::iter::once(resource_directory.join("bin"))
+            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+    );
+    if let Ok(path) = path {
+        std::env::set_var("PATH", path);
+    }
+    std::env::remove_var("CODEX_API_KEY");
+    let _ = std::env::set_current_dir(resource_directory);
+}
+
+/// The embedded server and launcher print their diagnostics; the launcher log keeps them, as
+/// it kept the Node child's output.
+fn redirect_output(log_path: &Path) -> std::io::Result<()> {
+    let log = OpenOptions::new().create(true).append(true).open(log_path)?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    unsafe {
+        if libc::dup2(log.as_raw_fd(), libc::STDOUT_FILENO) < 0
+            || libc::dup2(log.as_raw_fd(), libc::STDERR_FILENO) < 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::io::IntoRawHandle;
+        use windows::Win32::{
+            Foundation::HANDLE,
+            System::Console::{SetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE},
+        };
+        let handle = HANDLE(log.into_raw_handle());
+        unsafe {
+            SetStdHandle(STD_OUTPUT_HANDLE, handle).map_err(std::io::Error::other)?;
+            SetStdHandle(STD_ERROR_HANDLE, handle).map_err(std::io::Error::other)?;
+        }
+    }
+    Ok(())
+}
+
 fn main() {
+    let mut arguments = std::env::args_os().skip(1);
+    if arguments
+        .next()
+        .is_some_and(|argument| argument == broadcast_server::TURN_OWNER_ARG)
+    {
+        broadcast_server::turn_owner(arguments);
+    }
+    let context = tauri::generate_context!();
+    if let Ok(resource_directory) =
+        tauri::utils::platform::resource_dir(context.package_info(), &tauri::Env::default())
+    {
+        configure_process(&resource_directory);
+    }
     #[cfg(target_os = "macos")]
     let macos_bundle_migration = match migrate_macos_beta_app_bundle_name() {
         Ok(migration) => migration,
@@ -2375,7 +2129,7 @@ fn main() {
             let bundled_skill = app
                 .path()
                 .resource_dir()?
-                .join("app/skills/manage-broadcast");
+                .join("skills/manage-broadcast");
             let legacy_skill_conflict = reconcile_legacy_skill(&home_directory, &bundled_skill)?;
             let global_skill = home_directory.join(".agents/skills/manage-broadcast");
             if global_skill.exists() {
@@ -2422,6 +2176,7 @@ fn main() {
                 version.clone(),
                 instance_lock,
             ));
+            redirect_output(&state.log_path)?;
             app.manage(state.clone());
             #[cfg(target_os = "macos")]
             if let Some(migration) = macos_bundle_migration.as_ref() {
@@ -2431,9 +2186,12 @@ fn main() {
                     append_log(&state, &format!("autostart path sync failed: {error}"));
                 }
             }
+            // A development build must not repoint the installed app's command.
             #[cfg(target_os = "macos")]
-            if let Err(error) = install_broadcast_symlink(app.handle()) {
-                append_log(&state, &format!("broadcast sync failed: {error}"));
+            if !cfg!(debug_assertions) {
+                if let Err(error) = install_broadcast_symlink(app.handle()) {
+                    append_log(&state, &format!("broadcast sync failed: {error}"));
+                }
             }
 
             let app_info = MenuItem::with_id(
@@ -2528,18 +2286,7 @@ fn main() {
                         let Some(state) = app.try_state::<Arc<LauncherState>>() else {
                             return;
                         };
-                        let state = Arc::clone(state.inner());
-                        let app = app.clone();
-                        tauri::async_runtime::spawn_blocking(move || {
-                            if let Err(error) = open_broadcast(&state) {
-                                append_log(&state, &format!("Launcher menu open failed: {error}"));
-                                show_error_dialog(
-                                    &app,
-                                    "Broadcast 打开失败",
-                                    &format!("{error}\n\n请确认 Codex 正在运行。"),
-                                );
-                            }
-                        });
+                        open_broadcast(&state);
                     }
                     "open-broadcast-web" => {
                         let Some(state) = app.try_state::<Arc<LauncherState>>() else {
@@ -2618,7 +2365,7 @@ fn main() {
                         if state.update_in_progress.load(Ordering::SeqCst) {
                             return;
                         }
-                        stop_managed_child_locked(app, &state);
+                        stop_service_locked(app, &state);
                         drop(lifecycle);
                         app.exit(0);
                     }
@@ -2688,7 +2435,7 @@ fn main() {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build Broadcast");
 
     app.run(|app_handle, event| match event {
@@ -2697,7 +2444,7 @@ fn main() {
             let Some(state) = app_handle.try_state::<Arc<LauncherState>>() else {
                 return;
             };
-            let result = start_launcher(app_handle, &state).and_then(|_| open_broadcast(&state));
+            let result = start_launcher(app_handle, &state).map(|_| open_broadcast(&state));
             if let Err(error) = result {
                 append_log(&state, &format!("Launcher panel reopen failed: {error}"));
                 show_error_dialog(
@@ -2716,12 +2463,12 @@ fn main() {
                     api.prevent_exit();
                     return;
                 }
-                stop_managed_child_locked(app_handle, &state);
+                stop_service_locked(app_handle, &state);
             }
         }
         tauri::RunEvent::Exit => {
             if let Some(state) = app_handle.try_state::<Arc<LauncherState>>() {
-                stop_managed_child(app_handle, &state);
+                stop_service(app_handle, &state);
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                 unsafe {
                     libc::flock(state._instance_lock.as_raw_fd(), libc::LOCK_UN);
