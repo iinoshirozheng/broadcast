@@ -115,7 +115,10 @@ async fn comments_support_attachments_and_deleting_a_comment_removes_its_files()
     assert_eq!(attachment["taskId"], task);
     assert_eq!(attachment["commentId"], comment["id"]);
     let only = json!([attachment]);
-    assert_eq!(server.get(&format!("{path}/attachments")).await.1["attachments"], only);
+    assert_eq!(
+        server.get(&format!("{path}/attachments")).await.1["attachments"],
+        only
+    );
     let (_, comments) = server.get(&format!("/api/tasks/{task}/comments")).await;
     assert_eq!(comments["comments"][0]["attachments"], only);
     let (_, task_attachments) = server.get(&format!("/api/tasks/{task}/attachments")).await;
@@ -132,7 +135,10 @@ async fn comments_support_attachments_and_deleting_a_comment_removes_its_files()
         .await;
     assert_eq!(status, 204);
     assert!(!file.exists());
-    let content = format!("/api/attachments/{}/content", attachment["id"].as_str().unwrap());
+    let content = format!(
+        "/api/attachments/{}/content",
+        attachment["id"].as_str().unwrap()
+    );
     assert_eq!(server.get(&content).await.0, 404);
     assert_eq!(thread_id(&server, &task).await, Value::Null);
 }

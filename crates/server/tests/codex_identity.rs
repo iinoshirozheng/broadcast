@@ -41,7 +41,9 @@ async fn development_context_scan_resolves_the_current_codex_conversation_worksp
     let device_workspace = device_workspace.to_string_lossy();
     let query: String = form_urlencoded::byte_serialize(device_workspace.as_bytes()).collect();
     let (status, scan) = server
-        .get(&format!("/api/projects/local/development-contexts?workspacePath={query}"))
+        .get(&format!(
+            "/api/projects/local/development-contexts?workspacePath={query}"
+        ))
         .await;
     assert_eq!(status, 200);
     assert_eq!(scan["workspacePath"], device_workspace.as_ref());
@@ -152,7 +154,10 @@ async fn codex_hosted_user_mutations_persist_the_current_account_identity_and_av
     let user = [
         ("x-broadcast-user-id", "test-user"),
         ("x-broadcast-user-name", "Test%20User"),
-        ("x-broadcast-user-avatar", "https://example.com/test-user.png"),
+        (
+            "x-broadcast-user-avatar",
+            "https://example.com/test-user.png",
+        ),
     ];
     let test_user = json!({
         "type": "user",
@@ -174,7 +179,10 @@ async fn codex_hosted_user_mutations_persist_the_current_account_identity_and_av
     assert_eq!(task["creatorType"], "user");
     assert_eq!(task["creatorId"], "test-user");
     assert_eq!(task["creatorName"], "Test User");
-    assert_eq!(task["creatorAvatarUrl"], "https://example.com/test-user.png");
+    assert_eq!(
+        task["creatorAvatarUrl"],
+        "https://example.com/test-user.png"
+    );
     assert_eq!(task["assignee"], test_user);
     let path = format!("/api/tasks/{}", task["id"].as_str().unwrap());
     let mut version = task["version"].clone();
@@ -214,5 +222,8 @@ async fn codex_hosted_user_mutations_persist_the_current_account_identity_and_av
     assert_eq!(comment["authorType"], "user");
     assert_eq!(comment["authorId"], "test-user");
     assert_eq!(comment["authorName"], "Test User");
-    assert_eq!(comment["authorAvatarUrl"], "https://example.com/test-user.png");
+    assert_eq!(
+        comment["authorAvatarUrl"],
+        "https://example.com/test-user.png"
+    );
 }

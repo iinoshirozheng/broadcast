@@ -40,7 +40,11 @@ async fn relate(
 async fn issues_support_parent_sub_issue_blocking_and_related_issue_relationships() {
     let server = Server::start().await;
     let issue = async |title: &str, status: &str| {
-        create(&server, json!({ "projectId": "local", "title": title, "status": status })).await
+        create(
+            &server,
+            json!({ "projectId": "local", "title": title, "status": status }),
+        )
+        .await
     };
     let add = async |task: &Value, kind: &str, related: &Value| {
         relate(&server, Method::POST, task, kind, related, &task["version"]).await
@@ -53,7 +57,10 @@ async fn issues_support_parent_sub_issue_blocking_and_related_issue_relationship
 
     let (status, added) = add(&child, "parent", &parent).await;
     assert_eq!(status, 200);
-    assert_eq!(added["task"]["version"], child["version"].as_i64().unwrap() + 1);
+    assert_eq!(
+        added["task"]["version"],
+        child["version"].as_i64().unwrap() + 1
+    );
     assert_eq!(added["task"]["threadId"], "thread-relations");
     assert_eq!(added["task"]["relations"]["parent"]["id"], id(&parent));
     assert_eq!(added["relatedTask"]["id"], id(&parent));
@@ -89,35 +96,75 @@ async fn issues_support_parent_sub_issue_blocking_and_related_issue_relationship
     let related_now = latest(&server, &related).await;
     assert_eq!(ids(&related_now["relations"]["related"]), [id(&parent)]);
     let stale_version = json!(with_related["version"].as_i64().unwrap() - 1);
-    let (status, stale) =
-        relate(&server, Method::DELETE, with_related, "related", &related, &stale_version).await;
+    let (status, stale) = relate(
+        &server,
+        Method::DELETE,
+        with_related,
+        "related",
+        &related,
+        &stale_version,
+    )
+    .await;
     assert_eq!(status, 409);
     assert_eq!(stale["error"]["code"], "VERSION_CONFLICT");
     let version = &with_related["version"];
-    let (status, removed) =
-        relate(&server, Method::DELETE, with_related, "related", &related, version).await;
+    let (status, removed) = relate(
+        &server,
+        Method::DELETE,
+        with_related,
+        "related",
+        &related,
+        version,
+    )
+    .await;
     assert_eq!(status, 200);
     assert_eq!(removed["task"]["relations"]["related"], json!([]));
-    assert_eq!(latest(&server, &related).await["relations"]["related"], json!([]));
+    assert_eq!(
+        latest(&server, &related).await["relations"]["related"],
+        json!([])
+    );
 
     let replacement = issue("Replacement parent", "todo").await;
     let child_now = latest(&server, &child).await;
     let (status, replaced) = add(&child_now, "parent", &replacement).await;
     assert_eq!(status, 200);
-    assert_eq!(replaced["task"]["relations"]["parent"]["id"], id(&replacement));
-    assert_eq!(latest(&server, &parent).await["relations"]["subIssues"], json!([]));
+    assert_eq!(
+        replaced["task"]["relations"]["parent"]["id"],
+        id(&replacement)
+    );
+    assert_eq!(
+        latest(&server, &parent).await["relations"]["subIssues"],
+        json!([])
+    );
     let replacement_now = latest(&server, &replacement).await;
-    assert_eq!(ids(&replacement_now["relations"]["subIssues"]), [id(&child)]);
+    assert_eq!(
+        ids(&replacement_now["relations"]["subIssues"]),
+        [id(&child)]
+    );
     let child_now = &replaced["task"];
     let version = &child_now["version"];
-    let (status, removed) =
-        relate(&server, Method::DELETE, child_now, "parent", &replacement, version).await;
+    let (status, removed) = relate(
+        &server,
+        Method::DELETE,
+        child_now,
+        "parent",
+        &replacement,
+        version,
+    )
+    .await;
     assert_eq!(status, 200);
     assert_eq!(removed["task"]["relations"]["parent"], Value::Null);
-    assert_eq!(latest(&server, &replacement).await["relations"]["subIssues"], json!([]));
+    assert_eq!(
+        latest(&server, &replacement).await["relations"]["subIssues"],
+        json!([])
+    );
 
     let (status, _) = server
-        .send(Method::POST, "/api/projects", json!({ "id": "other", "name": "Other" }))
+        .send(
+            Method::POST,
+            "/api/projects",
+            json!({ "id": "other", "name": "Other" }),
+        )
         .await;
     assert_eq!(status, 201);
     let other = create(
@@ -144,7 +191,9 @@ async fn issue_tree_returns_deterministic_direct_and_nested_parent_paths_without
         server.send(Method::POST, &path, body).await.0
     };
     let tree = async |task: &Value, query: &str| {
-        server.get(&format!("/api/tasks/{}/tree?{query}", id(task))).await
+        server
+            .get(&format!("/api/tasks/{}/tree?{query}", id(task)))
+            .await
     };
     let root = issue("Tree root", "local").await;
     let first = issue("Tree first", "local").await;
@@ -171,7 +220,11 @@ async fn issue_tree_returns_deterministic_direct_and_nested_parent_paths_without
     expected.sort();
     assert_eq!(sorted, expected);
     for node in nodes.as_array().unwrap() {
-        let parent = if node["depth"] == 0 { Value::Null } else { json!(id(&root)) };
+        let parent = if node["depth"] == 0 {
+            Value::Null
+        } else {
+            json!(id(&root))
+        };
         assert_eq!(node["parentId"], parent);
     }
     let (_, repeat) = tree(&root, "direction=descendants&depth=1").await;
@@ -190,12 +243,20 @@ async fn issue_tree_returns_deterministic_direct_and_nested_parent_paths_without
         .collect();
     assert_eq!(
         tail,
-        [(json!(id(&first)), json!(2)), (json!(id(&grandchild)), json!(3))]
+        [
+            (json!(id(&first)), json!(2)),
+            (json!(id(&grandchild)), json!(3))
+        ]
     );
     let last = nodes.last().unwrap();
     assert_eq!(
         last["path"],
-        json!([id(&root), id(&first), id(&grandchild), id(&great_grandchild)])
+        json!([
+            id(&root),
+            id(&first),
+            id(&grandchild),
+            id(&great_grandchild)
+        ])
     );
     assert_eq!(
         last["summary"],
@@ -214,13 +275,23 @@ async fn issue_tree_returns_deterministic_direct_and_nested_parent_paths_without
         .as_array()
         .unwrap()
         .iter()
-        .map(|node| (node["id"].clone(), node["parentId"].clone(), node["depth"].clone()))
+        .map(|node| {
+            (
+                node["id"].clone(),
+                node["parentId"].clone(),
+                node["depth"].clone(),
+            )
+        })
         .collect();
     assert_eq!(
         chain,
         [
             (json!(id(&great_grandchild)), Value::Null, json!(0)),
-            (json!(id(&grandchild)), json!(id(&great_grandchild)), json!(1)),
+            (
+                json!(id(&grandchild)),
+                json!(id(&great_grandchild)),
+                json!(1)
+            ),
             (json!(id(&first)), json!(id(&grandchild)), json!(2)),
             (json!(id(&root)), json!(id(&first)), json!(3)),
         ]
@@ -237,7 +308,10 @@ async fn issue_tree_returns_deterministic_direct_and_nested_parent_paths_without
         .iter()
         .find(|node| node["id"] == id(&grandchild))
         .unwrap();
-    assert_eq!(moved["path"], json!([id(&root), id(&second), id(&grandchild)]));
+    assert_eq!(
+        moved["path"],
+        json!([id(&root), id(&second), id(&grandchild)])
+    );
 
     let (status, invalid) = tree(&root, "direction=descendants&depth=26").await;
     assert_eq!(status, 400);

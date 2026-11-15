@@ -56,7 +56,11 @@ impl Board {
             .send()
             .await
             .expect("request");
-        assert!(response.status().is_success(), "{path}: {}", response.status());
+        assert!(
+            response.status().is_success(),
+            "{path}: {}",
+            response.status()
+        );
     }
 
     /// Runs `broadcast` against this board; the JSON it printed on stdout, or on stderr when it

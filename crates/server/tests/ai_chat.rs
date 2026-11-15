@@ -39,7 +39,11 @@ async fn start() -> (Server, String) {
 
 fn write_codex_state(codex_home: &Path, state: Value) {
     std::fs::create_dir_all(codex_home).unwrap();
-    std::fs::write(codex_home.join(".codex-global-state.json"), state.to_string()).unwrap();
+    std::fs::write(
+        codex_home.join(".codex-global-state.json"),
+        state.to_string(),
+    )
+    .unwrap();
 }
 
 /// Creates a thread and returns its id.
@@ -80,7 +84,12 @@ async fn a_missing_codex_cli_reports_an_unavailable_catalog_instead_of_a_500() {
 #[tokio::test]
 async fn a_catalog_failure_that_is_not_a_missing_cli_keeps_its_own_status() {
     let (server, _) = start().await;
-    add_project(&server, "catalog-missing-workspace", &server.dir().join("not-there")).await;
+    add_project(
+        &server,
+        "catalog-missing-workspace",
+        &server.dir().join("not-there"),
+    )
+    .await;
     let (status, catalog) = server
         .get("/api/local/ai/catalog?projectId=catalog-missing-workspace")
         .await;
@@ -151,7 +160,10 @@ async fn loopback_ai_api_freezes_server_owned_origin_and_rejects_injected_execut
 
     let mut snapshot = Value::Null;
     for _ in 0..100 {
-        snapshot = server.get(&format!("/api/local/ai/threads/{thread}")).await.1;
+        snapshot = server
+            .get(&format!("/api/local/ai/threads/{thread}"))
+            .await
+            .1;
         if snapshot["runs"][0]["status"] != "running" {
             break;
         }
@@ -159,13 +171,21 @@ async fn loopback_ai_api_freezes_server_owned_origin_and_rejects_injected_execut
     }
     assert_eq!(snapshot["thread"]["codexThreadId"], "session-1");
     let events = snapshot["events"].as_array().unwrap();
-    assert!(events.iter().any(|event| event["content"] == "ok"), "{snapshot}");
+    assert!(
+        events.iter().any(|event| event["content"] == "ok"),
+        "{snapshot}"
+    );
 }
 
 #[tokio::test]
 async fn non_local_ai_threads_reject_projects_without_an_available_workspace() {
     let (server, _) = start().await;
-    add_project(&server, "missing-workspace", &server.dir().join("missing-workspace")).await;
+    add_project(
+        &server,
+        "missing-workspace",
+        &server.dir().join("missing-workspace"),
+    )
+    .await;
     let (status, created) = server
         .send(
             Method::POST,
@@ -262,7 +282,11 @@ async fn danger_full_access_requires_confirmation_on_every_turn_and_thread_setti
 #[tokio::test]
 async fn thread_management_interrupt_and_query_contracts_stay_narrow() {
     let (server, _) = start().await;
-    let thread = create_thread(&server, json!({ "projectId": "local", "title": "Original" })).await;
+    let thread = create_thread(
+        &server,
+        json!({ "projectId": "local", "title": "Original" }),
+    )
+    .await;
     let path = format!("/api/local/ai/threads/{thread}");
 
     let (status, list) = server.get("/api/local/ai/threads").await;
@@ -323,7 +347,10 @@ async fn ai_sse_is_live_only_and_thread_snapshots_remain_the_durable_source() {
     let (server, _) = start().await;
     let thread = create_thread(&server, json!({ "projectId": "local" })).await;
     let mut events = server
-        .request(Method::GET, &format!("/api/local/ai/threads/{thread}/events"))
+        .request(
+            Method::GET,
+            &format!("/api/local/ai/threads/{thread}/events"),
+        )
         .send()
         .await
         .unwrap();
@@ -331,7 +358,11 @@ async fn ai_sse_is_live_only_and_thread_snapshots_remain_the_durable_source() {
     let mut read_until = async |marker: &str| {
         let mut text = String::new();
         while !text.contains(marker) {
-            let chunk = events.chunk().await.unwrap().expect("the stream stays open");
+            let chunk = events
+                .chunk()
+                .await
+                .unwrap()
+                .expect("the stream stays open");
             text.push_str(&String::from_utf8_lossy(&chunk));
         }
         text

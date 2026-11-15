@@ -15,11 +15,9 @@ use support::{Server, Upstream, lan_address, serve, write_cloud_config};
 
 #[tokio::test]
 async fn cloud_mode_blocks_project_moves_for_issue_linked_local_ai_chats() {
-    let upstream = Upstream::json(json!({ "task": { "id": "REMOTE-1", "projectId": "target" } })).await;
-    let server = Server::builder()
-        .cloud(&upstream.url)
-        .start()
-        .await;
+    let upstream =
+        Upstream::json(json!({ "task": { "id": "REMOTE-1", "projectId": "target" } })).await;
+    let server = Server::builder().cloud(&upstream.url).start().await;
     let now = chrono::Utc::now().to_rfc3339();
     server
         .database()
@@ -90,7 +88,10 @@ async fn local_companion_relays_authenticated_cloud_revision_websockets() {
     let payload: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
     assert_eq!(payload, json!({ "type": "revision", "revision": 42 }));
     let expected = format!("Basic {}", STANDARD.encode("Alice:two-person-shared-key"));
-    assert_eq!(authorization.lock().unwrap().as_deref(), Some(expected.as_str()));
+    assert_eq!(
+        authorization.lock().unwrap().as_deref(),
+        Some(expected.as_str())
+    );
 }
 
 #[tokio::test]
@@ -131,7 +132,7 @@ async fn cloud_mode_proxies_business_apis_without_touching_local_rows_and_advert
 
 #[tokio::test]
 async fn cloud_mode_exposes_machine_capabilities_only_to_loopback_while_local_mode_keeps_lan_access()
-{
+ {
     let Some(lan) = lan_address() else {
         eprintln!("skipped: no non-loopback IPv4 interface is available");
         return;

@@ -69,7 +69,13 @@ impl Server {
     }
 
     pub async fn get(&self, path: &str) -> (u16, Value) {
-        json(self.request(Method::GET, path).send().await.expect("request")).await
+        json(
+            self.request(Method::GET, path)
+                .send()
+                .await
+                .expect("request"),
+        )
+        .await
     }
 
     /// Sends `body` as JSON.
@@ -112,7 +118,9 @@ impl Server {
 
     /// Where the server stores the attachment `id`.
     pub fn attachment_file(&self, id: &Value) -> PathBuf {
-        self.dir().join("attachments").join(id.as_str().expect("attachment id"))
+        self.dir()
+            .join("attachments")
+            .join(id.as_str().expect("attachment id"))
     }
 }
 

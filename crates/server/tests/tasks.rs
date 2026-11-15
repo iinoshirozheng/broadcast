@@ -26,7 +26,10 @@ async fn listed(server: &Server, path: &str) -> Vec<Value> {
 async fn issue_count(server: &Server, project: &str) -> Value {
     let (_, body) = server.get("/api/projects").await;
     let projects = body["projects"].as_array().unwrap();
-    let project = projects.iter().find(|listed| listed["id"] == project).unwrap();
+    let project = projects
+        .iter()
+        .find(|listed| listed["id"] == project)
+        .unwrap();
     project["issueCount"].clone()
 }
 
@@ -81,16 +84,25 @@ async fn project_and_task_crud_flow() {
     assert_eq!(created["creatorAvatarUrl"], Value::Null);
     assert_eq!(created["developmentContext"], worktree);
     assert_eq!(created["dueDate"], "2026-07-24");
-    assert_eq!(created["recurrence"], json!({ "interval": 2, "unit": "week" }));
+    assert_eq!(
+        created["recurrence"],
+        json!({ "interval": 2, "unit": "week" })
+    );
     assert_eq!(issue_count(&server, "website").await, 1);
 
     let id = created["id"].as_str().unwrap();
     let identifier = created["identifier"].as_str().unwrap();
-    assert_eq!(server.get(&format!("/api/tasks/{id}")).await, (200, json!({ "task": created })));
+    assert_eq!(
+        server.get(&format!("/api/tasks/{id}")).await,
+        (200, json!({ "task": created }))
+    );
     let (status, by_identifier) = server.get(&format!("/api/tasks/{identifier}")).await;
     assert_eq!(status, 200);
     assert_eq!(by_identifier["task"]["id"], id);
-    assert_eq!(listed(&server, "/api/tasks?projectId=website&status=todo").await, [id]);
+    assert_eq!(
+        listed(&server, "/api/tasks?projectId=website&status=todo").await,
+        [id]
+    );
 
     let branch = json!({ "type": "branch", "branch": "feature/polish" });
     let updated = task(
@@ -122,8 +134,15 @@ async fn project_and_task_crud_flow() {
     assert_eq!(archived["version"], 3);
     assert_eq!(archived["threadId"], "thread-archive");
     chrono::DateTime::parse_from_rfc3339(archived["archivedAt"].as_str().unwrap()).unwrap();
-    assert!(listed(&server, "/api/tasks?projectId=website").await.is_empty());
-    assert_eq!(listed(&server, "/api/tasks?projectId=website&archived=true").await, [id]);
+    assert!(
+        listed(&server, "/api/tasks?projectId=website")
+            .await
+            .is_empty()
+    );
+    assert_eq!(
+        listed(&server, "/api/tasks?projectId=website&archived=true").await,
+        [id]
+    );
     assert_eq!(issue_count(&server, "website").await, 0);
 
     let restored = task(
@@ -167,7 +186,9 @@ async fn remote_task_bindings_keep_their_own_identity_and_can_be_cleared_indepen
     let server = Server::start().await;
     let refs = |task: &Value, field: &str| -> Vec<Value> {
         let refs = task["conversationRefs"].as_array().unwrap();
-        refs.iter().map(|reference| reference[field].clone()).collect()
+        refs.iter()
+            .map(|reference| reference[field].clone())
+            .collect()
     };
 
     let legacy = create(
@@ -269,7 +290,15 @@ async fn remote_task_bindings_keep_their_own_identity_and_can_be_cleared_indepen
 #[tokio::test]
 async fn all_task_statuses_are_accepted_filtered_and_listed_in_workflow_order() {
     let server = Server::start().await;
-    for status in ["canceled", "done", "blocked", "in_review", "in_progress", "todo", "backlog"] {
+    for status in [
+        "canceled",
+        "done",
+        "blocked",
+        "in_review",
+        "in_progress",
+        "todo",
+        "backlog",
+    ] {
         let created = create(&server, json!({ "title": status, "status": status })).await;
         assert_eq!(created["status"], status);
     }
@@ -281,10 +310,21 @@ async fn all_task_statuses_are_accepted_filtered_and_listed_in_workflow_order() 
     };
     assert_eq!(
         statuses("/api/tasks").await,
-        ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"]
+        [
+            "backlog",
+            "todo",
+            "in_progress",
+            "in_review",
+            "blocked",
+            "done",
+            "canceled"
+        ]
     );
     for status in ["in_review", "blocked", "canceled"] {
-        assert_eq!(statuses(&format!("/api/tasks?status={status}")).await, [status]);
+        assert_eq!(
+            statuses(&format!("/api/tasks?status={status}")).await,
+            [status]
+        );
     }
 }
 
@@ -334,7 +374,10 @@ async fn task_and_comment_mutations_keep_content_specific_conversation_attributi
         )
         .await;
     assert_eq!(edited["comment"]["threadId"], "thread-comment");
-    assert_eq!(server.get(&path).await.1["task"]["threadId"], "thread-original");
+    assert_eq!(
+        server.get(&path).await.1["task"]["threadId"],
+        "thread-original"
+    );
 }
 
 #[tokio::test]

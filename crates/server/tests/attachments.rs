@@ -21,7 +21,12 @@ async fn issue_attachments_can_be_uploaded_listed_opened_downloaded_and_deleted(
 
     let contents = "attachment contents\n";
     let (status, uploaded) = server
-        .upload(&attachments, "text/plain; charset=utf-8", "设计说明.txt", contents)
+        .upload(
+            &attachments,
+            "text/plain; charset=utf-8",
+            "设计说明.txt",
+            contents,
+        )
         .await;
     assert_eq!(status, 201);
     let attachment = &uploaded["attachment"];
@@ -31,7 +36,10 @@ async fn issue_attachments_can_be_uploaded_listed_opened_downloaded_and_deleted(
     assert_eq!(attachment["contentType"], "text/plain");
     assert_eq!(attachment["size"], contents.len());
     chrono::DateTime::parse_from_rfc3339(attachment["createdAt"].as_str().unwrap()).unwrap();
-    assert_eq!(server.get(&attachments).await.1["attachments"], json!([attachment]));
+    assert_eq!(
+        server.get(&attachments).await.1["attachments"],
+        json!([attachment])
+    );
 
     let id = attachment["id"].as_str().unwrap();
     let content = format!("/api/attachments/{id}/content");
@@ -40,11 +48,17 @@ async fn issue_attachments_can_be_uploaded_listed_opened_downloaded_and_deleted(
     let headers = response.headers();
     assert_eq!(headers["content-type"], "text/plain");
     let disposition = headers["content-disposition"].to_str().unwrap();
-    assert!(disposition.starts_with("inline; filename*=UTF-8''"), "{disposition}");
+    assert!(
+        disposition.starts_with("inline; filename*=UTF-8''"),
+        "{disposition}"
+    );
     assert_eq!(response.text().await.unwrap(), contents);
     let head = server.request(Method::HEAD, &content).send().await.unwrap();
     assert_eq!(head.status(), 200);
-    assert_eq!(head.headers()["content-length"], contents.len().to_string().as_str());
+    assert_eq!(
+        head.headers()["content-length"],
+        contents.len().to_string().as_str()
+    );
     assert_eq!(head.text().await.unwrap(), "");
 
     let (_, html) = server
@@ -63,9 +77,21 @@ async fn issue_attachments_can_be_uploaded_listed_opened_downloaded_and_deleted(
         .unwrap();
     let headers = response.headers();
     assert_eq!(headers["content-type"], "application/octet-stream");
-    assert!(headers["content-disposition"].to_str().unwrap().starts_with("attachment;"));
-    assert_eq!(headers["content-security-policy"], "sandbox; default-src 'none'");
-    let delete = |id: &str| server.request(Method::DELETE, &format!("/api/attachments/{id}")).send();
+    assert!(
+        headers["content-disposition"]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment;")
+    );
+    assert_eq!(
+        headers["content-security-policy"],
+        "sandbox; default-src 'none'"
+    );
+    let delete = |id: &str| {
+        server
+            .request(Method::DELETE, &format!("/api/attachments/{id}"))
+            .send()
+    };
     assert_eq!(delete(html).await.unwrap().status(), 204);
 
     assert_eq!(delete(id).await.unwrap().status(), 204);
@@ -92,7 +118,12 @@ async fn permanent_task_deletion_requires_archiving_and_removes_attachment_files
     .await;
     let path = format!("/api/tasks/{}", task["id"].as_str().unwrap());
     let (status, uploaded) = server
-        .upload(&format!("{path}/attachments"), "text/plain", "evidence.txt", "attachment")
+        .upload(
+            &format!("{path}/attachments"),
+            "text/plain",
+            "evidence.txt",
+            "attachment",
+        )
         .await;
     assert_eq!(status, 201);
     let (status, comment) = server

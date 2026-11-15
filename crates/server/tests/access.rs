@@ -20,16 +20,29 @@ async fn get_as(server: &Server, host: &str, headers: &[(&str, &str)], path: &st
     let response = request.send().await.expect("request");
     let status = response.status().as_u16();
     let text = response.text().await.expect("response body");
-    (status, serde_json::from_str(&text).unwrap_or(Value::String(text)))
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or(Value::String(text)),
+    )
 }
 
 #[tokio::test]
 async fn health_and_the_default_local_project_are_available() {
     let builder = Server::builder();
-    let skill_path = builder.dir().join("skills").join("manage-broadcast").join("SKILL.md");
-    let server = builder.env("BROADCAST_SKILL_PATH", &skill_path).start().await;
+    let skill_path = builder
+        .dir()
+        .join("skills")
+        .join("manage-broadcast")
+        .join("SKILL.md");
+    let server = builder
+        .env("BROADCAST_SKILL_PATH", &skill_path)
+        .start()
+        .await;
 
-    assert_eq!(server.get("/health").await, (200, json!({ "status": "ok" })));
+    assert_eq!(
+        server.get("/health").await,
+        (200, json!({ "status": "ok" }))
+    );
     let (status, metadata) = server.get("/api/meta").await;
     assert_eq!(status, 200);
     assert_eq!(
@@ -88,19 +101,40 @@ async fn launcher_mode_proves_service_identity_and_hides_every_route_behind_its_
         .await
         .unwrap();
     assert_eq!(launcher_api.status(), 200);
-    assert_eq!(launcher_api.headers()["access-control-allow-origin"], "null");
+    assert_eq!(
+        launcher_api.headers()["access-control-allow-origin"],
+        "null"
+    );
 }
 
 #[tokio::test]
 async fn accepts_private_lan_requests_and_rejects_public_host_and_origin_headers() {
-    let server = Server::builder().env("BROADCAST_HOST", "0.0.0.0").start().await;
+    let server = Server::builder()
+        .env("BROADCAST_HOST", "0.0.0.0")
+        .start()
+        .await;
     let local = "127.0.0.1";
 
-    assert_eq!(get_as(&server, local, &[("origin", "app://-")], "/health").await.0, 200);
-    assert_eq!(get_as(&server, "192.168.1.24:47823", &[], "/health").await.0, 200);
+    assert_eq!(
+        get_as(&server, local, &[("origin", "app://-")], "/health")
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        get_as(&server, "192.168.1.24:47823", &[], "/health")
+            .await
+            .0,
+        200
+    );
     let lan_origin = [("origin", "http://192.168.1.24:47823")];
     assert_eq!(get_as(&server, local, &lan_origin, "/health").await.0, 200);
-    assert_eq!(get_as(&server, "broadcast.local:47823", &[], "/health").await.0, 200);
+    assert_eq!(
+        get_as(&server, "broadcast.local:47823", &[], "/health")
+            .await
+            .0,
+        200
+    );
 
     let (status, body) = get_as(&server, "broadcast.example.com", &[], "/health").await;
     assert_eq!(status, 403);
@@ -133,9 +167,17 @@ async fn trusted_https_origins_allow_their_exact_public_host_without_trusting_fo
         (Some("https://other.example.test"), 403),
         (None, 200),
     ] {
-        let headers: Vec<_> = origin.map(|origin| ("origin", origin)).into_iter().collect();
-        assert_eq!(get_as(&server, local, &headers, "/health").await.0, expected);
-        let mut events = server.request(Method::GET, "/api/events").header("host", local);
+        let headers: Vec<_> = origin
+            .map(|origin| ("origin", origin))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            get_as(&server, local, &headers, "/health").await.0,
+            expected
+        );
+        let mut events = server
+            .request(Method::GET, "/api/events")
+            .header("host", local);
         if let Some(origin) = origin {
             events = events.header("origin", origin);
         }
@@ -176,7 +218,11 @@ async fn trusted_https_origins_allow_their_exact_public_host_without_trusting_fo
 async fn trusted_https_origins_do_not_inherit_device_local_capabilities_from_tunnel_loopback() {
     let upstream = Upstream::json(json!({ "projects": [] })).await;
     let builder = Server::builder();
-    let skill_path = builder.dir().join("skills").join("manage-broadcast").join("SKILL.md");
+    let skill_path = builder
+        .dir()
+        .join("skills")
+        .join("manage-broadcast")
+        .join("SKILL.md");
     let server = builder
         .env("BROADCAST_SKILL_PATH", &skill_path)
         .env("BROADCAST_TRUSTED_ORIGINS", TRUSTED_ORIGIN)
@@ -195,8 +241,14 @@ async fn trusted_https_origins_do_not_inherit_device_local_capabilities_from_tun
         "realtime": { "transport": "websocket", "endpoint": "/api/events" },
         "localCapabilities": { "available": false },
     });
-    assert_eq!(get_as(&server, local, &trusted, "/api/meta").await, (200, tunnelled.clone()));
-    assert_eq!(get_as(&server, public, &[], "/api/meta").await, (200, tunnelled));
+    assert_eq!(
+        get_as(&server, local, &trusted, "/api/meta").await,
+        (200, tunnelled.clone())
+    );
+    assert_eq!(
+        get_as(&server, public, &[], "/api/meta").await,
+        (200, tunnelled)
+    );
 
     for path in [
         "/api/local/host-runtime",
@@ -208,7 +260,10 @@ async fn trusted_https_origins_do_not_inherit_device_local_capabilities_from_tun
         for (host, headers) in [(local, &trusted[..]), (public, &[])] {
             let (status, body) = get_as(&server, host, headers, path).await;
             assert_eq!(status, 409, "{host} {path}");
-            assert_eq!(body["error"]["code"], "LOCAL_COMPANION_REQUIRED", "{host} {path}");
+            assert_eq!(
+                body["error"]["code"], "LOCAL_COMPANION_REQUIRED",
+                "{host} {path}"
+            );
         }
     }
 
@@ -245,7 +300,11 @@ async fn trusted_https_origins_apply_to_cloud_websocket_upgrades_without_widenin
     for (host, origin, expected) in [
         ("board.example.test", Some(TRUSTED_ORIGIN), 101),
         ("board.example.test", None, 101),
-        ("board.example.test", Some("https://other.example.test"), 403),
+        (
+            "board.example.test",
+            Some("https://other.example.test"),
+            403,
+        ),
         ("other.example.test", Some(TRUSTED_ORIGIN), 403),
         ("127.0.0.1", Some(TRUSTED_ORIGIN), 101),
         ("127.0.0.1", None, 101),
@@ -253,7 +312,9 @@ async fn trusted_https_origins_apply_to_cloud_websocket_upgrades_without_widenin
         let mut request = url.as_str().into_client_request().unwrap();
         request.headers_mut().insert("host", host.parse().unwrap());
         if let Some(origin) = origin {
-            request.headers_mut().insert("origin", origin.parse().unwrap());
+            request
+                .headers_mut()
+                .insert("origin", origin.parse().unwrap());
         }
         let status = match tokio_tungstenite::connect_async(request).await {
             Ok(_) => 101,

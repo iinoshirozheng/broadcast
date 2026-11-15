@@ -9,7 +9,11 @@ use support::Server;
 async fn next_event(events: &mut Response, name: &str) -> Value {
     let mut message = String::new();
     while !message.contains("\n\n") {
-        let chunk = events.chunk().await.unwrap().expect("the stream stays open");
+        let chunk = events
+            .chunk()
+            .await
+            .unwrap()
+            .expect("the stream stays open");
         message.push_str(&String::from_utf8_lossy(&chunk));
     }
     assert!(message.contains(&format!("event: {name}")), "{message}");
@@ -22,7 +26,12 @@ async fn next_event(events: &mut Response, name: &str) -> Value {
 
 async fn create(server: &Server, headers: &[(&str, &str)], title: &str) -> Value {
     let (status, reply) = server
-        .send_with(Method::POST, "/api/tasks", headers, json!({ "title": title }))
+        .send_with(
+            Method::POST,
+            "/api/tasks",
+            headers,
+            json!({ "title": title }),
+        )
         .await;
     assert_eq!(status, 201);
     reply["task"].clone()
@@ -33,7 +42,11 @@ async fn issue_relationship_changes_are_broadcast_in_realtime() {
     let server = Server::start().await;
     let first = create(&server, &[], "Realtime source").await;
     let second = create(&server, &[], "Realtime target").await;
-    let mut events = server.request(Method::GET, "/api/events").send().await.unwrap();
+    let mut events = server
+        .request(Method::GET, "/api/events")
+        .send()
+        .await
+        .unwrap();
     events.chunk().await.unwrap();
 
     let path = format!(
@@ -52,7 +65,10 @@ async fn issue_relationship_changes_are_broadcast_in_realtime() {
 
 #[tokio::test]
 async fn task_changes_from_one_lan_client_are_broadcast_to_another_client() {
-    let server = Server::builder().env("BROADCAST_HOST", "0.0.0.0").start().await;
+    let server = Server::builder()
+        .env("BROADCAST_HOST", "0.0.0.0")
+        .start()
+        .await;
     let lan = [
         ("host", "192.168.1.24:47823"),
         ("origin", "http://192.168.1.24:47823"),
