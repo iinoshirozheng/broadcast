@@ -48,19 +48,19 @@ test("the launcher keeps CDP random and prefers the Broadcast port with a fallba
   assert.doesNotMatch(launcherSource, /const LAUNCHER_PORT/);
 });
 
-test("release signing is tag-only and PR CI builds the real unsigned app bundle", () => {
+test("release signing is tag-only and PR CI builds the real ad-hoc signed bundle", () => {
   assert.doesNotMatch(releaseWorkflow, /workflow_dispatch/);
   assert.match(releaseWorkflow, /git merge-base --is-ancestor/);
   assert.match(releaseWorkflow, /package\.json/);
   assert.match(releaseWorkflow, /Cargo\.toml/);
   assert.match(releaseWorkflow, /tauri\.conf\.json/);
   assert.match(releaseWorkflow, /TAG_FORCED/);
-  assert.match(releaseWorkflow, /sign-macos-app\.mjs/);
+  assert.match(releaseWorkflow, /cargo xtask verify-macos[\s\S]*?--release/);
   assert.match(releaseWorkflow, /notarytool submit/);
-  assert.match(releaseWorkflow, /stapler validate/);
+  assert.match(releaseWorkflow, /stapler staple/);
   assert.match(checkWorkflow, /pnpm tauri build/);
   assert.match(checkWorkflow, /--bundles app/);
-  assert.match(checkWorkflow, /--no-sign/);
+  assert.match(checkWorkflow, /APPLE_SIGNING_IDENTITY: "-"/);
 });
 
 test("Windows CI runs the test suite and the unsigned launcher skips unsupported updates", () => {

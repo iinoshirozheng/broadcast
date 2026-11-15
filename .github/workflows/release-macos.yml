@@ -31,10 +31,20 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: false
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+          shared-key: ubuntu-24.04-x64
+          cache-bin: false
+          save-if: false
 
       - name: Validate release tag and versions
         id: validate
@@ -67,23 +77,12 @@ jobs:
             exit 1
           fi
 
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          CARGO_VERSION="$(node -e 'const fs=require("fs"); const source=fs.readFileSync("Cargo.toml","utf8"); console.log(source.match(/^version = "([^"]+)"/m)[1])')"
-          TAURI_VERSION="$(node -p "require('./apps/desktop/tauri.conf.json').version")"
-          if [[ "$PACKAGE_VERSION" != "$CARGO_VERSION" || "$PACKAGE_VERSION" != "$TAURI_VERSION" ]]; then
-            echo "package.json、Cargo.toml 和 tauri.conf.json 的版本必须一致。" >&2
-            exit 1
-          fi
-          if [[ ! "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Apple-facing 应用版本必须是纯数字 major.minor.patch。" >&2
-            exit 1
-          fi
-
-          RELEASE_METADATA="$(node scripts/release-metadata-cli.mjs "$PACKAGE_VERSION" "$RELEASE_TAG")"
+          # Fails unless package.json, Cargo.toml and tauri.conf.json carry one numeric version
+          # that the tag names.
+          RELEASE_METADATA="$(cargo xtask release-metadata "$RELEASE_TAG")"
+          PACKAGE_VERSION="$(jq -r '.packageVersion' <<< "$RELEASE_METADATA")"
           RELEASE_VERSION="$(jq -r '.releaseVersion' <<< "$RELEASE_METADATA")"
-          RELEASE_CHANNEL="$(jq -r '.channel' <<< "$RELEASE_METADATA")"
           PRERELEASE="$(jq -r '.prerelease' <<< "$RELEASE_METADATA")"
-          BETA_NUMBER="$(jq -r '.betaNumber' <<< "$RELEASE_METADATA")"
 
           RELEASE_CHECK="$RUNNER_TEMP/release-check.json"
           if ! RELEASE_STATUS="$(curl --silent --show-error \
@@ -115,69 +114,7 @@ jobs:
             "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | [.tag_name, .draft, .prerelease, (.immutable // false), .target_commitish] | @tsv' \
             > "$RELEASES"
-          PACKAGE_VERSION="$PACKAGE_VERSION" \
-          RELEASE_CHANNEL="$RELEASE_CHANNEL" \
-          BETA_NUMBER="$BETA_NUMBER" \
-          RELEASES="$RELEASES" \
-          GITHUB_SHA="$GITHUB_SHA" \
-          node <<'NODE'
-          const fs = require("node:fs");
-          const current = process.env.PACKAGE_VERSION.split(".").map(Number);
-          const releases = fs.readFileSync(process.env.RELEASES, "utf8")
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((line) => {
-              const [tag, draft, prerelease, immutable, target] = line.split("\t");
-              return {
-                tag,
-                draft: draft === "true",
-                prerelease: prerelease === "true",
-                immutable: immutable === "true",
-                target,
-              };
-            });
-          const compare = (left, right) => {
-            for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
-              const difference = (left[index] ?? 0) - (right[index] ?? 0);
-              if (difference !== 0) return difference;
-            }
-            return 0;
-          };
-          for (const release of releases) {
-            const match = /^(?:app-)?v(\d+(?:\.\d+)*)$/.exec(release.tag);
-            if (match && compare(match[1].split(".").map(Number), current) >= 0) {
-              console.error(`已有相同或更高版本的稳定 Release：${release.tag}`);
-              process.exit(1);
-            }
-
-            if (process.env.RELEASE_CHANNEL === "beta") {
-              const betaMatch = /^v(\d+(?:\.\d+)*)-beta\.([1-9]\d*)$/.exec(release.tag);
-              if (betaMatch) {
-                const baseComparison = compare(betaMatch[1].split(".").map(Number), current);
-                const betaComparison = BigInt(betaMatch[2]) >= BigInt(process.env.BETA_NUMBER);
-                if (baseComparison > 0 || (baseComparison === 0 && betaComparison)) {
-                  console.error(`已有相同或更高版本的 Beta Release：${release.tag}`);
-                  process.exit(1);
-                }
-              }
-            }
-          }
-
-          if (process.env.RELEASE_CHANNEL === "stable") {
-            const confirmedBeta = releases.some((release) => {
-              const betaMatch = /^v(\d+(?:\.\d+)*)-beta\.([1-9]\d*)$/.exec(release.tag);
-              return betaMatch?.[1] === process.env.PACKAGE_VERSION
-                && release.draft === false
-                && release.prerelease === true
-                && release.immutable === true
-                && release.target === process.env.GITHUB_SHA;
-            });
-            if (!confirmedBeta) {
-              console.error("正式发布前必须先发布同一提交、同一版本的 immutable Beta Release。");
-              process.exit(1);
-            }
-          }
-          NODE
+          cargo xtask check-release-order "$RELEASE_TAG" "$RELEASES" "$GITHUB_SHA"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -193,6 +130,7 @@ jobs:
     timeout-minutes: 40
     env:
       BROADCAST_RELEASE_VERSION: ${{ needs['release-preflight'].outputs.release_version }}
+      PRODUCT_NAME: ${{ fromJSON(needs['release-preflight'].outputs.metadata).productName }}
       RELEASE_METADATA: ${{ needs['release-preflight'].outputs.metadata }}
 
     steps:
@@ -239,11 +177,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: >-
           pnpm app:build:linux:x64
-          --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          --config "{\"productName\":\"$PRODUCT_NAME\",\"bundle\":{\"createUpdaterArtifacts\":true}}"
 
       - name: Verify Ubuntu 24.04 x64 package contents
         run: >-
-          node scripts/verify-linux-packages.mjs
+          cargo xtask verify-linux-packages
           target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
           target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
 
@@ -280,6 +218,7 @@ jobs:
     timeout-minutes: 40
     env:
       BROADCAST_RELEASE_VERSION: ${{ needs['release-preflight'].outputs.release_version }}
+      PRODUCT_NAME: ${{ fromJSON(needs['release-preflight'].outputs.metadata).productName }}
 
     steps:
       - name: Checkout
@@ -305,7 +244,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build unsigned Windows x64 Preview
-        run: pnpm app:build:windows
+        shell: bash
+        run: pnpm app:build:windows --config "{\"productName\":\"$PRODUCT_NAME\"}"
 
       - name: Preserve unsigned Windows x64 Preview
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -324,6 +264,7 @@ jobs:
       RELEASE_TAG: ${{ needs['release-preflight'].outputs.release_tag }}
       PACKAGE_VERSION: ${{ needs['release-preflight'].outputs.package_version }}
       APP_NAME: ${{ fromJSON(needs['release-preflight'].outputs.metadata).appName }}
+      PRODUCT_NAME: ${{ fromJSON(needs['release-preflight'].outputs.metadata).productName }}
       RELEASE_METADATA: ${{ needs['release-preflight'].outputs.metadata }}
 
     steps:
@@ -351,36 +292,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare universal app resources
-        run: pnpm app:prepare --target universal-apple-darwin
-
-      - name: Import Developer ID certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          umask 077
-          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/broadcast-signing.keychain-db"
-
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" \
-            -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-
       - name: Prepare App Store Connect API key
         env:
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
@@ -390,106 +301,60 @@ jobs:
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$APPLE_API_KEY_PATH"
           echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Build unsigned universal App and DMG layout
+      # Tauri imports the Developer ID certificate into a temporary keychain, signs the
+      # sidecar and the App with the hardened runtime, notarizes and staples the App, builds and
+      # signs the DMG from it, and signs the updater archive.
+      - name: Build, sign and notarize the universal App, DMG and updater archive
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: >-
-          CI=true node scripts/tauri-build.mjs
-          --target universal-apple-darwin
-          --bundles app,dmg
-          --no-sign
-          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          pnpm tauri build --target universal-apple-darwin --bundles app,dmg --ci
+          --config "{\"productName\":\"$PRODUCT_NAME\"}"
 
-      - name: Sign App with separate Node.js policy
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: node scripts/sign-macos-app.mjs "target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
-
-      - name: Notarize and staple App
+      - name: Notarize and staple the DMG
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
-          APP_PATH="target/universal-apple-darwin/release/bundle/macos/$APP_NAME"
-          APP_ZIP="$RUNNER_TEMP/Codex.Broadcast.app.zip"
-          /usr/bin/ditto -c -k --keepParent --sequesterRsrc "$APP_PATH" "$APP_ZIP"
-          xcrun notarytool submit "$APP_ZIP" \
-            --key-id "$APPLE_API_KEY" \
-            --key "$APPLE_API_KEY_PATH" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait
-          xcrun stapler staple -v "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl -a -t exec -vv "$APP_PATH"
-
-      - name: Create, sign, notarize, and staple DMG
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
-          RAW_DMG_NAME="$(jq -r '.rawDmgName' <<< "$RELEASE_METADATA")"
-          RELEASE_DMG_NAME="$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
-          rm -f "$BUNDLE_ROOT/dmg/$RAW_DMG_NAME" "$BUNDLE_ROOT/macos/$RAW_DMG_NAME"
-          (
-            cd "$BUNDLE_ROOT/macos"
-            ../dmg/bundle_dmg.sh \
-              --volname "Broadcast" \
-              --icon "$APP_NAME" 180 170 \
-              --app-drop-link 480 170 \
-              --window-size 660 400 \
-              --hide-extension "$APP_NAME" \
-              --volicon ../dmg/icon.icns \
-              --skip-jenkins \
-              "$RAW_DMG_NAME" "$APP_NAME"
-          )
-          mv "$BUNDLE_ROOT/macos/$RAW_DMG_NAME" "$BUNDLE_ROOT/dmg/$RELEASE_DMG_NAME"
-          DMG_PATH="$BUNDLE_ROOT/dmg/$RELEASE_DMG_NAME"
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$DMG_PATH"
+          set -euo pipefail
+          DMG_PATH="target/universal-apple-darwin/release/bundle/dmg/$(jq -r '.tauriDmgName' <<< "$RELEASE_METADATA")"
           xcrun notarytool submit "$DMG_PATH" \
             --key-id "$APPLE_API_KEY" \
             --key "$APPLE_API_KEY_PATH" \
             --issuer "$APPLE_API_ISSUER" \
             --wait
           xcrun stapler staple -v "$DMG_PATH"
-          xcrun stapler validate "$DMG_PATH"
-          codesign --verify --strict --verbose=2 "$DMG_PATH"
-          spctl -a -t open --context context:primary-signature -vv "$DMG_PATH"
 
-      - name: Create signed updater files
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
-          node scripts/create-macos-updater.mjs \
-            "$BUNDLE_ROOT/macos/$APP_NAME" \
-            "$BUNDLE_ROOT/release" \
-            "$RELEASE_TAG"
-
-      - name: Verify signed release artifacts
+      - name: Stage the public macOS release assets
         run: |
           set -euo pipefail
           BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
-          APP_PATH="$BUNDLE_ROOT/macos/$APP_NAME"
-          DMG_PATH="$BUNDLE_ROOT/dmg/$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
-          RELEASE_ROOT="$BUNDLE_ROOT/release"
-          pnpm app:verify-release "$APP_PATH" "$DMG_PATH" "$RELEASE_ROOT" "$RELEASE_TAG"
-
-      - name: Stage final public macOS release assets
-        run: |
-          BUNDLE_ROOT="target/universal-apple-darwin/release/bundle"
           MACOS_RELEASE="$RUNNER_TEMP/macos-release"
-          BUILD_DMG_NAME="$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
-          PUBLIC_DMG_NAME="$(jq -r '.assets.dmg' <<< "$RELEASE_METADATA")"
+          TAURI_UPDATER_NAME="$(jq -r '.tauriUpdaterName' <<< "$RELEASE_METADATA")"
           UPDATER_NAME="$(jq -r '.assets.macosUpdater' <<< "$RELEASE_METADATA")"
           mkdir -p "$MACOS_RELEASE"
           cp \
-            "$BUNDLE_ROOT/dmg/$BUILD_DMG_NAME" \
-            "$MACOS_RELEASE/$PUBLIC_DMG_NAME"
-          cp "$BUNDLE_ROOT/release/$UPDATER_NAME" "$MACOS_RELEASE/"
-          cp "$BUNDLE_ROOT/release/$UPDATER_NAME.sig" "$MACOS_RELEASE/"
-          cp "$BUNDLE_ROOT/release/latest.json" "$MACOS_RELEASE/"
+            "$BUNDLE_ROOT/dmg/$(jq -r '.tauriDmgName' <<< "$RELEASE_METADATA")" \
+            "$MACOS_RELEASE/$(jq -r '.assets.dmg' <<< "$RELEASE_METADATA")"
+          cp "$BUNDLE_ROOT/macos/$TAURI_UPDATER_NAME" "$MACOS_RELEASE/$UPDATER_NAME"
+          cp "$BUNDLE_ROOT/macos/$TAURI_UPDATER_NAME.sig" "$MACOS_RELEASE/$UPDATER_NAME.sig"
+          cargo xtask macos-latest-json "$RELEASE_TAG" "$MACOS_RELEASE"
+
+      - name: Verify the signed release assets
+        run: |
+          set -euo pipefail
+          MACOS_RELEASE="$RUNNER_TEMP/macos-release"
+          cargo xtask verify-macos \
+            "target/universal-apple-darwin/release/bundle/macos/$APP_NAME" \
+            "$MACOS_RELEASE/$(jq -r '.assets.dmg' <<< "$RELEASE_METADATA")" \
+            "$MACOS_RELEASE/$(jq -r '.assets.macosUpdater' <<< "$RELEASE_METADATA")" \
+            --release "$RELEASE_TAG"
 
       - name: Preserve final public macOS release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -501,10 +366,7 @@ jobs:
 
       - name: Remove temporary signing files
         if: always()
-        run: |
-          security delete-keychain "$RUNNER_TEMP/broadcast-signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/developer-id.p12"
-          rm -f "$RUNNER_TEMP/app-store-connect.p8"
+        run: rm -f "$RUNNER_TEMP/app-store-connect.p8"
 
   draft-release:
     name: Create draft release
@@ -526,10 +388,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: false
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+          shared-key: ubuntu-24.04-x64
+          cache-bin: false
+          save-if: false
 
       - name: Restore final public macOS release assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -565,7 +437,7 @@ jobs:
              | .platforms["linux-x86_64-appimage"] = {signature: $appimage_signature, url: $appimage_url}' \
             "$LATEST_PATH" > "$LATEST_PATH.linux"
           mv "$LATEST_PATH.linux" "$LATEST_PATH"
-          node scripts/verify-linux-updater.mjs \
+          cargo xtask verify-linux-updater \
             "$LINUX_DEB" \
             "$LINUX_APPIMAGE" \
             "$LATEST_PATH" \

@@ -141,12 +141,13 @@ so packaging infrastructure is edited only once.
         `broadcast-server`. The composer-reference module moves to `web/src`, its only
         user, and the Codex slash-command snapshot to `crates/server/assets`. The launcher
         runs only inside the desktop app, so `npm run codex*` is gone.
-        `scripts/migrate-to-cloud.mjs` and its wrangler adapter stay Node: they are ops
-        tooling that drives wrangler, not runtime.
+        `scripts/migrate-to-cloud.ts` and its wrangler adapter stay TypeScript on Node:
+        they are ops tooling that drives wrangler, not runtime.
   - [x] `apps/desktop` (from `src-tauri/`) joins the Cargo workspace on edition 2024, so one
         `Cargo.lock` and one `target/` serve every crate and Tauri writes bundles to
-        `target/<triple>/release/bundle`. `default-members` is `crates/*`: the cloud
-        worker builds only for wasm32 and the desktop needs staged resources.
+        `target/<triple>/release/bundle`. `default-members` is `crates/*` and `xtask`:
+        the cloud worker builds only for wasm32 and the desktop needs its bundle
+        resources built first.
         `apps/web` (from `web/`) builds into `apps/web/dist`, the server's default static
         directory and the worker's assets. The userscript moves to `crates/codex/assets`.
   - [x] pnpm workspace: `apps/web` (`@broadcast/web`) owns the web dependencies and its own
@@ -160,8 +161,7 @@ so packaging infrastructure is edited only once.
         then every suite against fresh builds).
   - [x] CI installs every toolchain with `prefix-dev/setup-pixi` from `pixi.lock`; the
         macOS jobs use the `macos-release` environment. The release-preflight and
-        draft-release jobs only run Node scripts, so they keep `setup-node` instead of
-        downloading the Rust environment.
+        draft-release jobs run `cargo xtask`, so they set up pixi as well.
   - [x] The CLI no longer reads `.data/launcher-runtime.json`, which only the deleted Node
         launcher wrote: with no runtime descriptor it talks to `http://127.0.0.1:47823`.
   - [x] `packages/api-types` (ts-rs) is not adopted. The Rust records carry `status`,
@@ -169,14 +169,18 @@ so packaging infrastructure is edited only once.
         web's literal unions; the HTTP and CLI suites are the API contract instead.
         Revisit only together with enum-typed record fields.
 - [ ] Release check — universal DMG build, signing and notarization with pixi Rust
-  - [x] `pnpm app:prepare --target universal-apple-darwin` and `tauri build` in the
-        `macos-release` environment produce a universal (x86_64 + arm64) `Broadcast.app`
-        whose launcher and `broadcast-cli` sidecar are both fat binaries.
-  - [x] Signing, preflight and release verification check the `broadcast-cli` sidecar in
-        place of the bundled Node: same Team ID, no entitlements, and `--help` runs.
-        `verify-packaged-broadcast` drives the packaged CLI against `broadcast-server`
-        through a launcher runtime descriptor; it and the ad-hoc-signed App, updater and
-        DMG preflight pass locally.
+  - [x] `tauri build --target universal-apple-darwin` in the `macos-release` environment
+        produces a universal (x86_64 + arm64) `Broadcast.app` whose launcher and
+        `broadcast-cli` sidecar are both fat binaries. Its `beforeBuildCommand` builds the
+        web and the sidecar (`cargo xtask sidecar`); `bundle.resources` maps the web build,
+        the skill and the checked-in `broadcast` wrapper straight from the source tree.
+  - [x] Tauri signs the sidecar and the App, notarizes and staples the App, and signs the
+        DMG and the updater archive; the release workflow only notarizes the DMG.
+        `cargo xtask verify-macos` checks that the App, the DMG and the updater archive
+        carry one signed App whose `broadcast-cli --help` runs, and with `--release` the
+        Team ID, notarization and `latest.json`. `cargo xtask verify-packaged-cli` drives
+        the packaged CLI against `broadcast-server` through a launcher runtime descriptor.
+        Both pass locally on an ad-hoc-signed build with a throwaway updater key.
   - [ ] Developer ID signing and notarization run only in the release workflow.
   - [x] Tauri CLI 2.12.4 skips its `--target` check when `rustup target list` fails, and
         pixi sets `RUSTUP_TOOLCHAIN=pixi`, so a runner's rustup (whose toolchain lacks

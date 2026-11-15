@@ -3,6 +3,9 @@
   "bundle": {
     "targets": ["deb", "appimage"],
     "createUpdaterArtifacts": false,
+    "resources": {
+      "wrappers/linux/broadcast": "bin/broadcast"
+    },
     "icon": ["../web/public/codex-app-icon.png"]
   }
 }

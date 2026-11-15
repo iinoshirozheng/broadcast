@@ -13,7 +13,6 @@ cloud-migration-exports/
 /workflow-telemetry.json
 /apps/desktop/binaries/
 /apps/desktop/gen/
-/apps/desktop/resources/
 .pixi/
 /target/
 /apps/cloud/build/

@@ -8,8 +8,8 @@
 
 流程复用 `pnpm app:build:windows`，运行环境与现有 Windows CI 一致：
 GitHub-hosted `windows-2025`，工具链由 `setup-pixi` 按 `pixi.lock` 安装。
-该命令通过 `scripts/prepare-tauri-app.mjs` 和 `scripts/tauri-build.mjs`，
-按 `apps/desktop/tauri.windows.conf.json` 生成 NSIS 安装程序。
+该命令运行 `tauri build`：其 `beforeBuildCommand` 构建 Web 与 `broadcast-cli` sidecar
+（`cargo xtask sidecar`），再按 `apps/desktop/tauri.windows.conf.json` 生成 NSIS 安装程序。
 
 | 构建文件（相对于 `target/x86_64-pc-windows-msvc/release/`） | ZIP 根目录文件 |
 | --- | --- |

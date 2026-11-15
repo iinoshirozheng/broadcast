@@ -3,6 +3,9 @@
   "bundle": {
     "targets": ["nsis"],
     "createUpdaterArtifacts": false,
+    "resources": {
+      "wrappers/windows/broadcast.cmd": "bin/broadcast.cmd"
+    },
     "icon": ["../web/public/codex-app-icon.png", "icons/icon.ico"],
     "windows": {
       "nsis": {

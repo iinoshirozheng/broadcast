@@ -1,1 +1,2 @@
 tests/fixtures/attachment.txt -text
+apps/desktop/wrappers/windows/*.cmd text eol=crlf

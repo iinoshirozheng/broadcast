@@ -3,6 +3,13 @@
   "productName": "Broadcast",
   "version": "1.1.27",
   "identifier": "com.iinoshirozheng.broadcast",
+  "build": {
+    "beforeBuildCommand": "pnpm build:web && cargo xtask sidecar",
+    "beforeDevCommand": {
+      "script": "pnpm build:web && cargo xtask sidecar",
+      "wait": true
+    }
+  },
   "app": {
     "windows": []
   },
@@ -14,7 +21,8 @@
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/broadcast-cli"],
     "resources": {
-      "resources/": ""
+      "../web/dist/": "web/",
+      "../../skills/manage-broadcast/": "skills/manage-broadcast/"
     },
     "icon": ["../web/public/codex-app-icon.png", "icons/icon.icns"],
     "macOS": {
