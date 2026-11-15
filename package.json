@@ -12,7 +12,7 @@
     "dev:cloud": "pnpm build:web && wrangler dev --local",
     "build:web": "pnpm --filter @broadcast/web build",
     "typecheck": "pnpm --filter @broadcast/web typecheck",
-    "test": "node --test 'test/*.test.mjs' && pnpm --filter @broadcast/web test",
+    "test": "node --test \"test/*.test.mjs\" && pnpm --filter @broadcast/web test",
     "test:e2e": "e2e run",
     "test:cloud": "node --test test/cloud-shared-worker.test.mjs",
     "app:prepare": "pnpm build:web && node scripts/prepare-tauri-app.mjs",

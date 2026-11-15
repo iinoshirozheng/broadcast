@@ -58,15 +58,15 @@ test("release signing is tag-only and PR CI builds the real unsigned app bundle"
   assert.match(releaseWorkflow, /sign-macos-app\.mjs/);
   assert.match(releaseWorkflow, /notarytool submit/);
   assert.match(releaseWorkflow, /stapler validate/);
-  assert.match(checkWorkflow, /tauri -- build/);
+  assert.match(checkWorkflow, /pnpm tauri build/);
   assert.match(checkWorkflow, /--bundles app/);
   assert.match(checkWorkflow, /--no-sign/);
 });
 
-test("Windows CI runs the Node suite and the unsigned launcher skips unsupported updates", () => {
+test("Windows CI runs the test suite and the unsigned launcher skips unsupported updates", () => {
   assert.match(
     checkWorkflow,
-    /windows-launcher:[\s\S]*?run: npm test[\s\S]*?run: npm run app:build:windows/,
+    /windows-launcher:[\s\S]*?run: pixi run test[\s\S]*?run: pnpm app:build:windows/,
   );
   assert.match(launcherSource, /cfg!\(target_os = "windows"\)[\s\S]*?Windows 版本暂不支持自动更新/);
 });

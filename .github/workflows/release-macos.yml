@@ -201,16 +201,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Set up Rust 1.88
-        uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: x86_64-unknown-linux-gnu
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: false
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -235,14 +231,14 @@ jobs:
             wget
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build Ubuntu 24.04 x64 packages and updater
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: >-
-          npm run app:build:linux:x64 --
+          pnpm app:build:linux:x64
           --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       - name: Verify Ubuntu 24.04 x64 package contents
@@ -291,16 +287,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Set up Rust 1.88
-        uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: x86_64-pc-windows-msvc
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: false
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -310,10 +302,10 @@ jobs:
           cache-bin: false
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build unsigned Windows x64 Preview
-        run: npm run app:build:windows
+        run: pnpm app:build:windows
 
       - name: Preserve unsigned Windows x64 Preview
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -341,19 +333,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Set up Rust 1.88
-        uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Remove unused preinstalled Rust toolchain
-        run: rustup toolchain uninstall stable
+          pixi-version: v0.76.1
+          environments: macos-release
+          activate-environment: true
+          cache-write: false
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -363,10 +349,10 @@ jobs:
           cache-bin: false
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Prepare universal app resources
-        run: npm run app:prepare -- --target universal-apple-darwin
+        run: pnpm app:prepare --target universal-apple-darwin
 
       - name: Import Developer ID certificate
         env:
@@ -488,7 +474,7 @@ jobs:
           APP_PATH="$BUNDLE_ROOT/macos/$APP_NAME"
           DMG_PATH="$BUNDLE_ROOT/dmg/$(jq -r '.buildDmgName' <<< "$RELEASE_METADATA")"
           RELEASE_ROOT="$BUNDLE_ROOT/release"
-          npm run app:verify-release -- "$APP_PATH" "$DMG_PATH" "$RELEASE_ROOT" "$RELEASE_TAG"
+          pnpm app:verify-release "$APP_PATH" "$DMG_PATH" "$RELEASE_ROOT" "$RELEASE_TAG"
 
       - name: Stage final public macOS release assets
         run: |

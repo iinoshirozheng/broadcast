@@ -24,21 +24,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: x86_64-pc-windows-msvc
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: false
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
           shared-key: signpath-windows-test-x64
           cache-bin: false
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Build the existing unsigned Windows target
-        run: npm run app:build:windows
+        run: pnpm app:build:windows
 
       - name: Stage only the project launcher and outer NSIS installer
         id: stage

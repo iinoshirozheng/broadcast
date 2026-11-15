@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test 'test/*.test.mjs' && vitest run src/components/MarkdownDocument.test.tsx --environment jsdom"
+    "test": "node --test \"test/*.test.mjs\" && vitest run src/components/MarkdownDocument.test.tsx --environment jsdom"
   },
   "dependencies": {
     "dhtmlx-gantt": "^10.0.0",

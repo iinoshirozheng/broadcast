@@ -23,6 +23,8 @@ build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
 dev = { cmd = "pnpm dev", depends-on = ["install-js"] }
 # The HTTP, CLI, injector and cloud suites run against target/debug and apps/cloud/build.
 test = { cmd = "pnpm test", depends-on = ["build-native", "build-web", { task = "build-cloud", environment = "cloud" }] }
+# Playwright against the Rust server and the built web app (`.e2e/results/` on failure).
+test-e2e = { cmd = "pnpm test:e2e", depends-on = ["build-native", "build-web"] }
 lint = { cmd = "cargo clippy --all-targets -- -D warnings && pnpm typecheck && pnpm lint", depends-on = ["install-js", { task = "lint-cloud", environment = "cloud" }] }
 fmt = { cmd = "cargo fmt --all && pnpm format", depends-on = ["install-js"] }
 check = { depends-on = ["lint", "test"] }

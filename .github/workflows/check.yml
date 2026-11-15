@@ -224,17 +224,23 @@ jobs:
     needs: main-check-scope
     if: ${{ !cancelled() && (github.event_name != 'push' || needs['main-check-scope'].outputs.run_full != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run check
+          pixi-version: v0.76.1
+          environments: default cloud
+          activate-environment: default
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+          shared-key: ubuntu-check
+          cache-bin: false
+      - run: pixi run check
       - name: Record tested PR merge tree
         if: github.event_name == 'pull_request'
         env:
@@ -269,20 +275,24 @@ jobs:
     needs: main-check-scope
     if: ${{ !cancelled() && (github.event_name != 'push' || needs['main-check-scope'].outputs.run_full != 'false') && (github.event_name != 'pull_request' || needs['main-check-scope'].outputs.run_e2e != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+          shared-key: ubuntu-check
+          cache-bin: false
       - name: Install the Playwright Chromium browser
-        run: npx -y playwright@1.64.0 install --with-deps chromium
-      - run: npm run build:web
-      - run: npm run test:e2e
+        run: pnpm dlx playwright@1.64.0 install --with-deps chromium
+      - run: pixi run test-e2e
         env:
           E2E_TELEMETRY_DISABLED: "1"
       - name: Preserve e2e failure artifacts
@@ -304,25 +314,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - name: Remove unused preinstalled Rust toolchain
-        run: rustup toolchain uninstall stable
+          pixi-version: v0.76.1
+          environments: macos-release
+          activate-environment: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
           shared-key: macos-universal
           cache-bin: false
-      - run: npm ci
-      - run: npm run app:prepare -- --target universal-apple-darwin
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm app:prepare --target universal-apple-darwin
       - name: Build the unsigned universal app bundle
         run: >-
-          npm run tauri -- build
+          pnpm tauri build
           --target universal-apple-darwin
           --bundles app
           --no-sign
@@ -330,11 +337,11 @@ jobs:
       - run: test -d "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
       - name: Verify packaged broadcast and inherited listener
         run: >-
-          npm run app:verify-packaged-broadcast --
+          pnpm app:verify-packaged-broadcast
           "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
       - name: Verify secretless App, updater, and DMG preflight
         run: >-
-          npm run app:preflight --
+          pnpm app:preflight
           "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
 
   windows-launcher:
@@ -347,23 +354,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: x86_64-pc-windows-msvc
+          pixi-version: v0.76.1
+          environments: default cloud
+          activate-environment: default
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
           shared-key: windows-x64
           cache-bin: false
-      - run: npm ci
-      - name: Run the Windows Node.js test suite
-        run: npm test
+      - name: Run the server, CLI and cloud suites on Windows
+        run: pixi run test
       - name: Build the unsigned NSIS installer
-        run: npm run app:build:windows
+        run: pnpm app:build:windows
       - name: Preserve the unsigned NSIS installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -381,13 +386,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          node-version: 22
-          cache: npm
-      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
-        with:
-          targets: x86_64-unknown-linux-gnu
+          pixi-version: v0.76.1
+          activate-environment: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: . -> target
@@ -407,9 +410,9 @@ jobs:
             libxdo-dev \
             patchelf \
             wget
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Build the Ubuntu 24.04 x64 packages
-        run: npm run app:build:linux:x64
+        run: pnpm app:build:linux:x64
       - name: Verify the Ubuntu 24.04 x64 package contents
         run: >-
           node scripts/verify-linux-packages.mjs
