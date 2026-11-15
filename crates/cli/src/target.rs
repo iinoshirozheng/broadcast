@@ -11,13 +11,6 @@ use crate::error::{CliError, Result, usage};
 
 pub const DEFAULT_API_URL: &str = "http://127.0.0.1:47823";
 
-/// The descriptor the source launcher writes in this checkout's `.data` directory. Packaged
-/// wrappers point `BROADCAST_RUNTIME_FILE` at the app's own data directory instead.
-const SOURCE_RUNTIME_FILE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../.data/launcher-runtime.json"
-);
-
 pub struct Target {
     pub url: String,
     /// Under WSL the Windows launcher's loopback endpoint is reached through `curl.exe`.
@@ -75,6 +68,7 @@ pub fn broadcast_base_url(env: &Env) -> Result<Target> {
             windows_transport: true,
         }]
     } else {
+        // Inside WSL, the Windows desktop's descriptor; elsewhere the default local server.
         let windows = if wsl { wsl_runtime_file() } else { None };
         windows
             .map(|path| Candidate {
@@ -83,11 +77,6 @@ pub fn broadcast_base_url(env: &Env) -> Result<Target> {
                 windows_transport: true,
             })
             .into_iter()
-            .chain([Candidate {
-                path: SOURCE_RUNTIME_FILE.into(),
-                required: false,
-                windows_transport: false,
-            }])
             .collect()
     };
 
