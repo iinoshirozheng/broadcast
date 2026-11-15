@@ -1156,8 +1156,8 @@ test("one-time Wrangler adapter migrates and verifies local persistence without 
   ).d1_databases[0].database_id;
   const miniflare = new Miniflare({
     modules: true,
-    scriptPath: path.join(projectRoot, "cloud", "src", "index.mjs"),
-    modulesRoot: projectRoot,
+    scriptPath: path.join(projectRoot, "apps", "cloud", "build", "index.js"),
+    modulesRules: [{ type: "CompiledWasm", include: ["**/*.wasm"] }],
     compatibilityDate: "2026-07-24",
     bindings: {
       BROADCAST_ENVIRONMENT: "production",

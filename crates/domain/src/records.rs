@@ -40,7 +40,8 @@ pub struct ThreadBinding {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum DevelopmentContext {
     Branch { branch: String },
-    Worktree { path: String, branch: Option<String> },
+    /// The cloud board never keeps a worktree path.
+    Worktree { path: Option<String>, branch: Option<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

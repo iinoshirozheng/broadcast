@@ -83,13 +83,52 @@ pub struct Attribution {
 fn attribution(body: &Object) -> Result<Attribution> {
     let thread_id = fields::thread_id(body.get("threadId"))?;
     let thread_binding = thread_binding(body.get("threadBinding"))?;
+    let agent_session = input_agent_session(body)?;
+    Ok(Attribution { thread_id, thread_binding, agent_session })
+}
+
+/// `parseInputAgentSession`.
+fn input_agent_session(body: &Object) -> Result<Option<Option<AgentSession>>> {
     let agent_session = agent_session(body.get("agentSession"))?;
     if matches!(agent_session, Some(Some(_))) && body.contains_key("threadId") {
         return Err(ApiError::invalid_field(
             "Use agentSession or Codex threadId for controller attribution, not both",
         ));
     }
-    Ok(Attribution { thread_id, thread_binding, agent_session })
+    Ok(agent_session)
+}
+
+/// Parses a defined `developmentContext`: the local or the cloud rules.
+pub type DevelopmentContextParser = fn(&Value) -> Result<Option<DevelopmentContext>>;
+
+/// `parseDevelopmentContext` of the cloud worker: a worktree path is checked but never kept.
+pub fn cloud_development_context(value: &Value) -> Result<Option<DevelopmentContext>> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let object = fields::plain_object(value)?;
+    match object.get("type").and_then(Value::as_str) {
+        Some("branch") => {
+            fields::assert_allowed_keys(object, &["type", "branch"])?;
+            let branch = fields::required_string(object.get("branch"), "developmentContext.branch", 512)?;
+            Ok(Some(DevelopmentContext::Branch { branch }))
+        }
+        Some("worktree") => {
+            fields::assert_allowed_keys(object, &["type", "path", "branch"])?;
+            let path = fields::optional_string(object.get("path"), "developmentContext.path", 4096)?;
+            if path.is_some_and(|path| path.contains('\0')) {
+                return Err(ApiError::invalid_field("'developmentContext.path' cannot contain null bytes"));
+            }
+            let branch = fields::nullable_string(
+                nullish(object.get("branch")).or(Some(&NULL)),
+                "developmentContext.branch",
+                512,
+            )?
+            .flatten();
+            Ok(Some(DevelopmentContext::Worktree { path: None, branch }))
+        }
+        _ => Err(ApiError::invalid_field("'developmentContext.type' must be branch or worktree")),
+    }
 }
 
 /// `parseDevelopmentContext` for a defined value.
@@ -116,7 +155,7 @@ pub fn development_context(value: &Value) -> Result<Option<DevelopmentContext>> 
                 512,
             )?
             .flatten();
-            Ok(Some(DevelopmentContext::Worktree { path, branch }))
+            Ok(Some(DevelopmentContext::Worktree { path: Some(path), branch }))
         }
         _ => Err(ApiError::invalid_field("'developmentContext.type' must be branch or worktree")),
     }
@@ -155,7 +194,7 @@ pub struct TaskCreate {
     pub recurrence: Option<Recurrence>,
 }
 
-pub fn task_create(body: &Value) -> Result<TaskCreate> {
+pub fn task_create(body: &Value, development_context: DevelopmentContextParser) -> Result<TaskCreate> {
     let body = fields::object(
         body,
         &[
@@ -209,19 +248,19 @@ pub struct TaskPatch {
     pub assignee_target: Option<AssigneeTarget>,
 }
 
-pub fn task_patch(body: &Value) -> Result<TaskPatch> {
-    let body = fields::object(
+fn task_patch_body(body: &Value) -> Result<&Object> {
+    fields::object(
         body,
         &[
             "version", "projectId", "title", "description", "status", "priority", "labels", "threadId",
             "threadBinding", "agentSession", "assigneeTarget", "developmentContext", "startDate", "dueDate",
             "recurrence",
         ],
-    )?;
-    let version = fields::version(body.get("version"), false)?;
-    let attribution = attribution(body)?;
-    let assignee_target = fields::assignee_target(body.get("assigneeTarget"))?;
-    let changes = TaskChanges {
+    )
+}
+
+fn task_patch_changes(body: &Object, development_context: DevelopmentContextParser) -> Result<TaskChanges> {
+    Ok(TaskChanges {
         project_id: body.get("projectId").map(|value| fields::project_id(Some(value))).transpose()?,
         title: body.get("title").map(|value| fields::required_string(Some(value), "title", 240)).transpose()?,
         description: fields::optional_string(body.get("description"), "description", 100_000)?,
@@ -233,13 +272,44 @@ pub fn task_patch(body: &Value) -> Result<TaskPatch> {
         due_date: fields::due_date(body.get("dueDate"), "dueDate")?,
         recurrence: body.get("recurrence").map(fields::recurrence).transpose()?,
         assignee: None,
-    };
+    })
+}
+
+fn assert_task_patch_fields(
+    changes: &TaskChanges,
+    assignee_target: Option<&AssigneeTarget>,
+    agent_session: Option<&Option<AgentSession>>,
+) -> Result<()> {
+    if changes.entries().is_empty() && assignee_target.is_none() && agent_session.is_none() {
+        return Err(ApiError::new(400, "INVALID_BODY", "PATCH requires at least one task field"));
+    }
+    Ok(())
+}
+
+pub fn task_patch(body: &Value) -> Result<TaskPatch> {
+    let body = task_patch_body(body)?;
+    let version = fields::version(body.get("version"), false)?;
+    let attribution = attribution(body)?;
+    let assignee_target = fields::assignee_target(body.get("assigneeTarget"))?;
+    let changes = task_patch_changes(body, development_context)?;
     if matches!(changes.recurrence, Some(Some(_))) && body.get("dueDate").is_some_and(Value::is_null) {
         return Err(ApiError::invalid_field("A recurring issue requires 'dueDate'"));
     }
-    if changes.entries().is_empty() && assignee_target.is_none() && attribution.agent_session.is_none() {
-        return Err(ApiError::new(400, "INVALID_BODY", "PATCH requires at least one task field"));
-    }
+    assert_task_patch_fields(&changes, assignee_target.as_ref(), attribution.agent_session.as_ref())?;
+    Ok(TaskPatch { version, changes, attribution, assignee_target })
+}
+
+/// `parseCloudTaskPatch`: the cloud worker's validation order, without the recurrence check.
+pub fn cloud_task_patch(body: &Value) -> Result<TaskPatch> {
+    let body = task_patch_body(body)?;
+    let agent_session = input_agent_session(body)?;
+    let changes = task_patch_changes(body, cloud_development_context)?;
+    let assignee_target = fields::assignee_target(body.get("assigneeTarget"))?;
+    assert_task_patch_fields(&changes, assignee_target.as_ref(), agent_session.as_ref())?;
+    let version = fields::version(body.get("version"), false)?;
+    let thread_id = fields::thread_id(body.get("threadId"))?;
+    let thread_binding = thread_binding(body.get("threadBinding"))?;
+    let attribution = Attribution { thread_id, thread_binding, agent_session };
     Ok(TaskPatch { version, changes, attribution, assignee_target })
 }
 
@@ -338,6 +408,19 @@ fn assert_query_parameters(query: &Query, allowed: &[&str], repeated_code: &'sta
     Ok(())
 }
 
+/// The cloud worker's wording of `assertTaskQueryParameters`.
+fn assert_cloud_query_parameters(query: &Query, allowed: &[&str], repeated_code: &'static str) -> Result<()> {
+    for (key, _) in query {
+        if !allowed.contains(&key.as_str()) {
+            return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("Unknown query parameter: {key}")));
+        }
+        if query.iter().filter(|(other, _)| other == key).count() > 1 {
+            return Err(ApiError::new(400, repeated_code, format!("'{key}' cannot be repeated")));
+        }
+    }
+    Ok(())
+}
+
 fn query_value<'a>(query: &'a Query, key: &str) -> Option<&'a str> {
     query.iter().find(|(name, _)| name == key).map(|(_, value)| value.as_str())
 }
@@ -376,6 +459,26 @@ pub fn task_filters(query: &Query) -> Result<TaskFilters> {
     Ok(TaskFilters { project_id, status: status.map(str::to_owned), archived })
 }
 
+/// `parseCloudTaskFilters`.
+pub fn cloud_task_filters(query: &Query) -> Result<TaskFilters> {
+    assert_cloud_query_parameters(query, &["projectId", "status", "archived"], "INVALID_QUERY_PARAMETER")?;
+    let project_id = query_value(query, "projectId")
+        .map(|id| fields::project_id(Some(&Value::String(id.to_owned()))))
+        .transpose()?;
+    let status = query_value(query, "status")
+        .map(|status| fields::status(Some(&Value::String(status.to_owned())), None))
+        .transpose()?;
+    let archived = match query_value(query, "archived").unwrap_or("false") {
+        "false" => Archived::Exclude,
+        "true" => Archived::Only,
+        "all" => Archived::All,
+        _ => {
+            return Err(ApiError::new(400, "INVALID_QUERY_PARAMETER", "'archived' must be false, true, or all"));
+        }
+    };
+    Ok(TaskFilters { project_id, status: status.map(str::to_owned), archived })
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TaskTreeQuery {
     pub direction: &'static str,
@@ -384,6 +487,16 @@ pub struct TaskTreeQuery {
 
 pub fn task_tree_query(query: &Query) -> Result<TaskTreeQuery> {
     assert_query_parameters(query, &["direction", "depth"], "INVALID_TREE_QUERY")?;
+    task_tree_query_values(query)
+}
+
+/// `parseCloudTaskTreeQuery`.
+pub fn cloud_task_tree_query(query: &Query) -> Result<TaskTreeQuery> {
+    assert_cloud_query_parameters(query, &["direction", "depth"], "INVALID_TREE_QUERY")?;
+    task_tree_query_values(query)
+}
+
+fn task_tree_query_values(query: &Query) -> Result<TaskTreeQuery> {
     let direction = match query_value(query, "direction") {
         Some("descendants") => "descendants",
         Some("ancestors") => "ancestors",
@@ -409,6 +522,20 @@ pub struct ProjectReadmeSave {
 
 pub fn project_readme_save(body: &Value) -> Result<ProjectReadmeSave> {
     let body = fields::object(body, &["content", "version"])?;
+    let content = project_readme_content(body)?;
+    let version = body.get("version").map(|value| fields::version(Some(value), true)).transpose()?;
+    Ok(ProjectReadmeSave { content, version })
+}
+
+/// `parseCloudProjectReadmeSave`: the version is checked before the content.
+pub fn cloud_project_readme_save(body: &Value) -> Result<ProjectReadmeSave> {
+    let body = fields::object(body, &["version", "content"])?;
+    let version = body.get("version").map(|value| fields::version(Some(value), true)).transpose()?;
+    let content = project_readme_content(body)?;
+    Ok(ProjectReadmeSave { content, version })
+}
+
+fn project_readme_content(body: &Object) -> Result<String> {
     let content = match nullish(body.get("content")) {
         None => String::new(),
         Some(Value::String(content)) => content.clone(),
@@ -417,6 +544,5 @@ pub fn project_readme_save(body: &Value) -> Result<ProjectReadmeSave> {
     if js::len(&content) > 500_000 {
         return Err(ApiError::invalid_field("'content' cannot exceed 500000 characters"));
     }
-    let version = body.get("version").map(|value| fields::version(Some(value), true)).transpose()?;
-    Ok(ProjectReadmeSave { content, version })
+    Ok(content)
 }

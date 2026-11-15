@@ -8,7 +8,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
-use broadcast_domain::{ApiError, Error, Result};
+use broadcast_domain::{ApiError, Error, Result, attachment};
 use broadcast_store::NewAttachment;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
@@ -22,9 +22,6 @@ use crate::http::{
 
 const BODY_LIMIT: usize = 25 * 1024 * 1024;
 const TOO_LARGE: &str = "Attachment cannot exceed 25 MiB";
-const INLINE_TYPES: &[&str] =
-    &["application/pdf", "image/avif", "image/gif", "image/jpeg", "image/png", "image/webp", "text/plain"];
-
 fn directory(app: &App) -> PathBuf {
     app.config.data_dir.join("attachments")
 }
@@ -148,12 +145,7 @@ pub async fn content(State(app): State<Arc<App>>, request: Request) -> Reply {
         .await?
         .ok_or_else(|| not_found(&id))?;
     let body = tokio::fs::read(directory(&app).join(&stored_id)).await.map_err(Error::from)?;
-    let inline = open_inline && (INLINE_TYPES.contains(&content_type.as_str()) || content_type.starts_with("video/"));
-    let disposition = format!(
-        "{}; filename*=UTF-8''{}",
-        if inline { "inline" } else { "attachment" },
-        encode_filename(&filename)
-    );
+    let (disposition, media_type) = attachment::content_headers(&filename, &content_type, open_inline);
     let length = body.len();
     let mut response = Response::new(if head { Body::empty() } else { Body::from(body) });
     let headers = response.headers_mut();
@@ -161,7 +153,6 @@ pub async fn content(State(app): State<Arc<App>>, request: Request) -> Reply {
     headers.insert(header::CONTENT_DISPOSITION, HeaderValue::from_str(&disposition).map_err(Error::from)?);
     headers.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'"));
-    let media_type = if inline { content_type.as_str() } else { "application/octet-stream" };
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_str(media_type).map_err(Error::from)?);
     Ok(response)
 }
@@ -188,20 +179,6 @@ pub async fn item(State(app): State<Arc<App>>, request: Request) -> Reply {
         .await?;
     app.events.emit("attachment.deleted", json!({ "attachment": attachment, "task": task }));
     Ok(empty(StatusCode::NO_CONTENT))
-}
-
-/// `encodeURIComponent`, plus `'()*` which RFC 5987 also reserves.
-fn encode_filename(filename: &str) -> String {
-    const UNRESERVED: &[u8] = b"-_.!~";
-    let mut encoded = String::with_capacity(filename.len());
-    for byte in filename.bytes() {
-        if byte.is_ascii_alphanumeric() || UNRESERVED.contains(&byte) {
-            encoded.push(char::from(byte));
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
 }
 
 /// An owned copy of an upload's record, movable onto the blocking pool.

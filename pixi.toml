@@ -22,6 +22,18 @@ rust-std-x86_64-apple-darwin = "1.100.*"
 
 [feature.cloud.dependencies]
 rust-std-wasm32-unknown-unknown = "1.100.*"
+# Must equal the `wasm-bindgen` crate version in Cargo.lock.
+wasm-bindgen-cli = "0.2.130.*"
+binaryen = "*"
+
+[feature.cloud.activation.env]
+WASM_BINDGEN_BIN = "wasm-bindgen"
+WASM_OPT_BIN = "wasm-opt"
+
+[feature.cloud.tasks]
+# worker-build is not on conda-forge; it must match the `worker` crate version.
+install-worker-build = "cargo install worker-build@0.8.7 --locked --root $CONDA_PREFIX"
+build-cloud = { cmd = "worker-build --release", cwd = "apps/cloud", depends-on = ["install-worker-build"] }
 
 [environments]
 default = { features = ["dev"], solve-group = "main" }

@@ -17,3 +17,4 @@ src-tauri/resources/
 src-tauri/target/
 .pixi/
 /target/
+/apps/cloud/build/

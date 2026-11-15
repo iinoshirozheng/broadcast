@@ -43,7 +43,7 @@ pub async fn collection(State(app): State<Arc<App>>, request: Request) -> Reply 
         }
         "POST" => {
             let actor = actor::from_headers(request.headers())?;
-            let mut input = input::task_create(&read_json(request).await?)?;
+            let mut input = input::task_create(&read_json(request).await?, input::development_context)?;
             input.attribution = app.host.resolve(input.attribution);
             if input.project_id == JIRA_PROJECT_ID {
                 return Err(conflict(

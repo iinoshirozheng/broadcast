@@ -85,7 +85,7 @@ impl ThreadColumns {
 /// `taskFromRow`, with empty enrichment fields.
 pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
     let development_context = match (filled(row.get("worktree_path")?), filled(row.get("git_branch")?)) {
-        (Some(path), _) => Some(DevelopmentContext::Worktree { path, branch: row.get("worktree_branch")? }),
+        (Some(path), _) => Some(DevelopmentContext::Worktree { path: Some(path), branch: row.get("worktree_branch")? }),
         (None, Some(branch)) => Some(DevelopmentContext::Branch { branch }),
         (None, None) => None,
     };

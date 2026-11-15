@@ -5,7 +5,7 @@ use broadcast_domain::records::{
     Actor, AgentSession, Attachment, ConversationRef, ConversationTarget, DevelopmentContext, FieldChange, Task,
     TaskChanges, TaskRelations, ThreadBinding, comment_conversation_title,
 };
-use broadcast_domain::{ApiError, Result};
+use broadcast_domain::{ApiError, Result, sql};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
 use serde_json::{Value, json};
@@ -451,7 +451,7 @@ fn merged_labels(project: &[String], extra: &[String]) -> Vec<String> {
 fn context_values(context: Option<&DevelopmentContext>) -> [Option<String>; 3] {
     match context {
         Some(DevelopmentContext::Branch { branch }) => [Some(branch.clone()), None, None],
-        Some(DevelopmentContext::Worktree { path, branch }) => [None, Some(path.clone()), branch.clone()],
+        Some(DevelopmentContext::Worktree { path, branch }) => [None, path.clone(), branch.clone()],
         None => [None, None, None],
     }
 }
@@ -637,7 +637,7 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
     for chunk in ids.chunks(CHUNK) {
         let placeholders = vec!["?"; chunk.len()].join(", ");
 
-        let mut statement = connection.prepare(&relations_query(&placeholders))?;
+        let mut statement = connection.prepare(&sql::task_relations_query(&placeholders))?;
         let mut rows = statement.query(params_from_iter(chunk))?;
         while let Some(row) = rows.next()? {
             let task_relations = relations.entry(row.get("relation_task_id")?).or_default();
@@ -708,37 +708,6 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
         attach_activity(task, task_comments, task_changes, previews.remove(&task.id));
     }
     Ok(tasks)
-}
-
-/// `taskRelationsQuery`: both edge directions of every selected task.
-fn relations_query(placeholders: &str) -> String {
-    format!(
-        "WITH selected_tasks AS (
-           SELECT id FROM tasks WHERE id IN ({placeholders})
-         ), relation_targets AS (
-           SELECT
-             selected_tasks.id AS task_id,
-             task_relations.target_task_id AS related_task_id,
-             CASE task_relations.relation_type
-               WHEN 'parent' THEN 'subIssues' WHEN 'blocks' THEN 'blocks' WHEN 'related' THEN 'related'
-             END AS relation_field
-           FROM selected_tasks
-           JOIN task_relations ON task_relations.source_task_id = selected_tasks.id
-           UNION ALL
-           SELECT
-             selected_tasks.id AS task_id,
-             task_relations.source_task_id AS related_task_id,
-             CASE task_relations.relation_type
-               WHEN 'parent' THEN 'parent' WHEN 'blocks' THEN 'blockedBy' WHEN 'related' THEN 'related'
-             END AS relation_field
-           FROM selected_tasks
-           JOIN task_relations ON task_relations.target_task_id = selected_tasks.id
-         )
-         SELECT tasks.*, relation_targets.task_id AS relation_task_id, relation_targets.relation_field
-         FROM relation_targets
-         JOIN tasks ON tasks.id = relation_targets.related_task_id
-         ORDER BY tasks.sort_order, tasks.created_at, tasks.id"
-    )
 }
 
 /// `attachTaskActivity`.

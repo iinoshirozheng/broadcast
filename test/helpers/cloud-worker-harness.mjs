@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const ENTRY_PATH = path.join(PROJECT_ROOT, "cloud", "src", "index.mjs");
-const MIGRATIONS_PATH = path.join(PROJECT_ROOT, "cloud", "migrations");
+const ENTRY_PATH = path.join(PROJECT_ROOT, "apps", "cloud", "build", "index.js");
+const MIGRATIONS_PATH = path.join(PROJECT_ROOT, "apps", "cloud", "migrations");
 
 async function requireCloudImplementation() {
   const missing = [];
@@ -32,7 +32,7 @@ export async function createCloudWorkerHarness({
   const miniflare = new Miniflare({
     modules: true,
     scriptPath: ENTRY_PATH,
-    modulesRoot: PROJECT_ROOT,
+    modulesRules: [{ type: "CompiledWasm", include: ["**/*.wasm"] }],
     compatibilityDate: "2026-07-24",
     bindings: {
       BROADCAST_ENVIRONMENT: "production",
