@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +13,19 @@ export const SERVER_BIN =
 export const CLI_BIN =
   process.env.BROADCAST_CLI_BIN ??
   fileURLToPath(new URL("../../target/debug/broadcast", import.meta.url));
+
+// Writes a Node script the server can spawn as an executable and returns its path: the script
+// itself where a shebang runs it, and a `.cmd` that runs it with this Node on Windows.
+export async function writeNodeExecutable(basePath, source) {
+  const script = `${basePath}.mjs`;
+  await writeFile(script, `#!/usr/bin/env node\n${source}`);
+  if (process.platform !== "win32") {
+    await chmod(script, 0o755);
+    return script;
+  }
+  await writeFile(`${basePath}.cmd`, `@"${process.execPath}" "${script}" %*\r\n`);
+  return `${basePath}.cmd`;
+}
 
 // Starts the server binary on an ephemeral loopback port with its data in `directory`.
 // Options map to the environment the server reads.

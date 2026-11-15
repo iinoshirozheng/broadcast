@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { startNativeServer } from "./helpers/native-server.mjs";
+import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.mjs";
 
 // The fake Codex CLI the fixture installs. Kept at module scope so the
 // template literal is not nested inside the fixture body.
-const FAKE_CODEX_SCRIPT = `#!/usr/bin/env node
-const args = process.argv.slice(2);
+const FAKE_CODEX_SCRIPT = `const args = process.argv.slice(2);
 if (args[0] === "debug") {
   process.stdout.write('{"models":[{"slug":"gpt-real","display_name":"GPT Real","description":"","default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"service_tiers":[]}]}');
 } else if (args[0] === "app-server") {
@@ -37,17 +36,10 @@ async function createServerFixture(host = "127.0.0.1", { withCodex = true } = {}
   const workspacePath = path.join(directory, "workspace");
   await mkdir(workspacePath);
   const workspace = await realpath(workspacePath);
-  // A machine without the Codex CLI has no such executable at all. The path
-  // must not end in a Node script extension: executableCommand() would then
-  // route it through process.execPath and the failure would be
-  // MODULE_NOT_FOUND rather than the spawn ENOENT this case reproduces.
+  // A machine without the Codex CLI has no such executable at all.
   const codexExecutable = withCodex
-    ? path.join(directory, "fake-codex.mjs")
+    ? await writeNodeExecutable(path.join(directory, "fake-codex"), FAKE_CODEX_SCRIPT)
     : path.join(directory, "codex-not-installed");
-  if (withCodex) {
-    await writeFile(codexExecutable, FAKE_CODEX_SCRIPT);
-    await chmod(codexExecutable, 0o755);
-  }
   const codexStatePath = path.join(directory, "codex-state.json");
   await writeFile(
     codexStatePath,

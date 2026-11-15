@@ -1,19 +1,17 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
 import { composerReferencePersistence } from "../apps/web/src/composerReference.mjs";
-import { startNativeServer } from "./helpers/native-server.mjs";
+import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.mjs";
 
 test("composer rebind HTTP API returns send-ready documents and boundary errors", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-composer-rebind-api-"));
-  const executable = path.join(directory, "fake-codex.mjs");
-  await writeFile(
-    executable,
-    `#!/usr/bin/env node
-const args = process.argv.slice(2);
+  const executable = await writeNodeExecutable(
+    path.join(directory, "fake-codex"),
+    `const args = process.argv.slice(2);
 if (args[0] !== "app-server") process.exit(2);
 process.stdin.setEncoding("utf8");
 let buffer = "";
@@ -40,7 +38,6 @@ process.stdin.on("data", (chunk) => {
 });
 `,
   );
-  await chmod(executable, 0o755);
   const dataDirectory = path.join(directory, "data");
   const options = {
     codexExecutable: executable,

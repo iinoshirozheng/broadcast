@@ -394,7 +394,10 @@ test("trusted HTTPS origins apply to cloud WebSocket upgrades without widening l
   const upstreamServer = createServer();
   const upstreamWebSockets = new WebSocketServer({ noServer: true });
   upstreamServer.on("upgrade", (request, socket, head) => {
-    upstreamWebSockets.handleUpgrade(request, socket, head, () => {});
+    // Stopping the server process on Windows resets its relayed upstream sockets.
+    upstreamWebSockets.handleUpgrade(request, socket, head, (webSocket) =>
+      webSocket.on("error", () => {}),
+    );
   });
   await new Promise((resolve) => upstreamServer.listen(0, "127.0.0.1", resolve));
   const upstreamAddress = upstreamServer.address();
