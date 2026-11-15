@@ -26,6 +26,11 @@ export const MENTIONABLE_AGENTS: readonly MentionableAgent[] = [
   { actor: CLAUDE_AGENT_ACTOR, handle: "claude" },
 ];
 
+// Claude Agent is "claude-agent" on a local board and "<user id>:claude-agent" on a cloud board.
+export function isClaudeAgentId(id: string): boolean {
+  return id === CLAUDE_AGENT_ACTOR.id || id.endsWith(`:${CLAUDE_AGENT_ACTOR.id}`);
+}
+
 export function actorKey(actor: ActorIdentity): string {
   return `${actor.type}:${actor.id}`;
 }
@@ -43,7 +48,6 @@ export function assigneeTargetForActor(
   actor: ActorIdentity,
   currentUser: ActorIdentity,
 ): AssigneeTarget | undefined {
-  if (actor.type === "agent")
-    return actor.id === CLAUDE_AGENT_ACTOR.id ? "claude-agent" : "codex-agent";
+  if (actor.type === "agent") return isClaudeAgentId(actor.id) ? "claude-agent" : "codex-agent";
   return actor.id === currentUser.id ? "current-user" : undefined;
 }

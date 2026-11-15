@@ -3763,6 +3763,32 @@ kbd {
   font-size: 10px;
 }
 
+.runner-notice {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: var(--border-hairline) solid color-mix(in srgb, var(--warning) 45%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.runner-notice strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.runner-notice p {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+}
+
+.runner-notice code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+}
+
 .comment-composer {
   margin: 18px 0 0;
   overflow: hidden;

@@ -472,6 +472,14 @@ export interface JiraConnection {
   insecureHttp: boolean;
 }
 
+// An agent runner that sent a heartbeat recently; ownerId is the user it works for on a cloud board.
+export interface RunnerPresence {
+  agentId: string;
+  agentName: string;
+  ownerId: string | null;
+  lastSeenAt: string;
+}
+
 export interface Comment {
   id: string;
   taskId: string;

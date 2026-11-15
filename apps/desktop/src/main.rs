@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod claude_runner;
+
 #[cfg(target_os = "macos")]
 use dispatch2::{MainThreadBound, run_on_main};
 use futures_util::{
@@ -148,6 +150,7 @@ struct LauncherState {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     codex_port: Mutex<Option<u16>>,
     _instance_lock: File,
+    claude_runner: Arc<claude_runner::ClaudeRunner>,
     data_directory: PathBuf,
     log_path: PathBuf,
 }
@@ -409,6 +412,7 @@ impl LauncherState {
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             codex_port: Mutex::new(None),
             _instance_lock: instance_lock,
+            claude_runner: Arc::new(claude_runner::ClaudeRunner::load(&data_directory)),
             data_directory,
             log_path: log_directory.join("broadcast-launcher.log"),
         }
@@ -1297,6 +1301,7 @@ fn missing_codex_app_message() -> String {
 }
 
 fn stop_service_locked(app: &AppHandle, state: &Arc<LauncherState>) {
+    state.claude_runner.detach();
     state.generation.fetch_add(1, Ordering::SeqCst);
     state.intentional_stop.store(true, Ordering::SeqCst);
     let service = state.service.lock().unwrap().take();
@@ -1453,6 +1458,11 @@ fn start_launcher_locked(
     let cdp = broadcast_codex::Cdp::Pipe;
     let instance_token = Uuid::new_v4().to_string();
     let instance_secret = Uuid::new_v4().to_string();
+    let claude_board = url::Url::parse(&format!(
+        "http://{}:{broadcast_port}/{instance_token}/",
+        Ipv4Addr::LOCALHOST
+    ))
+    .map_err(|error| error.to_string())?;
     let version = state.snapshot.lock().unwrap().version.clone();
     #[cfg(target_os = "macos")]
     let codex_source_profile = home_directory.join("Library/Application Support/Codex");
@@ -1524,6 +1534,7 @@ fn start_launcher_locked(
     let mut serving = tokio::spawn(server.serve(listener, async move {
         let _ = shutdown_requested.await;
     }));
+    state.claude_runner.attach(claude_board);
     update_snapshot(app, state, |snapshot| {
         snapshot.message = "任务面板服务已启动，正在注入 Codex…".into();
     });
@@ -2254,6 +2265,7 @@ fn main() {
                 None::<&str>,
             )?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let claude_tray = claude_runner::Tray::new(app, Arc::clone(&state.claude_runner))?;
             #[cfg(target_os = "macos")]
             let tray_menu = Menu::with_items(
                 app,
@@ -2264,6 +2276,8 @@ fn main() {
                     &open_broadcast_web,
                     &restart_codex,
                     &check_update,
+                    &claude_tray.toggle,
+                    &claude_tray.folder,
                     &autostart,
                     &quit,
                 ],
@@ -2278,6 +2292,8 @@ fn main() {
                     &open_broadcast_web,
                     &restart_codex,
                     &check_update,
+                    &claude_tray.toggle,
+                    &claude_tray.folder,
                     &autostart,
                     &quit,
                 ],
@@ -2346,6 +2362,8 @@ fn main() {
                             }
                         });
                     }
+                    "claude-runner" => claude_tray.toggle(app),
+                    "claude-runner-folder" => claude_tray.choose_folder(app, false),
                     "autostart" => {
                         let manager = app.autolaunch();
                         let previous = autostart_confirmed.load(Ordering::SeqCst);

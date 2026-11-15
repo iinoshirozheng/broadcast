@@ -1,5 +1,5 @@
 //! The realtime hub: one Durable Object that fans revisions out to WebSocket clients and keeps
-//! the shared board display settings.
+//! the shared board display settings and the agent runners' last heartbeats.
 
 use broadcast_domain::js;
 use serde_json::{Map, Value, json};
@@ -12,6 +12,9 @@ use worker::{
 use crate::http;
 
 pub const DISPLAY_SETTINGS_PREFIX: &str = "broadcast.project-board-display-settings.v3.";
+const RUNNER_PREFIX: &str = "runner:";
+/// Runners beat every 15 seconds; three missed beats mark the agent offline.
+const RUNNER_PRESENCE_MS: f64 = 45_000.0;
 
 fn failed<T>(error: crate::error::Failure) -> Result<T> {
     Err(match error {
@@ -72,6 +75,47 @@ impl RealtimeHub {
         }
     }
 
+    /// PUT records a runner's heartbeat; GET lists the runners heard from within the window.
+    async fn runners(&self, mut request: Request) -> crate::error::Result<Response> {
+        let storage = self.state.storage();
+        match request.method() {
+            Method::Get => {
+                let stored = storage
+                    .list_with_options(ListOptions::new().prefix(RUNNER_PREFIX))
+                    .await?;
+                let now = worker::js_sys::Date::now();
+                let mut runners = Vec::new();
+                for entry in stored.entries() {
+                    let entry = worker::js_sys::Array::from(&entry.map_err(Error::from)?);
+                    let runner: Value =
+                        serde_json::from_str(&entry.get(1).as_string().unwrap_or_default())
+                            .unwrap_or(Value::Null);
+                    let seen = worker::js_sys::Date::parse(
+                        runner["lastSeenAt"].as_str().unwrap_or_default(),
+                    );
+                    if now - seen < RUNNER_PRESENCE_MS {
+                        runners.push(runner);
+                    }
+                }
+                http::json(200, &json!({ "runners": runners }))
+            }
+            Method::Put => {
+                let runner: Value = request.json().await?;
+                let key = format!(
+                    "{RUNNER_PREFIX}{}",
+                    runner["agentId"].as_str().unwrap_or_default()
+                );
+                storage.put(&key, runner.to_string()).await?;
+                http::empty(204)
+            }
+            _ => {
+                let mut response = error(405, "METHOD_NOT_ALLOWED", "Method not allowed")?;
+                response.headers_mut().set("allow", "GET, PUT")?;
+                Ok(response)
+            }
+        }
+    }
+
     async fn broadcast(&self, mut request: Request) -> crate::error::Result<Response> {
         let payload: Value = request.json().await?;
         let Some(revision) =
@@ -115,6 +159,7 @@ impl DurableObject for RealtimeHub {
                 Response::from_websocket(pair.client)
             }
             "/client-storage" => respond(self.client_storage(request).await),
+            "/runners" => respond(self.runners(request).await),
             "/broadcast" if request.method() == Method::Post => {
                 respond(self.broadcast(request).await)
             }

@@ -7,14 +7,15 @@ use url::Url;
 
 use crate::args::Parsed;
 use crate::error::{CliError, Result, usage};
-use crate::target::DEFAULT_API_URL;
+use crate::target::{self, Env};
 
 /// Returns once a shutdown signal stops the runner.
 pub async fn claude(parsed: &Parsed) -> Result<()> {
     parsed.expect_operands(0)?;
+    // Without --url, the board the other commands use: BROADCAST_URL or the running app's.
     let url = match parsed.option("url") {
         Some(url) => url.to_owned(),
-        None => std::env::var("BROADCAST_URL").unwrap_or_else(|_| DEFAULT_API_URL.to_owned()),
+        None => target::broadcast_base_url(&Env::new(None))?.url,
     };
     let url = Url::parse(&url).map_err(|_| usage("Runner URL must be a valid URL"))?;
     let cwd = match parsed.option("cwd") {

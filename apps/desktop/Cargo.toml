@@ -11,6 +11,7 @@ publish.workspace = true
 tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
+broadcast-agents.workspace = true
 broadcast-codex.workspace = true
 broadcast-server.workspace = true
 futures-util.workspace = true
@@ -23,6 +24,7 @@ tauri-plugin-autostart = "2.5.1"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-updater = "2.10.1"
 tokio.workspace = true
+url.workspace = true
 uuid.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

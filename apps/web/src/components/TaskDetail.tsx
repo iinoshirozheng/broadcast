@@ -56,6 +56,7 @@ import type {
 } from "../types";
 import { AGENT_ACTORS, MENTIONABLE_AGENTS, actorKey, assigneeTargetForActor } from "../actors";
 import { ActorAvatar } from "./ActorAvatar";
+import { ClaudeRunnerNotice } from "./ClaudeRunnerNotice";
 import { STATUS_DETAILS } from "./BoardColumn";
 import { LabelPicker } from "./LabelPicker";
 import { LinearIcon } from "./LinearIcon";
@@ -1680,6 +1681,8 @@ export function TaskDetail({
                     : text(commentsError[0], commentsError[1])}
                 </div>
               )}
+
+              {!commentsLoading && <ClaudeRunnerNotice task={currentTask} comments={comments} />}
 
               <form
                 className="comment-composer"

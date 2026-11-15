@@ -345,6 +345,7 @@ dependencies = [
 name = "broadcast-launcher"
 version = "1.1.27"
 dependencies = [
+ "broadcast-agents",
  "broadcast-codex",
  "broadcast-server",
  "dispatch2",
@@ -362,6 +363,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-updater",
  "tokio",
+ "url",
  "uuid",
  "windows 0.61.3",
 ]

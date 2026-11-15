@@ -12,6 +12,7 @@ mod host;
 mod http;
 mod jira;
 mod routes;
+mod runners;
 mod static_files;
 mod trust;
 
@@ -40,6 +41,7 @@ pub(crate) struct App {
     codex_sessions: codex::progress::Sessions,
     ai: ai::AiChat,
     summary: ai::summary::ProjectSummaries,
+    runners: runners::Runners,
     config: Config,
 }
 
@@ -100,6 +102,7 @@ impl Server {
             codex_sessions: codex::progress::Sessions::new(&config.codex_home),
             ai,
             summary,
+            runners: runners::Runners::default(),
             config,
         };
         let host_bridge = Some(HostBridge {

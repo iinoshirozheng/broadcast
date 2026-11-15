@@ -25,6 +25,7 @@ import type {
   ProjectReadme,
   ProjectReadmeAttachment,
   ProjectSummary,
+  RunnerPresence,
   Task,
   TaskChangeActivity,
   BroadcastMetadata,
@@ -677,6 +678,11 @@ export async function removeTaskRelation(
       }),
     },
   );
+}
+
+export async function listRunners(signal?: AbortSignal): Promise<RunnerPresence[]> {
+  const data = await request<{ runners: RunnerPresence[] }>("/api/runners", { signal });
+  return data.runners;
 }
 
 export async function listComments(taskId: string, signal?: AbortSignal): Promise<Comment[]> {

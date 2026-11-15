@@ -6,7 +6,8 @@ use serde_json::{Value, json};
 use worker::{D1Database, Method, Request, Response, Url};
 
 use crate::attachments::Owner;
-use crate::board::{Board, Cursor};
+use crate::auth;
+use crate::board::{self, Board, Cursor};
 use crate::db::{self, value};
 use crate::error::Result;
 use crate::http::{self, JSON_BODY_LIMIT, JSON_BODY_TOO_LARGE, method_not_allowed};
@@ -208,6 +209,36 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             )
         }
         ["client-storage"] => client_storage(board, request, query).await,
+        ["runners"] => {
+            if method != Method::Get {
+                return method_not_allowed(&["GET"]);
+            }
+            require_no_query(query, "GET /api/runners")?;
+            Ok(hub::send(&board.env, Method::Get, "/runners", None).await?)
+        }
+        ["runners", "claude"] => {
+            if method != Method::Put {
+                return method_not_allowed(&["PUT"]);
+            }
+            require_no_query(query, "PUT /api/runners/claude")?;
+            let actor = &board.actor;
+            if !actor.id.ends_with(":claude-agent") {
+                return Err(ApiError::new(
+                    403,
+                    "CLAUDE_RUNNER_REQUIRED",
+                    "Only the Claude runner sends this heartbeat",
+                )
+                .into());
+            }
+            let runner = json!({
+                "agentId": actor.id,
+                "agentName": actor.name,
+                "ownerId": auth::user_id(&actor.username),
+                "lastSeenAt": board::now(),
+            });
+            hub::send(&board.env, Method::Put, "/runners", Some(&runner)).await?;
+            http::json(200, &json!({ "runner": runner }))
+        }
         ["revisions"] => {
             if method != Method::Get {
                 return method_not_allowed(&["GET"]);

@@ -17,7 +17,7 @@ use crate::http;
 const SESSION_COOKIE_NAME: &str = "__Host-broadcast_session";
 const SESSION_MAX_AGE_SECONDS: i64 = 24 * 60 * 60;
 
-/// The signed-in user, or the Codex agent acting for them.
+/// The signed-in user, or the Codex or Claude agent acting for them.
 pub struct Actor {
     pub kind: &'static str,
     pub id: String,
@@ -38,7 +38,7 @@ pub struct Session {
     pub cookie: Option<String>,
 }
 
-fn user_id(username: &str) -> String {
+pub fn user_id(username: &str) -> String {
     format!(
         "basic:{}",
         js::encode_uri_component(&username.to_lowercase())
@@ -52,15 +52,21 @@ fn codex_agent(username: &str) -> (String, String) {
     )
 }
 
-/// `resolveAssignee`: the actor itself, or the actor's Codex agent.
+fn claude_agent(username: &str) -> (String, String) {
+    (
+        format!("{}:claude-agent", user_id(username)),
+        format!("Claude Agent ({username})"),
+    )
+}
+
+/// `resolveAssignee`: the actor itself, or the actor's own Codex or Claude agent.
 pub fn resolve_assignee(target: Option<AssigneeTarget>, actor: &Actor) -> Value {
-    match target {
-        None | Some(AssigneeTarget::CurrentUser) => actor.record(),
-        Some(_) => {
-            let (id, name) = codex_agent(&actor.username);
-            json!({ "type": "agent", "id": id, "name": name, "avatarUrl": null })
-        }
-    }
+    let (id, name) = match target {
+        None | Some(AssigneeTarget::CurrentUser) => return actor.record(),
+        Some(AssigneeTarget::CodexAgent) => codex_agent(&actor.username),
+        Some(AssigneeTarget::ClaudeAgent) => claude_agent(&actor.username),
+    };
+    json!({ "type": "agent", "id": id, "name": name, "avatarUrl": null })
 }
 
 /// `atob`: forgiving base64 that ignores ASCII whitespace and missing padding.
@@ -181,21 +187,24 @@ pub fn authenticate(request: &Request, env: &Env) -> Result<Option<Session>> {
             None => return Ok(None),
         },
     };
-    let actor = if headers.get("x-broadcast-client")?.as_deref() == Some("broadcast") {
-        let (id, name) = codex_agent(&username);
-        Actor {
+    let agent = match headers.get("x-broadcast-client")?.as_deref() {
+        Some("broadcast") => Some(codex_agent(&username)),
+        Some("claude-runner") => Some(claude_agent(&username)),
+        _ => None,
+    };
+    let actor = match agent {
+        Some((id, name)) => Actor {
             kind: "agent",
             id,
             name,
             username,
-        }
-    } else {
-        Actor {
+        },
+        None => Actor {
             kind: "user",
             id: user_id(&username),
             name: username.clone(),
             username,
-        }
+        },
     };
     Ok(Some(Session { actor, cookie }))
 }

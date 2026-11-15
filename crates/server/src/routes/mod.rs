@@ -10,6 +10,7 @@ mod local;
 mod projects;
 mod readme;
 mod relations;
+mod runners;
 mod tasks;
 
 use std::sync::Arc;
@@ -76,6 +77,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/attachments/{id}/content", any(attachments::content))
         .route("/api/attachments/{id}/download", any(attachments::content))
         .route("/api/client-storage", any(client_storage::client_storage))
+        .route("/api/runners", any(runners::collection))
+        .route("/api/runners/claude", any(runners::claude))
         .route("/api/local/host-runtime", any(local::host_runtime))
         .route(
             "/api/local/codex-thread-progress",
