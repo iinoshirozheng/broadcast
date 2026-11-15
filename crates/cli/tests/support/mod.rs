@@ -68,8 +68,11 @@ impl Board {
             .env_clear()
             .env("BROADCAST_URL", &self.url)
             .env("CODEX_THREAD_ID", "test-thread");
-        if let Some(path) = std::env::var_os("PATH") {
-            command.env("PATH", path);
+        // Windows sockets need `SystemRoot`, which Node's child processes always inherit.
+        for name in ["PATH", "SystemRoot"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
         }
         let output = tokio::task::spawn_blocking(move || command.output())
             .await
