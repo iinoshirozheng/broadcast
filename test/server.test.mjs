@@ -89,8 +89,10 @@ async function openWebSocket(url, headers) {
       client.terminate();
       resolve(101);
     });
-    client.once("unexpected-response", (_request, response) => {
-      response.resume();
+    client.once("unexpected-response", (request, response) => {
+      // Node keeps the refused upgrade's socket open without an error listener; a server
+      // stopped on Windows would reset it.
+      request.destroy();
       resolve(response.statusCode);
     });
     client.once("error", reject);
@@ -394,10 +396,7 @@ test("trusted HTTPS origins apply to cloud WebSocket upgrades without widening l
   const upstreamServer = createServer();
   const upstreamWebSockets = new WebSocketServer({ noServer: true });
   upstreamServer.on("upgrade", (request, socket, head) => {
-    // Stopping the server process on Windows resets its relayed upstream sockets.
-    upstreamWebSockets.handleUpgrade(request, socket, head, (webSocket) =>
-      webSocket.on("error", () => {}),
-    );
+    upstreamWebSockets.handleUpgrade(request, socket, head, () => {});
   });
   await new Promise((resolve) => upstreamServer.listen(0, "127.0.0.1", resolve));
   const upstreamAddress = upstreamServer.address();

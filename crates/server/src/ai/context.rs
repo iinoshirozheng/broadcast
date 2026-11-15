@@ -43,7 +43,8 @@ pub async fn existing_directory(value: &str) -> Option<String> {
         .await
         .ok()?
         .is_dir()
-        .then(|| resolved.to_string_lossy().into_owned())
+        // Windows canonical paths are verbatim (`\\?\C:\…`); report the ordinary form.
+        .then(|| dunce::simplified(&resolved).to_string_lossy().into_owned())
 }
 
 /// `loadDeviceWorkspaces`: Codex project roots, then board projects' own workspaces.

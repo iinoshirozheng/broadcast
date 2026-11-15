@@ -9,6 +9,8 @@ import { startNativeServer, writeNodeExecutable } from "./helpers/native-server.
 
 test("composer rebind HTTP API returns send-ready documents and boundary errors", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "broadcast-composer-rebind-api-"));
+  // Codex reports skill paths in the host's absolute form (a drive letter on Windows).
+  const skillPath = path.resolve("/server-only/real-skill/SKILL.md");
   const executable = await writeNodeExecutable(
     path.join(directory, "fake-codex"),
     `const args = process.argv.slice(2);
@@ -27,7 +29,7 @@ process.stdin.on("data", (chunk) => {
     }
     if (message.method === "skills/list" && message.id !== undefined) {
       process.stdout.write(JSON.stringify({id:message.id,result:{data:[{skills:[{
-        name:"real-skill",enabled:true,path:"/server-only/real-skill/SKILL.md",
+        name:"real-skill",enabled:true,path:${JSON.stringify(skillPath)},
         description:"Real skill",interface:{displayName:"Real Skill"}
       }]}]}}) + "\\n");
     }
@@ -83,7 +85,7 @@ process.stdin.on("data", (chunk) => {
     assert.equal(skillCandidatesResponse.status, 200);
     const skillCandidates = await skillCandidatesResponse.json();
     assert.equal(skillCandidates.candidates[0].persistence.referenceKey, persistence.referenceKey);
-    assert.equal(JSON.stringify(skillCandidates).includes("/server-only"), false);
+    assert.equal(JSON.stringify(skillCandidates).includes("server-only"), false);
 
     const response = await fetch(`${baseUrl}/api/local/ai/composer/rebind`, {
       method: "POST",
@@ -113,7 +115,7 @@ process.stdin.on("data", (chunk) => {
       ["text", "skill"],
     );
     assert.equal(rebound.bindings[0].label, "Real Skill");
-    assert.equal(JSON.stringify(rebound).includes("/server-only"), false);
+    assert.equal(JSON.stringify(rebound).includes("server-only"), false);
     assert.equal(
       app.database.database.prepare("SELECT COUNT(*) AS count FROM ai_chat_events").get().count,
       0,
