@@ -4,7 +4,9 @@ use broadcast_domain::ApiError;
 use broadcast_domain::input::RelationMutation;
 use serde_json::{Value, json};
 
-use crate::board::{Board, assert_task_version, attribution_assignments, now, version_conflict, TASK_CHANGED};
+use crate::board::{
+    Board, TASK_CHANGED, assert_task_version, attribution_assignments, now, version_conflict,
+};
 use crate::db::{self, Row, args, integer, text};
 use crate::error::Result;
 use crate::records;
@@ -17,39 +19,66 @@ struct Endpoints {
 
 /// `relationEndpoints`: the stored edge for a relation seen from `task`.
 fn endpoints(kind: &str, task: &str, related: &str) -> Result<Endpoints> {
-    let edge = |kind, source: &str, target: &str| Endpoints { kind, source: source.to_owned(), target: target.to_owned() };
+    let edge = |kind, source: &str, target: &str| Endpoints {
+        kind,
+        source: source.to_owned(),
+        target: target.to_owned(),
+    };
     Ok(match kind {
         "parent" => edge("parent", related, task),
         "blocks" => edge("blocks", task, related),
         "blocked_by" => edge("blocks", related, task),
         "related" => {
-            let (source, target) = if related < task { (related, task) } else { (task, related) };
+            let (source, target) = if related < task {
+                (related, task)
+            } else {
+                (task, related)
+            };
             edge("related", source, target)
         }
         _ => {
-            return Err(ApiError::invalid_field("'relation type' must be parent, blocks, blocked_by, or related").into());
+            return Err(ApiError::invalid_field(
+                "'relation type' must be parent, blocks, blocked_by, or related",
+            )
+            .into());
         }
     })
 }
 
 fn issue_reference(project: &str, issue: &str) -> String {
-    let query = form_urlencoded::Serializer::new(String::new()).append_pair("project", project).append_pair("issue", issue).finish();
+    let query = form_urlencoded::Serializer::new(String::new())
+        .append_pair("project", project)
+        .append_pair("issue", issue)
+        .finish();
     format!("](?{query})")
 }
 
 impl Board {
     /// `assertRelationTasks`.
-    async fn relation_tasks(&self, task_id: &str, related_id: &str, version: i64) -> Result<(Row, Row)> {
+    async fn relation_tasks(
+        &self,
+        task_id: &str,
+        related_id: &str,
+        version: i64,
+    ) -> Result<(Row, Row)> {
         let task = self.require_task_row(task_id).await?;
         let related = self.require_task_row(related_id).await?;
         assert_task_version(&task, version)?;
         if text(&task, "id") == text(&related, "id") {
-            return Err(ApiError::new(400, "SELF_RELATION", "An issue cannot be related to itself").into());
+            return Err(ApiError::new(
+                400,
+                "SELF_RELATION",
+                "An issue cannot be related to itself",
+            )
+            .into());
         }
         if text(&task, "project_id") != text(&related, "project_id") {
-            return Err(
-                ApiError::new(400, "CROSS_PROJECT_RELATION", "Issue relations must stay within one project").into()
-            );
+            return Err(ApiError::new(
+                400,
+                "CROSS_PROJECT_RELATION",
+                "Issue relations must stay within one project",
+            )
+            .into());
         }
         Ok((task, related))
     }
@@ -61,18 +90,34 @@ impl Board {
         }))
     }
 
-    fn touch_statement(&self, task: &Row, input: &RelationMutation, timestamp: &str, guard: &str) -> Result<worker::D1PreparedStatement> {
+    fn touch_statement(
+        &self,
+        task: &Row,
+        input: &RelationMutation,
+        timestamp: &str,
+        guard: &str,
+    ) -> Result<worker::D1PreparedStatement> {
         let (attributed, mut values) = attribution_assignments(task, &input.attribution);
         values.extend(args![timestamp, text(task, "id"), input.version]);
         db::statement(
             &self.db,
-            format!("UPDATE tasks SET {attributed}version = version + 1, updated_at = ? WHERE id = ? AND version = ?{guard}"),
+            format!(
+                "UPDATE tasks SET {attributed}version = version + 1, updated_at = ? WHERE id = ? AND version = ?{guard}"
+            ),
             values,
         )
     }
 
-    pub async fn add_relation(&self, task_id: &str, kind: &str, related_id: &str, input: &RelationMutation) -> Result<Value> {
-        let (task, related) = self.relation_tasks(task_id, related_id, input.version).await?;
+    pub async fn add_relation(
+        &self,
+        task_id: &str,
+        kind: &str,
+        related_id: &str,
+        input: &RelationMutation,
+    ) -> Result<Value> {
+        let (task, related) = self
+            .relation_tasks(task_id, related_id, input.version)
+            .await?;
         let id = text(&task, "id");
         let edge = endpoints(kind, id, text(&related, "id"))?;
         let timestamp = now();
@@ -94,7 +139,12 @@ impl Board {
             )
             .await?;
             if cycle.is_some() {
-                return Err(ApiError::new(409, "RELATION_CYCLE", "This parent would create a cycle").into());
+                return Err(ApiError::new(
+                    409,
+                    "RELATION_CYCLE",
+                    "This parent would create a cycle",
+                )
+                .into());
             }
             let existing = db::first(
                 &self.db,
@@ -105,7 +155,12 @@ impl Board {
             if let Some(existing) = existing {
                 let parent_id = text(&existing, "source_task_id");
                 if parent_id == text(&related, "id") {
-                    return Err(ApiError::new(409, "RELATION_EXISTS", "This parent relation already exists").into());
+                    return Err(ApiError::new(
+                        409,
+                        "RELATION_EXISTS",
+                        "This parent relation already exists",
+                    )
+                    .into());
                 }
                 let parent = self.require_task_row(parent_id).await?;
                 previous = records::relation_activity_value(kind, &records::task(&parent));
@@ -125,7 +180,12 @@ impl Board {
             )
             .await?;
             if existing.is_some() {
-                return Err(ApiError::new(409, "RELATION_EXISTS", "This issue relation already exists").into());
+                return Err(ApiError::new(
+                    409,
+                    "RELATION_EXISTS",
+                    "This issue relation already exists",
+                )
+                .into());
             }
         }
         statements.push(db::statement(
@@ -142,20 +202,41 @@ impl Board {
             "before": previous,
             "after": records::relation_activity_value(kind, &records::task(&related)),
         });
-        statements.push(self.task_activity_statement(id, &[activity], &timestamp, input.version + 1)?);
+        statements.push(self.task_activity_statement(
+            id,
+            &[activity],
+            &timestamp,
+            input.version + 1,
+        )?);
         let results = match self.db.batch(statements).await {
             Ok(results) => results,
             Err(error) => {
                 let message = db::message(&error);
                 if message.contains("CROSS_PROJECT_RELATION") {
-                    return Err(ApiError::new(400, "CROSS_PROJECT_RELATION", "Issue relations must stay within one project")
-                        .into());
+                    return Err(ApiError::new(
+                        400,
+                        "CROSS_PROJECT_RELATION",
+                        "Issue relations must stay within one project",
+                    )
+                    .into());
                 }
                 if message.contains("RELATION_CYCLE") {
-                    return Err(ApiError::new(409, "RELATION_CYCLE", "This parent would create a cycle").into());
+                    return Err(ApiError::new(
+                        409,
+                        "RELATION_CYCLE",
+                        "This parent would create a cycle",
+                    )
+                    .into());
                 }
-                if message.contains("UNIQUE constraint failed") && message.contains("task_relations") {
-                    return Err(ApiError::new(409, "RELATION_EXISTS", "This issue relation already exists").into());
+                if message.contains("UNIQUE constraint failed")
+                    && message.contains("task_relations")
+                {
+                    return Err(ApiError::new(
+                        409,
+                        "RELATION_EXISTS",
+                        "This issue relation already exists",
+                    )
+                    .into());
                 }
                 return Err(error.into());
             }
@@ -166,8 +247,16 @@ impl Board {
         self.relation_pair(&task, &related).await
     }
 
-    pub async fn remove_relation(&self, task_id: &str, kind: &str, related_id: &str, input: &RelationMutation) -> Result<Value> {
-        let (task, related) = self.relation_tasks(task_id, related_id, input.version).await?;
+    pub async fn remove_relation(
+        &self,
+        task_id: &str,
+        kind: &str,
+        related_id: &str,
+        input: &RelationMutation,
+    ) -> Result<Value> {
+        let (task, related) = self
+            .relation_tasks(task_id, related_id, input.version)
+            .await?;
         let id = text(&task, "id");
         let related_task_id = text(&related, "id");
         let edge = endpoints(kind, id, related_task_id)?;
@@ -227,7 +316,11 @@ impl Board {
                 args![edge.kind, edge.source, edge.target, id, input.version],
             )?
         };
-        let guard = if mention_removal { " AND changes() = 1" } else { "" };
+        let guard = if mention_removal {
+            " AND changes() = 1"
+        } else {
+            ""
+        };
         let activity = json!({
             "field": "relation",
             "before": records::relation_activity_value(kind, &records::task(&related)),

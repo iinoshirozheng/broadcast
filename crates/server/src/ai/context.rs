@@ -39,7 +39,11 @@ pub async fn existing_directory(value: &str) -> Option<String> {
         return None;
     }
     let resolved = tokio::fs::canonicalize(value).await.ok()?;
-    tokio::fs::metadata(&resolved).await.ok()?.is_dir().then(|| resolved.to_string_lossy().into_owned())
+    tokio::fs::metadata(&resolved)
+        .await
+        .ok()?
+        .is_dir()
+        .then(|| resolved.to_string_lossy().into_owned())
 }
 
 /// `loadDeviceWorkspaces`: Codex project roots, then board projects' own workspaces.
@@ -49,9 +53,16 @@ async fn device_workspaces(app: &Arc<App>) -> Result<Vec<(String, String)>> {
         .await
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok());
-    let projects = state.as_ref().and_then(|state| state.get("local-projects")?.as_object());
+    let projects = state
+        .as_ref()
+        .and_then(|state| state.get("local-projects")?.as_object());
     for (project_id, project) in projects.into_iter().flatten() {
-        for root in project.get("rootPaths").and_then(Value::as_array).into_iter().flatten() {
+        for root in project
+            .get("rootPaths")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some(workspace) = existing_directory(root.as_str().unwrap_or_default()).await {
                 workspaces.push((project_id.clone(), workspace));
                 break;
@@ -62,7 +73,9 @@ async fn device_workspaces(app: &Arc<App>) -> Result<Vec<(String, String)>> {
         if workspaces.iter().any(|(id, _)| *id == project.id) {
             continue;
         }
-        if let Some(workspace) = existing_directory(project.workspace_path.as_deref().unwrap_or_default()).await {
+        if let Some(workspace) =
+            existing_directory(project.workspace_path.as_deref().unwrap_or_default()).await
+        {
             workspaces.push((project.id, workspace));
         }
     }
@@ -81,11 +94,20 @@ async fn mapped_workspaces(mappings: &serde_json::Map<String, Value>) -> Vec<(St
 }
 
 fn project_not_found(project_id: &str) -> Error {
-    ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{project_id}' does not exist")).into()
+    ApiError::new(
+        404,
+        "PROJECT_NOT_FOUND",
+        format!("Project '{project_id}' does not exist"),
+    )
+    .into()
 }
 
 /// `resolvedWorkspace`: the project's workspace plus every other known workspace as extra roots.
-fn resolved_workspace(project_id: &str, project_name: String, workspaces: &[(String, String)]) -> Result<Resolved> {
+fn resolved_workspace(
+    project_id: &str,
+    project_name: String,
+    workspaces: &[(String, String)],
+) -> Result<Resolved> {
     let Some((_, workspace_path)) = workspaces.iter().find(|(id, _)| id == project_id) else {
         let message = format!("Project '{project_id}' has no available device workspace");
         return Err(ApiError::new(409, "PROJECT_WORKSPACE_UNAVAILABLE", message).into());
@@ -111,18 +133,32 @@ fn inactive_issue(project_id: &str, issue_id: &str) -> Error {
     ApiError::new(404, "AI_CHAT_ISSUE_NOT_FOUND", message).into()
 }
 
-async fn local_issue(app: &Arc<App>, project_id: &str, issue_id: Option<&str>) -> Result<Option<Issue>> {
-    let Some(issue_id) = issue_id else { return Ok(None) };
+async fn local_issue(
+    app: &Arc<App>,
+    project_id: &str,
+    issue_id: Option<&str>,
+) -> Result<Option<Issue>> {
+    let Some(issue_id) = issue_id else {
+        return Ok(None);
+    };
     let id = issue_id.to_owned();
     match app.store(move |store| store.get_task(&id)).await? {
         Some(task) if task.project_id == project_id && task.archived_at.is_none() => {
-            Ok(Some(Issue { id: task.id, identifier: task.identifier }))
+            Ok(Some(Issue {
+                id: task.id,
+                identifier: task.identifier,
+            }))
         }
         _ => Err(inactive_issue(project_id, issue_id)),
     }
 }
 
-fn remote_resolved(project_id: &str, project_name: String, issue: Option<Issue>, target: &RemoteTarget) -> Resolved {
+fn remote_resolved(
+    project_id: &str,
+    project_name: String,
+    issue: Option<Issue>,
+    target: &RemoteTarget,
+) -> Resolved {
     Resolved {
         workspace_path: target.workspace_path.clone(),
         add_directories: Vec::new(),
@@ -135,7 +171,12 @@ fn remote_resolved(project_id: &str, project_name: String, issue: Option<Issue>,
 
 /// `resolveAiChatContext`: local board projects resolve against this device's workspaces (the
 /// default project falls back to the server's directory); cloud projects against the mappings.
-pub async fn resolve(app: &Arc<App>, project_id: &str, issue_id: Option<&str>, remote: Option<&RemoteTarget>) -> Result<Resolved> {
+pub async fn resolve(
+    app: &Arc<App>,
+    project_id: &str,
+    issue_id: Option<&str>,
+    remote: Option<&RemoteTarget>,
+) -> Result<Resolved> {
     let config = app.cloud.read().await.map_err(Error::from)?;
     if config.remote_url.is_none() {
         let id = project_id.to_owned();
@@ -148,38 +189,63 @@ pub async fn resolve(app: &Arc<App>, project_id: &str, issue_id: Option<&str>, r
         let project = project.ok_or_else(|| project_not_found(project_id))?;
         let workspaces = device_workspaces(app).await?;
         let mut resolved = match resolved_workspace(project_id, project.name.clone(), &workspaces) {
-            Err(Error::Api(error)) if error.code == "PROJECT_WORKSPACE_UNAVAILABLE" && project_id == DEFAULT_PROJECT_ID => Resolved {
-                workspace_path: std::env::current_dir()?.to_string_lossy().into_owned(),
-                add_directories: Vec::new(),
-                project_id: project.id,
-                project_name: project.name,
-                issue: None,
-                remote: None,
-            },
+            Err(Error::Api(error))
+                if error.code == "PROJECT_WORKSPACE_UNAVAILABLE"
+                    && project_id == DEFAULT_PROJECT_ID =>
+            {
+                Resolved {
+                    workspace_path: std::env::current_dir()?.to_string_lossy().into_owned(),
+                    add_directories: Vec::new(),
+                    project_id: project.id,
+                    project_name: project.name,
+                    issue: None,
+                    remote: None,
+                }
+            }
             other => other?,
         };
         resolved.issue = local_issue(app, project_id, issue_id).await?;
         return Ok(resolved);
     }
 
-    let projects = app.cloud_proxy.read_json(app, &config, "/api/projects").await?;
+    let projects = app
+        .cloud_proxy
+        .read_json(app, &config, "/api/projects")
+        .await?;
     let project = projects
         .get("projects")
         .and_then(Value::as_array)
-        .and_then(|projects| projects.iter().find(|project| project.get("id").and_then(Value::as_str) == Some(project_id)))
+        .and_then(|projects| {
+            projects
+                .iter()
+                .find(|project| project.get("id").and_then(Value::as_str) == Some(project_id))
+        })
         .ok_or_else(|| project_not_found(project_id))?;
-    let project_name = project.get("name").and_then(Value::as_str).unwrap_or_default().to_owned();
+    let project_name = project
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
     let issue = match issue_id {
         None => None,
         Some(issue_id) => {
             let path = format!("/api/tasks/{}", js::encode_uri_component(issue_id));
             let payload = app.cloud_proxy.read_json(app, &config, &path).await?;
             let task = payload.get("task").filter(|task| {
-                task.get("projectId").and_then(Value::as_str) == Some(project_id) && task.get("archivedAt").is_none_or(Value::is_null)
+                task.get("projectId").and_then(Value::as_str) == Some(project_id)
+                    && task.get("archivedAt").is_none_or(Value::is_null)
             });
             let task = task.ok_or_else(|| inactive_issue(project_id, issue_id))?;
-            let text = |key: &str| task.get(key).and_then(Value::as_str).unwrap_or_default().to_owned();
-            Some(Issue { id: text("id"), identifier: text("identifier") })
+            let text = |key: &str| {
+                task.get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            Some(Issue {
+                id: text("id"),
+                identifier: text("identifier"),
+            })
         }
     };
     if let Some(target) = remote {

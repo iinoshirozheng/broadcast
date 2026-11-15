@@ -22,10 +22,25 @@ const GLOBAL_WORKSPACE: &str = "__global__";
 
 /// `VERIFIED_SLASH_ACTIONS`: command, label, description, client handler.
 const SLASH_ACTIONS: [(&str, &str, &str, &str); 4] = [
-    ("/new", "New conversation", "Start a new conversation", "new-conversation"),
+    (
+        "/new",
+        "New conversation",
+        "Start a new conversation",
+        "new-conversation",
+    ),
     ("/model", "Model", "Choose the model", "open-model-menu"),
-    ("/reasoning", "Reasoning", "Choose the reasoning effort", "open-reasoning-menu"),
-    ("/compact", "Compact", "Compact this conversation's context", "compact-conversation"),
+    (
+        "/reasoning",
+        "Reasoning",
+        "Choose the reasoning effort",
+        "open-reasoning-menu",
+    ),
+    (
+        "/compact",
+        "Compact",
+        "Compact this conversation's context",
+        "compact-conversation",
+    ),
 ];
 
 pub const COMPACT_HANDLER: &str = "compact-conversation";
@@ -37,7 +52,11 @@ pub fn encode_key(stable_id: &str) -> String {
 
 /// `decodeComposerReferenceKey`: a canonical unpadded base64url key of a non-empty UTF-8 id.
 pub fn decode_key(key: &str) -> Option<String> {
-    if key.is_empty() || !key.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-') {
+    if key.is_empty()
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    {
         return None;
     }
     let decoded = String::from_utf8(URL_SAFE_NO_PAD.decode(key).ok()?).ok()?;
@@ -50,9 +69,16 @@ pub fn nfc(value: &str) -> String {
 
 /// `composerReferencePersistence`: the Markdown marker that persists a reference in board text.
 pub fn persistence(kind: &str, stable_id: &str, label: &str) -> Value {
-    let stable_id = if kind == "skill" { nfc(stable_id) } else { stable_id.to_owned() };
+    let stable_id = if kind == "skill" {
+        nfc(stable_id)
+    } else {
+        stable_id.to_owned()
+    };
     let key = encode_key(&stable_id);
-    let label = label.replace('\\', "\\\\").replace('[', "\\[").replace(']', "\\]");
+    let label = label
+        .replace('\\', "\\\\")
+        .replace('[', "\\[")
+        .replace(']', "\\]");
     json!({
         "format": REFERENCE_FORMAT,
         "kind": kind,
@@ -78,8 +104,15 @@ fn sanitize_skills(entries: &[Value]) -> Vec<ComposerSkill> {
         if skill.get("enabled") != Some(&Value::Bool(true)) {
             continue;
         }
-        let Some(name) = trimmed(skill.get("name")) else { continue };
-        let Some(path) = skill.get("path").and_then(Value::as_str).map(js::trim).filter(|path| Path::new(path).is_absolute()) else {
+        let Some(name) = trimmed(skill.get("name")) else {
+            continue;
+        };
+        let Some(path) = skill
+            .get("path")
+            .and_then(Value::as_str)
+            .map(js::trim)
+            .filter(|path| Path::new(path).is_absolute())
+        else {
             continue;
         };
         let identity = format!("{name}\0{path}");
@@ -107,14 +140,23 @@ pub enum Reference {
 /// A `POST /composer/rebind` document node.
 pub enum RebindNode {
     Text(String),
-    Unsupported { reason_code: &'static str },
-    Persisted { kind: &'static str, stable_id: String },
+    Unsupported {
+        reason_code: &'static str,
+    },
+    Persisted {
+        kind: &'static str,
+        stable_id: String,
+    },
 }
 
 /// A composer turn document node.
 pub enum DocumentNode {
     Text(String),
-    Reference { kind: &'static str, candidate_ref: String, label: String },
+    Reference {
+        kind: &'static str,
+        candidate_ref: String,
+        label: String,
+    },
     Other(String),
 }
 
@@ -161,13 +203,22 @@ fn match_score(query: &str, primaries: &[&str], description: &str) -> i64 {
         return 0;
     }
     let values: Vec<String> = primaries.iter().map(|value| value.to_lowercase()).collect();
-    if let Some(length) = values.iter().filter(|value| value.starts_with(query)).map(|value| js::len(value)).min() {
+    if let Some(length) = values
+        .iter()
+        .filter(|value| value.starts_with(query))
+        .map(|value| js::len(value))
+        .min()
+    {
         return 1000 - i64::try_from(length).unwrap_or(i64::MAX);
     }
     if values.iter().any(|value| value.contains(query)) {
         return 500;
     }
-    if description.to_lowercase().contains(query) { 100 } else { -1 }
+    if description.to_lowercase().contains(query) {
+        100
+    } else {
+        -1
+    }
 }
 
 fn source(kind: &str, available: bool) -> Value {
@@ -193,13 +244,28 @@ fn sources(skills: bool, agents: bool) -> Value {
 
 /// `referenceUnavailable`.
 fn unavailable(node_index: usize, reason_code: &str) -> ApiError {
-    ApiError::new(409, "COMPOSER_REFERENCE_UNAVAILABLE", "A selected composer reference is no longer available")
-        .with_details(json!({ "nodeIndex": node_index, "reasonCode": reason_code }))
+    ApiError::new(
+        409,
+        "COMPOSER_REFERENCE_UNAVAILABLE",
+        "A selected composer reference is no longer available",
+    )
+    .with_details(json!({ "nodeIndex": node_index, "reasonCode": reason_code }))
 }
 
 fn sort_scored(mut scored: Vec<(i64, u8, usize, Value)>) -> Value {
-    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)).then(left.2.cmp(&right.2)));
-    Value::Array(scored.into_iter().map(|(.., candidate)| candidate).collect())
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then(left.1.cmp(&right.1))
+            .then(left.2.cmp(&right.2))
+    });
+    Value::Array(
+        scored
+            .into_iter()
+            .map(|(.., candidate)| candidate)
+            .collect(),
+    )
 }
 
 /// `composerCandidatesForSurface`: board surfaces insert slash commands as text instead of
@@ -210,11 +276,17 @@ pub fn for_surface(mut response: Value, surface: &str, trigger: &str, query: &st
     }
     if trigger != "/" {
         if let Some(candidates) = response.get_mut("candidates").and_then(Value::as_array_mut) {
-            for candidate in candidates.iter_mut().filter(|candidate| candidate["kind"] == "slashAction") {
+            for candidate in candidates
+                .iter_mut()
+                .filter(|candidate| candidate["kind"] == "slashAction")
+            {
                 let text = candidate["insertionText"].clone();
                 if let Some(candidate) = candidate.as_object_mut() {
                     candidate.remove("dispatch");
-                    candidate.insert("selection".to_owned(), json!({ "type": "insertText", "text": text }));
+                    candidate.insert(
+                        "selection".to_owned(),
+                        json!({ "type": "insertText", "text": text }),
+                    );
                 }
             }
         }
@@ -223,7 +295,10 @@ pub fn for_surface(mut response: Value, surface: &str, trigger: &str, query: &st
     let Ok(commands) = catalog::slash_commands() else {
         response["candidates"] = json!([]);
         if let Some(sources) = response.get_mut("sources").and_then(Value::as_array_mut) {
-            for source in sources.iter_mut().filter(|source| source["kind"] == "slash") {
+            for source in sources
+                .iter_mut()
+                .filter(|source| source["kind"] == "slash")
+            {
                 *source = json!({ "kind": "slash", "state": "unavailable", "reasonCode": "SOURCE_UNAVAILABLE" });
             }
         }
@@ -275,18 +350,30 @@ pub struct ComposerCatalog {
 
 impl ComposerCatalog {
     pub fn new(server: AppServer, codex_home: Option<PathBuf>) -> Self {
-        Self { server, codex_home, workspaces: Mutex::new(HashMap::new()) }
+        Self {
+            server,
+            codex_home,
+            workspaces: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Drops every accepted catalog, so the next request issues fresh refs (`skills/changed`).
     pub fn invalidate(&self) {
-        self.workspaces.lock().unwrap_or_else(|poison| poison.into_inner()).clear();
+        self.workspaces
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clear();
     }
 
     async fn agents(&self, workspace: Option<&str>) -> Result<(Vec<Agent>, bool)> {
-        let Some(home) = self.codex_home.clone() else { return Ok((Vec::new(), false)) };
+        let Some(home) = self.codex_home.clone() else {
+            return Ok((Vec::new(), false));
+        };
         let workspace = workspace.map(str::to_owned);
-        Ok(tokio::task::spawn_blocking(move || agents::configured(&home, workspace.as_deref())).await??)
+        Ok(
+            tokio::task::spawn_blocking(move || agents::configured(&home, workspace.as_deref()))
+                .await??,
+        )
     }
 
     async fn skills(&self, workspace: &str, force_reload: bool) -> Option<Vec<Value>> {
@@ -296,38 +383,78 @@ impl ComposerCatalog {
     /// `#acceptCatalog`: keeps the current refs while the catalog is unchanged.
     fn accept(&self, key: &str, skills: Vec<ComposerSkill>, agents: Vec<Agent>) -> Arc<State> {
         let signature = signature(&skills, &agents);
-        let mut workspaces = self.workspaces.lock().unwrap_or_else(|poison| poison.into_inner());
-        if let Some(current) = workspaces.get(key).filter(|current| current.signature == signature) {
+        let mut workspaces = self
+            .workspaces
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(current) = workspaces
+            .get(key)
+            .filter(|current| current.signature == signature)
+        {
             return Arc::clone(current);
         }
-        let identities = skills.iter().map(|skill| skill.identity.clone()).chain(agents.iter().map(Agent::identity));
-        let refs = identities.map(|identity| (identity, uuid::Uuid::new_v4().to_string())).collect();
-        let state = Arc::new(State { revision: uuid::Uuid::new_v4().to_string(), signature, skills, agents, refs });
+        let identities = skills
+            .iter()
+            .map(|skill| skill.identity.clone())
+            .chain(agents.iter().map(Agent::identity));
+        let refs = identities
+            .map(|identity| (identity, uuid::Uuid::new_v4().to_string()))
+            .collect();
+        let state = Arc::new(State {
+            revision: uuid::Uuid::new_v4().to_string(),
+            signature,
+            skills,
+            agents,
+            refs,
+        });
         workspaces.insert(key.to_owned(), Arc::clone(&state));
         state
     }
 
     fn revision(&self, key: &str) -> Option<String> {
-        self.workspaces.lock().unwrap_or_else(|poison| poison.into_inner()).get(key).map(|state| state.revision.clone())
+        self.workspaces
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(key)
+            .map(|state| state.revision.clone())
     }
 
     /// `candidates`: the composer menu for a `@` or `/` trigger.
-    pub async fn candidates(&self, workspace: Option<&str>, trigger: &str, query: &str) -> Result<Value> {
+    pub async fn candidates(
+        &self,
+        workspace: Option<&str>,
+        trigger: &str,
+        query: &str,
+    ) -> Result<Value> {
         let entries = match workspace {
             Some(workspace) => self.skills(workspace, false).await,
             None => None,
         };
         let skills_available = entries.is_some();
         let (agents, agents_available) = self.agents(workspace).await?;
-        let state = self.accept(workspace.unwrap_or(GLOBAL_WORKSPACE), sanitize_skills(&entries.unwrap_or_default()), agents);
+        let state = self.accept(
+            workspace.unwrap_or(GLOBAL_WORKSPACE),
+            sanitize_skills(&entries.unwrap_or_default()),
+            agents,
+        );
         let query = query.to_lowercase();
         let mut scored = Vec::new();
         if trigger == "@" {
             for (item_order, skill) in state.skills.iter().enumerate() {
-                if state.skills.iter().filter(|other| other.stable_id == skill.stable_id).count() != 1 {
+                if state
+                    .skills
+                    .iter()
+                    .filter(|other| other.stable_id == skill.stable_id)
+                    .count()
+                    != 1
+                {
                     continue;
                 }
-                let score = match_score(&query, &[&skill.label, &skill.name], skill.description.as_deref().unwrap_or(""));
+                let score = match_score(
+                    &query,
+                    &[&skill.label, &skill.name],
+                    skill.description.as_deref().unwrap_or(""),
+                );
                 if score < 0 {
                     continue;
                 }
@@ -346,7 +473,11 @@ impl ComposerCatalog {
                 scored.push((score, 0, item_order, candidate));
             }
             for (item_order, agent) in state.agents.iter().enumerate() {
-                let score = match_score(&query, &[&agent.label, &agent.stable_id], agent.description.as_deref().unwrap_or(""));
+                let score = match_score(
+                    &query,
+                    &[&agent.label, &agent.stable_id],
+                    agent.description.as_deref().unwrap_or(""),
+                );
                 if score < 0 {
                     continue;
                 }
@@ -367,7 +498,9 @@ impl ComposerCatalog {
             }
         }
         if trigger == "/" {
-            for (item_order, (command, label, description, handler)) in SLASH_ACTIONS.into_iter().enumerate() {
+            for (item_order, (command, label, description, handler)) in
+                SLASH_ACTIONS.into_iter().enumerate()
+            {
                 let score = match_score(&query, &[&command[1..], label], description);
                 if score < 0 {
                     continue;
@@ -402,7 +535,11 @@ impl ComposerCatalog {
         let entries = self.skills(workspace, true).await;
         let skills_available = entries.is_some();
         let (agents, agents_available) = self.agents(Some(workspace)).await?;
-        let state = self.accept(workspace, sanitize_skills(&entries.unwrap_or_default()), agents);
+        let state = self.accept(
+            workspace,
+            sanitize_skills(&entries.unwrap_or_default()),
+            agents,
+        );
         let mut rebound = Vec::new();
         let mut bindings = Vec::new();
         let mut ready = true;
@@ -420,13 +557,27 @@ impl ComposerCatalog {
                 RebindNode::Persisted { kind, stable_id } => (kind, stable_id),
             };
             let matches: Vec<(&str, &str)> = if kind == "skill" {
-                let skills = state.skills.iter().filter(|skill| skill.stable_id == stable_id);
-                skills.map(|skill| (state.reference(&skill.identity), skill.label.as_str())).collect()
+                let skills = state
+                    .skills
+                    .iter()
+                    .filter(|skill| skill.stable_id == stable_id);
+                skills
+                    .map(|skill| (state.reference(&skill.identity), skill.label.as_str()))
+                    .collect()
             } else {
-                let agents = state.agents.iter().filter(|agent| agent.stable_id == stable_id);
-                agents.map(|agent| (state.reference(&agent.identity()), agent.label.as_str())).collect()
+                let agents = state
+                    .agents
+                    .iter()
+                    .filter(|agent| agent.stable_id == stable_id);
+                agents
+                    .map(|agent| (state.reference(&agent.identity()), agent.label.as_str()))
+                    .collect()
             };
-            let source_available = if kind == "skill" { skills_available } else { agents_available };
+            let source_available = if kind == "skill" {
+                skills_available
+            } else {
+                agents_available
+            };
             let reason_code = if !source_available {
                 Some("SOURCE_UNAVAILABLE")
             } else if matches.is_empty() {
@@ -457,12 +608,22 @@ impl ComposerCatalog {
 
     /// `resolveReferences`: the Skill or agent behind each reference node, from the revision the
     /// composer saw; any catalog change since then makes the selection unavailable.
-    pub async fn resolve(&self, workspace: &str, revision: &str, nodes: &[DocumentNode]) -> Result<Vec<Option<Reference>>> {
-        let first = nodes.iter().position(DocumentNode::is_reference).unwrap_or(0);
+    pub async fn resolve(
+        &self,
+        workspace: &str,
+        revision: &str,
+        nodes: &[DocumentNode],
+    ) -> Result<Vec<Option<Reference>>> {
+        let first = nodes
+            .iter()
+            .position(DocumentNode::is_reference)
+            .unwrap_or(0);
         if self.revision(workspace).as_deref() != Some(revision) {
             return Err(unavailable(first, "SOURCE_UNAVAILABLE").into());
         }
-        let Some(entries) = self.skills(workspace, true).await else { return Err(unavailable(first, "SOURCE_UNAVAILABLE").into()) };
+        let Some(entries) = self.skills(workspace, true).await else {
+            return Err(unavailable(first, "SOURCE_UNAVAILABLE").into());
+        };
         let (agents, _) = self.agents(Some(workspace)).await?;
         let state = self.accept(workspace, sanitize_skills(&entries), agents);
         if state.revision != revision {
@@ -470,16 +631,33 @@ impl ComposerCatalog {
         }
         let mut references = Vec::with_capacity(nodes.len());
         for (node_index, node) in nodes.iter().enumerate() {
-            let DocumentNode::Reference { kind, candidate_ref, .. } = node else {
+            let DocumentNode::Reference {
+                kind,
+                candidate_ref,
+                ..
+            } = node
+            else {
                 references.push(None);
                 continue;
             };
             let reference = if *kind == "skill" {
-                state.skills.iter().find(|skill| state.reference(&skill.identity) == candidate_ref).cloned().map(Reference::Skill)
+                state
+                    .skills
+                    .iter()
+                    .find(|skill| state.reference(&skill.identity) == candidate_ref)
+                    .cloned()
+                    .map(Reference::Skill)
             } else {
-                state.agents.iter().find(|agent| state.reference(&agent.identity()) == candidate_ref).cloned().map(Reference::Agent)
+                state
+                    .agents
+                    .iter()
+                    .find(|agent| state.reference(&agent.identity()) == candidate_ref)
+                    .cloned()
+                    .map(Reference::Agent)
             };
-            references.push(Some(reference.ok_or_else(|| unavailable(node_index, "SOURCE_UNAVAILABLE"))?));
+            references.push(Some(
+                reference.ok_or_else(|| unavailable(node_index, "SOURCE_UNAVAILABLE"))?,
+            ));
         }
         Ok(references)
     }

@@ -7,7 +7,9 @@ use crate::ApiError;
 use crate::constants::{DEFAULT_PROJECT_ID, is_task_status};
 use crate::fields::{self, AssigneeTarget, NULL, Object, nullish};
 use crate::js;
-use crate::records::{AgentSession, DevelopmentContext, Recurrence, TaskChanges, ThreadBinding, ThreadIdentity};
+use crate::records::{
+    AgentSession, DevelopmentContext, Recurrence, TaskChanges, ThreadBinding, ThreadIdentity,
+};
 
 type Result<T> = std::result::Result<T, ApiError>;
 
@@ -19,22 +21,32 @@ pub fn agent_session(value: Option<&Value>) -> Result<Option<Option<AgentSession
     }
     let object = fields::object(value, &["platform", "sessionId"])?;
     let platform = object.get("platform").and_then(Value::as_str);
-    let Some(platform) = platform.filter(|platform| ["claude", "pi", "agy", "grok"].contains(platform)) else {
-        return Err(ApiError::invalid_field("agentSession.platform must be claude, pi, agy, or grok"));
+    let Some(platform) =
+        platform.filter(|platform| ["claude", "pi", "agy", "grok"].contains(platform))
+    else {
+        return Err(ApiError::invalid_field(
+            "agentSession.platform must be claude, pi, agy, or grok",
+        ));
     };
     let max_length = if platform == "pi" { 4096 } else { 256 };
-    let session_id = object.get("sessionId").and_then(Value::as_str).filter(|id| {
-        !js::trim(id).is_empty()
-            && js::len(id) <= max_length
-            && !id.trim_start_matches(js::is_whitespace).starts_with('-')
-            && !id.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
-    });
+    let session_id = object
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .filter(|id| {
+            !js::trim(id).is_empty()
+                && js::len(id) <= max_length
+                && !id.trim_start_matches(js::is_whitespace).starts_with('-')
+                && !id.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
+        });
     let Some(session_id) = session_id else {
         return Err(ApiError::invalid_field(format!(
             "agentSession.sessionId must contain 1 to {max_length} characters, without control characters or a leading option dash"
         )));
     };
-    Ok(Some(Some(AgentSession { platform: platform.to_owned(), session_id: session_id.to_owned() })))
+    Ok(Some(Some(AgentSession {
+        platform: platform.to_owned(),
+        session_id: session_id.to_owned(),
+    })))
 }
 
 /// `parseThreadBinding`: `None` is undefined, `Some(None)` is null.
@@ -45,30 +57,65 @@ pub fn thread_binding(value: Option<&Value>) -> Result<Option<Option<ThreadBindi
     }
     let object = fields::object(
         value,
-        &["threadId", "codexProjectId", "codexProjectKind", "codexHostId", "workspacePath"],
+        &[
+            "threadId",
+            "codexProjectId",
+            "codexProjectKind",
+            "codexHostId",
+            "workspacePath",
+        ],
     )?;
     let thread_id = fields::required_string(object.get("threadId"), "threadBinding.threadId", 256)?;
-    let identity = ["codexProjectId", "codexProjectKind", "codexHostId", "workspacePath"];
+    let identity = [
+        "codexProjectId",
+        "codexProjectKind",
+        "codexHostId",
+        "workspacePath",
+    ];
     if identity.iter().all(|key| !object.contains_key(*key)) {
-        return Ok(Some(Some(ThreadBinding { thread_id, identity: None })));
+        return Ok(Some(Some(ThreadBinding {
+            thread_id,
+            identity: None,
+        })));
     }
     if identity.iter().any(|key| !object.contains_key(*key)) {
-        return Err(ApiError::invalid_field("Thread identity must include project, kind, host, and workspace"));
+        return Err(ApiError::invalid_field(
+            "Thread identity must include project, kind, host, and workspace",
+        ));
     }
-    let codex_project_id =
-        fields::required_string(object.get("codexProjectId"), "threadBinding.codexProjectId", 256)?;
-    let codex_host_id = fields::required_string(object.get("codexHostId"), "threadBinding.codexHostId", 256)?;
-    let workspace_path =
-        fields::required_string(object.get("workspacePath"), "threadBinding.workspacePath", 4096)?;
+    let codex_project_id = fields::required_string(
+        object.get("codexProjectId"),
+        "threadBinding.codexProjectId",
+        256,
+    )?;
+    let codex_host_id =
+        fields::required_string(object.get("codexHostId"), "threadBinding.codexHostId", 256)?;
+    let workspace_path = fields::required_string(
+        object.get("workspacePath"),
+        "threadBinding.workspacePath",
+        4096,
+    )?;
     let kind = object.get("codexProjectKind").and_then(Value::as_str);
     let Some(kind) = kind.filter(|kind| *kind == "local" || *kind == "remote") else {
-        return Err(ApiError::invalid_field("threadBinding.codexProjectKind must be local or remote"));
+        return Err(ApiError::invalid_field(
+            "threadBinding.codexProjectKind must be local or remote",
+        ));
     };
     if (kind == "local") != (codex_host_id == "local") || workspace_path.contains('\0') {
-        return Err(ApiError::invalid_field("Thread project identity is invalid"));
+        return Err(ApiError::invalid_field(
+            "Thread project identity is invalid",
+        ));
     }
-    let identity = ThreadIdentity { codex_project_id, codex_project_kind: kind.to_owned(), codex_host_id, workspace_path };
-    Ok(Some(Some(ThreadBinding { thread_id, identity: Some(identity) })))
+    let identity = ThreadIdentity {
+        codex_project_id,
+        codex_project_kind: kind.to_owned(),
+        codex_host_id,
+        workspace_path,
+    };
+    Ok(Some(Some(ThreadBinding {
+        thread_id,
+        identity: Some(identity),
+    })))
 }
 
 /// Who acted: a Codex thread, a thread binding, or another agent session.
@@ -84,7 +131,11 @@ fn attribution(body: &Object) -> Result<Attribution> {
     let thread_id = fields::thread_id(body.get("threadId"))?;
     let thread_binding = thread_binding(body.get("threadBinding"))?;
     let agent_session = input_agent_session(body)?;
-    Ok(Attribution { thread_id, thread_binding, agent_session })
+    Ok(Attribution {
+        thread_id,
+        thread_binding,
+        agent_session,
+    })
 }
 
 /// `parseInputAgentSession`.
@@ -110,14 +161,18 @@ pub fn cloud_development_context(value: &Value) -> Result<Option<DevelopmentCont
     match object.get("type").and_then(Value::as_str) {
         Some("branch") => {
             fields::assert_allowed_keys(object, &["type", "branch"])?;
-            let branch = fields::required_string(object.get("branch"), "developmentContext.branch", 512)?;
+            let branch =
+                fields::required_string(object.get("branch"), "developmentContext.branch", 512)?;
             Ok(Some(DevelopmentContext::Branch { branch }))
         }
         Some("worktree") => {
             fields::assert_allowed_keys(object, &["type", "path", "branch"])?;
-            let path = fields::optional_string(object.get("path"), "developmentContext.path", 4096)?;
+            let path =
+                fields::optional_string(object.get("path"), "developmentContext.path", 4096)?;
             if path.is_some_and(|path| path.contains('\0')) {
-                return Err(ApiError::invalid_field("'developmentContext.path' cannot contain null bytes"));
+                return Err(ApiError::invalid_field(
+                    "'developmentContext.path' cannot contain null bytes",
+                ));
             }
             let branch = fields::nullable_string(
                 nullish(object.get("branch")).or(Some(&NULL)),
@@ -127,7 +182,9 @@ pub fn cloud_development_context(value: &Value) -> Result<Option<DevelopmentCont
             .flatten();
             Ok(Some(DevelopmentContext::Worktree { path: None, branch }))
         }
-        _ => Err(ApiError::invalid_field("'developmentContext.type' must be branch or worktree")),
+        _ => Err(ApiError::invalid_field(
+            "'developmentContext.type' must be branch or worktree",
+        )),
     }
 }
 
@@ -140,14 +197,18 @@ pub fn development_context(value: &Value) -> Result<Option<DevelopmentContext>> 
     match object.get("type").and_then(Value::as_str) {
         Some("branch") => {
             fields::assert_allowed_keys(object, &["type", "branch"])?;
-            let branch = fields::required_string(object.get("branch"), "developmentContext.branch", 512)?;
+            let branch =
+                fields::required_string(object.get("branch"), "developmentContext.branch", 512)?;
             Ok(Some(DevelopmentContext::Branch { branch }))
         }
         Some("worktree") => {
             fields::assert_allowed_keys(object, &["type", "path", "branch"])?;
-            let path = fields::required_string(object.get("path"), "developmentContext.path", 4096)?;
+            let path =
+                fields::required_string(object.get("path"), "developmentContext.path", 4096)?;
             if path.contains('\0') {
-                return Err(ApiError::invalid_field("'developmentContext.path' cannot contain null bytes"));
+                return Err(ApiError::invalid_field(
+                    "'developmentContext.path' cannot contain null bytes",
+                ));
             }
             let branch = fields::nullable_string(
                 nullish(object.get("branch")).or(Some(&NULL)),
@@ -155,9 +216,14 @@ pub fn development_context(value: &Value) -> Result<Option<DevelopmentContext>> 
                 512,
             )?
             .flatten();
-            Ok(Some(DevelopmentContext::Worktree { path: Some(path), branch }))
+            Ok(Some(DevelopmentContext::Worktree {
+                path: Some(path),
+                branch,
+            }))
         }
-        _ => Err(ApiError::invalid_field("'developmentContext.type' must be branch or worktree")),
+        _ => Err(ApiError::invalid_field(
+            "'developmentContext.type' must be branch or worktree",
+        )),
     }
 }
 
@@ -173,8 +239,15 @@ pub fn project_create(body: &Value) -> Result<ProjectCreate> {
     let name = fields::required_string(body.get("name"), "name", 120)?;
     let slug = Value::String(fields::slugify(&name));
     let id = fields::project_id(nullish(body.get("id")).or(Some(&slug)))?;
-    let workspace_path = fields::path_field(nullish(body.get("workspacePath")).or(Some(&NULL)), "workspacePath")?;
-    Ok(ProjectCreate { id, name, workspace_path })
+    let workspace_path = fields::path_field(
+        nullish(body.get("workspacePath")).or(Some(&NULL)),
+        "workspacePath",
+    )?;
+    Ok(ProjectCreate {
+        id,
+        name,
+        workspace_path,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -194,12 +267,27 @@ pub struct TaskCreate {
     pub recurrence: Option<Recurrence>,
 }
 
-pub fn task_create(body: &Value, development_context: DevelopmentContextParser) -> Result<TaskCreate> {
+pub fn task_create(
+    body: &Value,
+    development_context: DevelopmentContextParser,
+) -> Result<TaskCreate> {
     let body = fields::object(
         body,
         &[
-            "projectId", "title", "description", "status", "priority", "labels", "sortOrder", "threadId",
-            "threadBinding", "agentSession", "assigneeTarget", "developmentContext", "startDate", "dueDate",
+            "projectId",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "labels",
+            "sortOrder",
+            "threadId",
+            "threadBinding",
+            "agentSession",
+            "assigneeTarget",
+            "developmentContext",
+            "startDate",
+            "dueDate",
             "recurrence",
         ],
     )?;
@@ -207,21 +295,32 @@ pub fn task_create(body: &Value, development_context: DevelopmentContextParser) 
     let project_id = fields::project_id(nullish(body.get("projectId")).or(Some(&default_project)))?;
     let title = fields::required_string(body.get("title"), "title", 240)?;
     let description = match nullish(body.get("description")) {
-        Some(value) => fields::optional_string(Some(value), "description", 100_000)?.unwrap_or_default(),
+        Some(value) => {
+            fields::optional_string(Some(value), "description", 100_000)?.unwrap_or_default()
+        }
         None => String::new(),
     };
     let status = fields::status(body.get("status"), Some("backlog"))?;
     let priority = fields::priority(body.get("priority"), Some("none"))?;
-    let labels = body.get("labels").map(fields::labels).transpose()?.unwrap_or_default();
+    let labels = body
+        .get("labels")
+        .map(fields::labels)
+        .transpose()?
+        .unwrap_or_default();
     let sort_order = body.get("sortOrder").map(fields::sort_order).transpose()?;
     let attribution = attribution(body)?;
     let assignee_target = fields::assignee_target(body.get("assigneeTarget"))?;
-    let development_context = development_context(nullish(body.get("developmentContext")).unwrap_or(&NULL))?;
-    let start_date = fields::due_date(nullish(body.get("startDate")).or(Some(&NULL)), "startDate")?.flatten();
-    let due_date = fields::due_date(nullish(body.get("dueDate")).or(Some(&NULL)), "dueDate")?.flatten();
+    let development_context =
+        development_context(nullish(body.get("developmentContext")).unwrap_or(&NULL))?;
+    let start_date =
+        fields::due_date(nullish(body.get("startDate")).or(Some(&NULL)), "startDate")?.flatten();
+    let due_date =
+        fields::due_date(nullish(body.get("dueDate")).or(Some(&NULL)), "dueDate")?.flatten();
     let recurrence = fields::recurrence(nullish(body.get("recurrence")).unwrap_or(&NULL))?;
     if recurrence.is_some() && due_date.is_none() {
-        return Err(ApiError::invalid_field("A recurring issue requires 'dueDate'"));
+        return Err(ApiError::invalid_field(
+            "A recurring issue requires 'dueDate'",
+        ));
     }
     Ok(TaskCreate {
         project_id,
@@ -252,22 +351,52 @@ fn task_patch_body(body: &Value) -> Result<&Object> {
     fields::object(
         body,
         &[
-            "version", "projectId", "title", "description", "status", "priority", "labels", "threadId",
-            "threadBinding", "agentSession", "assigneeTarget", "developmentContext", "startDate", "dueDate",
+            "version",
+            "projectId",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "labels",
+            "threadId",
+            "threadBinding",
+            "agentSession",
+            "assigneeTarget",
+            "developmentContext",
+            "startDate",
+            "dueDate",
             "recurrence",
         ],
     )
 }
 
-fn task_patch_changes(body: &Object, development_context: DevelopmentContextParser) -> Result<TaskChanges> {
+fn task_patch_changes(
+    body: &Object,
+    development_context: DevelopmentContextParser,
+) -> Result<TaskChanges> {
     Ok(TaskChanges {
-        project_id: body.get("projectId").map(|value| fields::project_id(Some(value))).transpose()?,
-        title: body.get("title").map(|value| fields::required_string(Some(value), "title", 240)).transpose()?,
+        project_id: body
+            .get("projectId")
+            .map(|value| fields::project_id(Some(value)))
+            .transpose()?,
+        title: body
+            .get("title")
+            .map(|value| fields::required_string(Some(value), "title", 240))
+            .transpose()?,
         description: fields::optional_string(body.get("description"), "description", 100_000)?,
-        status: body.get("status").map(|value| fields::status(Some(value), None)).transpose()?,
-        priority: body.get("priority").map(|value| fields::priority(Some(value), None)).transpose()?,
+        status: body
+            .get("status")
+            .map(|value| fields::status(Some(value), None))
+            .transpose()?,
+        priority: body
+            .get("priority")
+            .map(|value| fields::priority(Some(value), None))
+            .transpose()?,
         labels: body.get("labels").map(fields::labels).transpose()?,
-        development_context: body.get("developmentContext").map(development_context).transpose()?,
+        development_context: body
+            .get("developmentContext")
+            .map(development_context)
+            .transpose()?,
         start_date: fields::due_date(body.get("startDate"), "startDate")?,
         due_date: fields::due_date(body.get("dueDate"), "dueDate")?,
         recurrence: body.get("recurrence").map(fields::recurrence).transpose()?,
@@ -281,7 +410,11 @@ fn assert_task_patch_fields(
     agent_session: Option<&Option<AgentSession>>,
 ) -> Result<()> {
     if changes.entries().is_empty() && assignee_target.is_none() && agent_session.is_none() {
-        return Err(ApiError::new(400, "INVALID_BODY", "PATCH requires at least one task field"));
+        return Err(ApiError::new(
+            400,
+            "INVALID_BODY",
+            "PATCH requires at least one task field",
+        ));
     }
     Ok(())
 }
@@ -292,11 +425,24 @@ pub fn task_patch(body: &Value) -> Result<TaskPatch> {
     let attribution = attribution(body)?;
     let assignee_target = fields::assignee_target(body.get("assigneeTarget"))?;
     let changes = task_patch_changes(body, development_context)?;
-    if matches!(changes.recurrence, Some(Some(_))) && body.get("dueDate").is_some_and(Value::is_null) {
-        return Err(ApiError::invalid_field("A recurring issue requires 'dueDate'"));
+    if matches!(changes.recurrence, Some(Some(_)))
+        && body.get("dueDate").is_some_and(Value::is_null)
+    {
+        return Err(ApiError::invalid_field(
+            "A recurring issue requires 'dueDate'",
+        ));
     }
-    assert_task_patch_fields(&changes, assignee_target.as_ref(), attribution.agent_session.as_ref())?;
-    Ok(TaskPatch { version, changes, attribution, assignee_target })
+    assert_task_patch_fields(
+        &changes,
+        assignee_target.as_ref(),
+        attribution.agent_session.as_ref(),
+    )?;
+    Ok(TaskPatch {
+        version,
+        changes,
+        attribution,
+        assignee_target,
+    })
 }
 
 /// `parseCloudTaskPatch`: the cloud worker's validation order, without the recurrence check.
@@ -309,8 +455,17 @@ pub fn cloud_task_patch(body: &Value) -> Result<TaskPatch> {
     let version = fields::version(body.get("version"), false)?;
     let thread_id = fields::thread_id(body.get("threadId"))?;
     let thread_binding = thread_binding(body.get("threadBinding"))?;
-    let attribution = Attribution { thread_id, thread_binding, agent_session };
-    Ok(TaskPatch { version, changes, attribution, assignee_target })
+    let attribution = Attribution {
+        thread_id,
+        thread_binding,
+        agent_session,
+    };
+    Ok(TaskPatch {
+        version,
+        changes,
+        attribution,
+        assignee_target,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -322,8 +477,17 @@ pub struct Move {
 }
 
 pub fn task_move(body: &Value) -> Result<Move> {
-    let body =
-        fields::object(body, &["version", "status", "sortOrder", "threadId", "threadBinding", "agentSession"])?;
+    let body = fields::object(
+        body,
+        &[
+            "version",
+            "status",
+            "sortOrder",
+            "threadId",
+            "threadBinding",
+            "agentSession",
+        ],
+    )?;
     Ok(Move {
         version: fields::version(body.get("version"), false)?,
         status: fields::status(body.get("status"), None)?,
@@ -339,8 +503,14 @@ pub struct VersionMutation {
 }
 
 pub fn version_mutation(body: &Value) -> Result<VersionMutation> {
-    let body = fields::object(body, &["version", "threadId", "threadBinding", "agentSession"])?;
-    Ok(VersionMutation { version: fields::version(body.get("version"), false)?, attribution: attribution(body)? })
+    let body = fields::object(
+        body,
+        &["version", "threadId", "threadBinding", "agentSession"],
+    )?;
+    Ok(VersionMutation {
+        version: fields::version(body.get("version"), false)?,
+        attribution: attribution(body)?,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -351,7 +521,16 @@ pub struct RelationMutation {
 }
 
 pub fn relation_mutation(body: &Value) -> Result<RelationMutation> {
-    let body = fields::object(body, &["version", "threadId", "threadBinding", "agentSession", "origin"])?;
+    let body = fields::object(
+        body,
+        &[
+            "version",
+            "threadId",
+            "threadBinding",
+            "agentSession",
+            "origin",
+        ],
+    )?;
     Ok(RelationMutation {
         version: fields::version(body.get("version"), false)?,
         attribution: attribution(body)?,
@@ -371,7 +550,10 @@ pub fn comment_create(body: &Value) -> Result<CommentCreate> {
         Some(value) => fields::optional_string(Some(value), "body", 100_000)?.unwrap_or_default(),
         None => String::new(),
     };
-    Ok(CommentCreate { body: text, attribution: attribution(object)? })
+    Ok(CommentCreate {
+        body: text,
+        attribution: attribution(object)?,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -382,7 +564,16 @@ pub struct CommentPatch {
 }
 
 pub fn comment_patch(body: &Value) -> Result<CommentPatch> {
-    let object = fields::object(body, &["version", "body", "threadId", "threadBinding", "agentSession"])?;
+    let object = fields::object(
+        body,
+        &[
+            "version",
+            "body",
+            "threadId",
+            "threadBinding",
+            "agentSession",
+        ],
+    )?;
     if !object.contains_key("body") {
         return Err(ApiError::invalid_field("'body' is required"));
     }
@@ -396,33 +587,60 @@ pub fn comment_patch(body: &Value) -> Result<CommentPatch> {
 /// Query pairs as `URLSearchParams` yields them.
 pub type Query = [(String, String)];
 
-fn assert_query_parameters(query: &Query, allowed: &[&str], repeated_code: &'static str) -> Result<()> {
+fn assert_query_parameters(
+    query: &Query,
+    allowed: &[&str],
+    repeated_code: &'static str,
+) -> Result<()> {
     for (key, _) in query {
         if !allowed.contains(&key.as_str()) {
-            return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("Unknown query parameter '{key}'")));
+            return Err(ApiError::new(
+                400,
+                "UNKNOWN_QUERY_PARAMETER",
+                format!("Unknown query parameter '{key}'"),
+            ));
         }
         if query.iter().filter(|(other, _)| other == key).count() != 1 {
-            return Err(ApiError::new(400, repeated_code, format!("Query parameter '{key}' cannot be repeated")));
+            return Err(ApiError::new(
+                400,
+                repeated_code,
+                format!("Query parameter '{key}' cannot be repeated"),
+            ));
         }
     }
     Ok(())
 }
 
 /// The cloud worker's wording of `assertTaskQueryParameters`.
-fn assert_cloud_query_parameters(query: &Query, allowed: &[&str], repeated_code: &'static str) -> Result<()> {
+fn assert_cloud_query_parameters(
+    query: &Query,
+    allowed: &[&str],
+    repeated_code: &'static str,
+) -> Result<()> {
     for (key, _) in query {
         if !allowed.contains(&key.as_str()) {
-            return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("Unknown query parameter: {key}")));
+            return Err(ApiError::new(
+                400,
+                "UNKNOWN_QUERY_PARAMETER",
+                format!("Unknown query parameter: {key}"),
+            ));
         }
         if query.iter().filter(|(other, _)| other == key).count() > 1 {
-            return Err(ApiError::new(400, repeated_code, format!("'{key}' cannot be repeated")));
+            return Err(ApiError::new(
+                400,
+                repeated_code,
+                format!("'{key}' cannot be repeated"),
+            ));
         }
     }
     Ok(())
 }
 
 fn query_value<'a>(query: &'a Query, key: &str) -> Option<&'a str> {
-    query.iter().find(|(name, _)| name == key).map(|(_, value)| value.as_str())
+    query
+        .iter()
+        .find(|(name, _)| name == key)
+        .map(|(_, value)| value.as_str())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -440,28 +658,48 @@ pub struct TaskFilters {
 }
 
 pub fn task_filters(query: &Query) -> Result<TaskFilters> {
-    assert_query_parameters(query, &["projectId", "status", "archived"], "INVALID_QUERY_PARAMETER")?;
+    assert_query_parameters(
+        query,
+        &["projectId", "status", "archived"],
+        "INVALID_QUERY_PARAMETER",
+    )?;
     let status = query_value(query, "status");
     if status.is_some_and(|status| !is_task_status(status)) {
-        return Err(ApiError::new(400, "INVALID_QUERY_PARAMETER", "Invalid task status"));
+        return Err(ApiError::new(
+            400,
+            "INVALID_QUERY_PARAMETER",
+            "Invalid task status",
+        ));
     }
     let archived = match query_value(query, "archived").unwrap_or("false") {
         "false" => Archived::Exclude,
         "true" => Archived::Only,
         "all" => Archived::All,
         _ => {
-            return Err(ApiError::new(400, "INVALID_QUERY_PARAMETER", "'archived' must be true, false, or all"));
+            return Err(ApiError::new(
+                400,
+                "INVALID_QUERY_PARAMETER",
+                "'archived' must be true, false, or all",
+            ));
         }
     };
     let project_id = query_value(query, "projectId")
         .map(|id| fields::project_id(Some(&Value::String(id.to_owned()))))
         .transpose()?;
-    Ok(TaskFilters { project_id, status: status.map(str::to_owned), archived })
+    Ok(TaskFilters {
+        project_id,
+        status: status.map(str::to_owned),
+        archived,
+    })
 }
 
 /// `parseCloudTaskFilters`.
 pub fn cloud_task_filters(query: &Query) -> Result<TaskFilters> {
-    assert_cloud_query_parameters(query, &["projectId", "status", "archived"], "INVALID_QUERY_PARAMETER")?;
+    assert_cloud_query_parameters(
+        query,
+        &["projectId", "status", "archived"],
+        "INVALID_QUERY_PARAMETER",
+    )?;
     let project_id = query_value(query, "projectId")
         .map(|id| fields::project_id(Some(&Value::String(id.to_owned()))))
         .transpose()?;
@@ -473,10 +711,18 @@ pub fn cloud_task_filters(query: &Query) -> Result<TaskFilters> {
         "true" => Archived::Only,
         "all" => Archived::All,
         _ => {
-            return Err(ApiError::new(400, "INVALID_QUERY_PARAMETER", "'archived' must be false, true, or all"));
+            return Err(ApiError::new(
+                400,
+                "INVALID_QUERY_PARAMETER",
+                "'archived' must be false, true, or all",
+            ));
         }
     };
-    Ok(TaskFilters { project_id, status: status.map(str::to_owned), archived })
+    Ok(TaskFilters {
+        project_id,
+        status: status.map(str::to_owned),
+        archived,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -501,7 +747,11 @@ fn task_tree_query_values(query: &Query) -> Result<TaskTreeQuery> {
         Some("descendants") => "descendants",
         Some("ancestors") => "ancestors",
         _ => {
-            return Err(ApiError::new(400, "INVALID_TREE_QUERY", "'direction' must be descendants or ancestors"));
+            return Err(ApiError::new(
+                400,
+                "INVALID_TREE_QUERY",
+                "'direction' must be descendants or ancestors",
+            ));
         }
     };
     let depth = query_value(query, "depth")
@@ -509,7 +759,11 @@ fn task_tree_query_values(query: &Query) -> Result<TaskTreeQuery> {
         .and_then(|raw| raw.parse::<u32>().ok())
         .filter(|depth| (1..=25).contains(depth));
     let Some(depth) = depth else {
-        return Err(ApiError::new(400, "INVALID_TREE_QUERY", "'depth' must be an integer from 1 to 25"));
+        return Err(ApiError::new(
+            400,
+            "INVALID_TREE_QUERY",
+            "'depth' must be an integer from 1 to 25",
+        ));
     };
     Ok(TaskTreeQuery { direction, depth })
 }
@@ -523,14 +777,20 @@ pub struct ProjectReadmeSave {
 pub fn project_readme_save(body: &Value) -> Result<ProjectReadmeSave> {
     let body = fields::object(body, &["content", "version"])?;
     let content = project_readme_content(body)?;
-    let version = body.get("version").map(|value| fields::version(Some(value), true)).transpose()?;
+    let version = body
+        .get("version")
+        .map(|value| fields::version(Some(value), true))
+        .transpose()?;
     Ok(ProjectReadmeSave { content, version })
 }
 
 /// `parseCloudProjectReadmeSave`: the version is checked before the content.
 pub fn cloud_project_readme_save(body: &Value) -> Result<ProjectReadmeSave> {
     let body = fields::object(body, &["version", "content"])?;
-    let version = body.get("version").map(|value| fields::version(Some(value), true)).transpose()?;
+    let version = body
+        .get("version")
+        .map(|value| fields::version(Some(value), true))
+        .transpose()?;
     let content = project_readme_content(body)?;
     Ok(ProjectReadmeSave { content, version })
 }
@@ -542,7 +802,9 @@ fn project_readme_content(body: &Object) -> Result<String> {
         Some(_) => return Err(ApiError::invalid_field("'content' must be a string")),
     };
     if js::len(&content) > 500_000 {
-        return Err(ApiError::invalid_field("'content' cannot exceed 500000 characters"));
+        return Err(ApiError::invalid_field(
+            "'content' cannot exceed 500000 characters",
+        ));
     }
     Ok(content)
 }

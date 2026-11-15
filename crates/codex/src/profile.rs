@@ -13,7 +13,9 @@ const DATABASES: [&str; 3] = [
 ];
 
 pub async fn import(source: Option<&Path>, profile: &Path) -> Result<()> {
-    let Some(source) = source.filter(|source| *source != profile) else { return Ok(()) };
+    let Some(source) = source.filter(|source| *source != profile) else {
+        return Ok(());
+    };
     let (source, profile) = (source.to_owned(), profile.to_owned());
     tokio::task::spawn_blocking(move || copy(&source, &profile)).await?
 }
@@ -38,8 +40,15 @@ fn copy(source: &Path, profile: &Path) -> Result<()> {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let database = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        database.backup(rusqlite::MAIN_DB, &destination, None::<fn(rusqlite::backup::Progress)>)?;
+        let database = rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        database.backup(
+            rusqlite::MAIN_DB,
+            &destination,
+            None::<fn(rusqlite::backup::Progress)>,
+        )?;
     }
     if sources.len() == DATABASES.len() {
         std::fs::write(marker, "1\n")?;

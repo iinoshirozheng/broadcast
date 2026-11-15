@@ -22,7 +22,10 @@ use crate::trust::Peer;
 type Upstream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 pub fn is_upgrade(request: &Request) -> bool {
-    request.headers().get(header::UPGRADE).is_some_and(|value| value.as_bytes().eq_ignore_ascii_case(b"websocket"))
+    request
+        .headers()
+        .get(header::UPGRADE)
+        .is_some_and(|value| value.as_bytes().eq_ignore_ascii_case(b"websocket"))
 }
 
 /// Opens the cloud stream first, so a failure is reported as an HTTP status rather than a closed socket.
@@ -30,7 +33,10 @@ pub async fn relay(app: Arc<App>, request: Request) -> Response {
     if request.uri().path() != "/api/events" || !query(request.uri()).is_empty() {
         return reject(StatusCode::NOT_FOUND, "Not Found");
     }
-    let peer = *request.extensions().get::<Peer>().expect("the trust gate identifies the peer");
+    let peer = *request
+        .extensions()
+        .get::<Peer>()
+        .expect("the trust gate identifies the peer");
     let upstream = match connect(&app, peer).await {
         Ok(upstream) => upstream,
         Err(status) => return reject(status, "WebSocket connection failed"),
@@ -42,19 +48,41 @@ pub async fn relay(app: Arc<App>, request: Request) -> Response {
 }
 
 fn reject(status: StatusCode, message: &str) -> Response {
-    (status, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], format!("{message}\n")).into_response()
+    (
+        status,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        format!("{message}\n"),
+    )
+        .into_response()
 }
 
 async fn connect(app: &App, peer: Peer) -> Result<Upstream, StatusCode> {
     let status = |code: u16| StatusCode::from_u16(code).unwrap_or(StatusCode::BAD_GATEWAY);
     peer.assert_local().map_err(|error| status(error.status))?;
-    let config = app.cloud.read().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let config = app
+        .cloud
+        .read()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
     let remote = Remote::of(&config).map_err(|error| status(error.status))?;
-    let scheme = if remote.origin.starts_with("https:") { "wss" } else { "ws" };
-    let (_, authority) = remote.origin.split_once("://").expect("origins carry a scheme");
-    let mut target = format!("{scheme}://{authority}/api/events").into_client_request().map_err(|_| StatusCode::BAD_GATEWAY)?;
-    target.headers_mut().insert(header::AUTHORIZATION, remote.authorization);
-    let (upstream, _) = tokio_tungstenite::connect_async(target).await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let scheme = if remote.origin.starts_with("https:") {
+        "wss"
+    } else {
+        "ws"
+    };
+    let (_, authority) = remote
+        .origin
+        .split_once("://")
+        .expect("origins carry a scheme");
+    let mut target = format!("{scheme}://{authority}/api/events")
+        .into_client_request()
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    target
+        .headers_mut()
+        .insert(header::AUTHORIZATION, remote.authorization);
+    let (upstream, _) = tokio_tungstenite::connect_async(target)
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
     Ok(upstream)
 }
 

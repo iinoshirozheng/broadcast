@@ -50,13 +50,23 @@ pub async fn guard(State(app): State<Arc<App>>, mut request: Request, next: Next
     };
     let reply = response.headers_mut();
     reply.extend(headers);
-    reply.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    reply.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    reply.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    reply.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
     response
 }
 
 /// Returns a response to send instead of routing, or `None` to route the (rewritten) request.
-fn admit(app: &App, request: &mut Request, headers: &mut HeaderMap) -> Result<Option<Response>, ApiError> {
+fn admit(
+    app: &App,
+    request: &mut Request,
+    headers: &mut HeaderMap,
+) -> Result<Option<Response>, ApiError> {
     let launcher = app.config.launcher.as_ref();
     if let Some(launcher) = launcher
         && request.uri().path() != "/health"
@@ -65,10 +75,20 @@ fn admit(app: &App, request: &mut Request, headers: &mut HeaderMap) -> Result<Op
         return Ok(Some(response));
     }
     let origin = text(request.headers(), header::ORIGIN.as_str());
-    let configured = check(app, request.headers(), origin.as_deref(), launcher.is_some())?;
-    let embed = origin.as_deref().filter(|origin| *origin == EMBED_ORIGIN || (launcher.is_some() && *origin == "null"));
+    let configured = check(
+        app,
+        request.headers(),
+        origin.as_deref(),
+        launcher.is_some(),
+    )?;
+    let embed = origin
+        .as_deref()
+        .filter(|origin| *origin == EMBED_ORIGIN || (launcher.is_some() && *origin == "null"));
     if let Some(origin) = embed {
-        let requested = text(request.headers(), header::ACCESS_CONTROL_REQUEST_HEADERS.as_str());
+        let requested = text(
+            request.headers(),
+            header::ACCESS_CONTROL_REQUEST_HEADERS.as_str(),
+        );
         embed_headers(headers, origin, requested.as_deref());
         if request.method() == Method::OPTIONS {
             return Ok(Some(StatusCode::NO_CONTENT.into_response()));
@@ -78,25 +98,46 @@ fn admit(app: &App, request: &mut Request, headers: &mut HeaderMap) -> Result<Op
         && origin.as_deref() == Some(EMBED_ORIGIN)
     {
         let proof = proof(launcher, request.headers())?;
-        headers.insert(PROOF, HeaderValue::from_str(&proof).expect("hex is a header value"));
+        headers.insert(
+            PROOF,
+            HeaderValue::from_str(&proof).expect("hex is a header value"),
+        );
     }
-    let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0.ip());
+    let peer = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0.ip());
     let path = request.uri().path();
     let development_contexts = path
         .strip_prefix("/api/projects/")
         .and_then(|rest| rest.strip_suffix("/development-contexts"))
         .is_some_and(|id| !id.is_empty() && !id.contains('/'));
-    if configured && (path.starts_with("/api/local/") || path == "/api/device-workspaces" || development_contexts) {
-        return Err(ApiError::new(409, "LOCAL_COMPANION_REQUIRED", "This capability requires a device-local Broadcast origin"));
+    if configured
+        && (path.starts_with("/api/local/")
+            || path == "/api/device-workspaces"
+            || development_contexts)
+    {
+        return Err(ApiError::new(
+            409,
+            "LOCAL_COMPANION_REQUIRED",
+            "This capability requires a device-local Broadcast origin",
+        ));
     }
     if path == "/api/local/ai" || path.starts_with("/api/local/ai/") {
         if !peer.is_some_and(loopback) {
-            return Err(ApiError::new(403, "LOCAL_AI_LOOPBACK_REQUIRED", "Local AI routes are only available from this device"));
+            return Err(ApiError::new(
+                403,
+                "LOCAL_AI_LOOPBACK_REQUIRED",
+                "Local AI routes are only available from this device",
+            ));
         }
     } else if path.starts_with("/api/local/") {
         assert_local(peer)?;
     }
-    request.extensions_mut().insert(Peer { configured, address: peer });
+    request.extensions_mut().insert(Peer {
+        configured,
+        address: peer,
+    });
     Ok(None)
 }
 
@@ -104,15 +145,31 @@ fn admit(app: &App, request: &mut Request, headers: &mut HeaderMap) -> Result<Op
 fn strip_prefix(launcher: &Launcher, request: &mut Request) -> Result<Option<Response>, ApiError> {
     let uri = request.uri();
     let prefix = format!("/{}", launcher.token);
-    let query = uri.query().map(|query| format!("?{query}")).unwrap_or_default();
+    let query = uri
+        .query()
+        .map(|query| format!("?{query}"))
+        .unwrap_or_default();
     if uri.path() == prefix {
-        let location = HeaderValue::from_str(&format!("{prefix}/{query}")).expect("token and query are header-safe");
-        return Ok(Some((StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, location)]).into_response()));
+        let location = HeaderValue::from_str(&format!("{prefix}/{query}"))
+            .expect("token and query are header-safe");
+        return Ok(Some(
+            (
+                StatusCode::MOVED_PERMANENTLY,
+                [(header::LOCATION, location)],
+            )
+                .into_response(),
+        ));
     }
-    let Some(rest) = uri.path().strip_prefix(&prefix).filter(|rest| rest.starts_with('/')) else {
+    let Some(rest) = uri
+        .path()
+        .strip_prefix(&prefix)
+        .filter(|rest| rest.starts_with('/'))
+    else {
         return Err(ApiError::new(404, "NOT_FOUND", "Route not found"));
     };
-    let rewritten: Uri = format!("{rest}{query}").parse().map_err(|_| ApiError::new(404, "NOT_FOUND", "Route not found"))?;
+    let rewritten: Uri = format!("{rest}{query}")
+        .parse()
+        .map_err(|_| ApiError::new(404, "NOT_FOUND", "Route not found"))?;
     *request.uri_mut() = rewritten;
     Ok(None)
 }
@@ -120,11 +177,25 @@ fn strip_prefix(launcher: &Launcher, request: &mut Request) -> Result<Option<Res
 /// `x-broadcast-proof`: HMAC-SHA256 of the launcher's challenge, keyed by the instance secret.
 pub fn proof(launcher: &Launcher, headers: &HeaderMap) -> Result<String, ApiError> {
     let challenge = text(headers, "x-broadcast-challenge")
-        .filter(|value| (32..=128).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .ok_or_else(|| ApiError::new(401, "INVALID_INSTANCE_CHALLENGE", "Launcher challenge is required"))?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(launcher.secret.as_bytes()).expect("HMAC accepts any key length");
+        .filter(|value| {
+            (32..=128).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .ok_or_else(|| {
+            ApiError::new(
+                401,
+                "INVALID_INSTANCE_CHALLENGE",
+                "Launcher challenge is required",
+            )
+        })?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(launcher.secret.as_bytes())
+        .expect("HMAC accepts any key length");
     mac.update(challenge.as_bytes());
-    Ok(mac.finalize().into_bytes().iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 /// `assertLoopbackRequest`: exactly this device's loopback address.
@@ -136,13 +207,23 @@ fn assert_local(peer: Option<IpAddr>) -> Result<(), ApiError> {
         }
         None => false,
     };
-    if local { Ok(()) } else { Err(ApiError::new(403, "LOCAL_ONLY", "This endpoint is only available on this device")) }
+    if local {
+        Ok(())
+    } else {
+        Err(ApiError::new(
+            403,
+            "LOCAL_ONLY",
+            "This endpoint is only available on this device",
+        ))
+    }
 }
 
 fn loopback(address: IpAddr) -> bool {
     match address {
         IpAddr::V4(address) => address.is_loopback(),
-        IpAddr::V6(address) => address.is_loopback() || address.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback()),
+        IpAddr::V6(address) => {
+            address.is_loopback() || address.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
+        }
     }
 }
 
@@ -150,35 +231,63 @@ fn embed_headers(headers: &mut HeaderMap, origin: &str, requested: Option<&str>)
     let allow_headers = requested
         .and_then(|value| HeaderValue::from_str(value).ok())
         .unwrap_or(HeaderValue::from_static("content-type"));
-    headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_str(origin).expect("embed origins are header-safe"));
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_str(origin).expect("embed origins are header-safe"),
+    );
     headers.insert(
         header::ACCESS_CONTROL_ALLOW_METHODS,
         HeaderValue::from_static("GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"),
     );
     headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, allow_headers);
-    headers.insert(header::ACCESS_CONTROL_EXPOSE_HEADERS, HeaderValue::from_static("x-broadcast-proof"));
-    headers.insert(HeaderName::from_static("access-control-allow-private-network"), HeaderValue::from_static("true"));
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("x-broadcast-proof"),
+    );
+    headers.insert(
+        HeaderName::from_static("access-control-allow-private-network"),
+        HeaderValue::from_static("true"),
+    );
     headers.insert(header::VARY, HeaderValue::from_static("origin"));
 }
 
 /// `assertTrustedNetworkRequest`; true when a configured trusted origin admitted the request.
-fn check(app: &App, headers: &HeaderMap, origin: Option<&str>, allow_opaque: bool) -> Result<bool, ApiError> {
-    let invalid_host = || ApiError::new(403, "INVALID_HOST", "Request Host must be local, private, or explicitly trusted");
-    let (hostname, https_origin) = parse_host(text(headers, header::HOST.as_str()).as_deref()).ok_or_else(invalid_host)?;
+fn check(
+    app: &App,
+    headers: &HeaderMap,
+    origin: Option<&str>,
+    allow_opaque: bool,
+) -> Result<bool, ApiError> {
+    let invalid_host = || {
+        ApiError::new(
+            403,
+            "INVALID_HOST",
+            "Request Host must be local, private, or explicitly trusted",
+        )
+    };
+    let (hostname, https_origin) =
+        parse_host(text(headers, header::HOST.as_str()).as_deref()).ok_or_else(invalid_host)?;
     let network_host = is_trusted_network_host(&hostname);
     let configured_host = !network_host && app.config.trusted_origins.contains(&https_origin);
     if !network_host && !configured_host {
         return Err(invalid_host());
     }
-    let configured_origin = origin.is_some_and(|origin| app.config.trusted_origins.contains(origin));
+    let configured_origin =
+        origin.is_some_and(|origin| app.config.trusted_origins.contains(origin));
     if let Some(origin) = origin.filter(|origin| !origin.is_empty())
         && !configured_origin
         && origin != EMBED_ORIGIN
         && !(allow_opaque && origin == "null")
     {
-        let origin_host = Url::parse(origin).ok().map(|url| url.host_str().unwrap_or_default().to_owned());
+        let origin_host = Url::parse(origin)
+            .ok()
+            .map(|url| url.host_str().unwrap_or_default().to_owned());
         if !origin_host.is_some_and(|host| is_trusted_network_host(&host)) {
-            return Err(ApiError::new(403, "INVALID_ORIGIN", "Request Origin must be local or private"));
+            return Err(ApiError::new(
+                403,
+                "INVALID_ORIGIN",
+                "Request Origin must be local or private",
+            ));
         }
     }
     Ok(configured_host || configured_origin)
@@ -207,8 +316,15 @@ fn is_trusted_network_host(hostname: &str) -> bool {
     }
     if let Ok(address) = host.parse::<Ipv4Addr>() {
         let [first, second, ..] = address.octets();
-        return matches!((first, second), (127 | 10, _) | (172, 16..=31) | (192, 168) | (169, 254));
+        return matches!(
+            (first, second),
+            (127 | 10, _) | (172, 16..=31) | (192, 168) | (169, 254)
+        );
     }
     host.parse::<Ipv6Addr>().is_ok()
-        && (host.starts_with("fc") || host.starts_with("fd") || ["fe8", "fe9", "fea", "feb"].iter().any(|p| host.starts_with(p)))
+        && (host.starts_with("fc")
+            || host.starts_with("fd")
+            || ["fe8", "fe9", "fea", "feb"]
+                .iter()
+                .any(|p| host.starts_with(p)))
 }

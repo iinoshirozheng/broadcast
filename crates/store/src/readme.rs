@@ -9,7 +9,9 @@ use crate::projects::project_not_found;
 use crate::{Store, now, rows};
 
 fn require_project_exists(connection: &Connection, id: &str) -> Result<()> {
-    let exists = connection.query_row("SELECT 1 FROM projects WHERE id = ?", [id], |_| Ok(())).optional()?;
+    let exists = connection
+        .query_row("SELECT 1 FROM projects WHERE id = ?", [id], |_| Ok(()))
+        .optional()?;
     exists.ok_or_else(|| project_not_found(id).into())
 }
 
@@ -73,20 +75,33 @@ impl Store {
         get_readme(&self.connection(), project_id)
     }
 
-    pub fn save_project_readme(&self, project_id: &str, content: &str, expected: Option<i64>) -> Result<ProjectReadme> {
+    pub fn save_project_readme(
+        &self,
+        project_id: &str,
+        content: &str,
+        expected: Option<i64>,
+    ) -> Result<ProjectReadme> {
         let timestamp = now();
         let mut connection = self.connection();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         require_project_exists(&transaction, project_id)?;
         let current: Option<i64> = transaction
-            .query_row("SELECT version FROM project_readmes WHERE project_id = ?", [project_id], |row| row.get(0))
+            .query_row(
+                "SELECT version FROM project_readmes WHERE project_id = ?",
+                [project_id],
+                |row| row.get(0),
+            )
             .optional()?;
         if let Some(expected) = expected {
             let actual = current.unwrap_or(0);
             if actual != expected {
-                return Err(ApiError::new(409, "VERSION_CONFLICT", "Project README changed since it was last read")
-                    .with_details(json!({ "expectedVersion": expected, "actualVersion": actual }))
-                    .into());
+                return Err(ApiError::new(
+                    409,
+                    "VERSION_CONFLICT",
+                    "Project README changed since it was last read",
+                )
+                .with_details(json!({ "expectedVersion": expected, "actualVersion": actual }))
+                .into());
             }
         }
         if current.is_some() {
@@ -119,13 +134,24 @@ impl Store {
              VALUES (?, ?, ?, ?, ?, ?)",
             params![id, project_id, filename, content_type, size, now()],
         )?;
-        Ok(connection.query_row("SELECT * FROM project_readme_attachments WHERE id = ?", [id], rows::readme_attachment)?)
+        Ok(connection.query_row(
+            "SELECT * FROM project_readme_attachments WHERE id = ?",
+            [id],
+            rows::readme_attachment,
+        )?)
     }
 
-    pub fn get_project_readme_attachment(&self, id: &str) -> Result<Option<ProjectReadmeAttachment>> {
+    pub fn get_project_readme_attachment(
+        &self,
+        id: &str,
+    ) -> Result<Option<ProjectReadmeAttachment>> {
         let connection = self.connection();
         Ok(connection
-            .query_row("SELECT * FROM project_readme_attachments WHERE id = ?", [id], rows::readme_attachment)
+            .query_row(
+                "SELECT * FROM project_readme_attachments WHERE id = ?",
+                [id],
+                rows::readme_attachment,
+            )
             .optional()?)
     }
 
@@ -158,7 +184,11 @@ impl Store {
         get_summary(&connection, project_id)
     }
 
-    pub fn save_project_summary_error(&self, project_id: &str, error: &str) -> Result<ProjectSummary> {
+    pub fn save_project_summary_error(
+        &self,
+        project_id: &str,
+        error: &str,
+    ) -> Result<ProjectSummary> {
         let timestamp = now();
         let connection = self.connection();
         connection.execute(

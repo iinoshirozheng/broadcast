@@ -17,9 +17,14 @@ const TASK_TREE_MAX_NODES: usize = 1000;
 
 /// `crypto.randomUUID()`.
 pub fn uuid() -> String {
-    let crypto = worker::js_sys::Reflect::get(&worker::js_sys::global(), &"crypto".into()).unwrap_or_default();
+    let crypto = worker::js_sys::Reflect::get(&worker::js_sys::global(), &"crypto".into())
+        .unwrap_or_default();
     let random = worker::js_sys::Reflect::get(&crypto, &"randomUUID".into()).unwrap_or_default();
-    worker::js_sys::Function::from(random).call0(&crypto).ok().and_then(|id| id.as_string()).unwrap_or_default()
+    worker::js_sys::Function::from(random)
+        .call0(&crypto)
+        .ok()
+        .and_then(|id| id.as_string())
+        .unwrap_or_default()
 }
 
 /// `new Date().toISOString()`.
@@ -85,20 +90,35 @@ pub const THREAD_ASSIGNMENTS: &str = "thread_id = ?, thread_codex_project_id = ?
 fn by_task(rows: Vec<Row>, column: &str) -> HashMap<String, Vec<Row>> {
     let mut grouped: HashMap<String, Vec<Row>> = HashMap::new();
     for row in rows {
-        grouped.entry(text(&row, column).to_owned()).or_default().push(row);
+        grouped
+            .entry(text(&row, column).to_owned())
+            .or_default()
+            .push(row);
     }
     grouped
 }
 
 impl Board {
     pub async fn require_project(&self, id: &str) -> Result<Row> {
-        db::first(&self.db, "SELECT * FROM projects WHERE id = ?", args![id]).await?.ok_or_else(|| {
-            ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{id}' does not exist")).into()
-        })
+        db::first(&self.db, "SELECT * FROM projects WHERE id = ?", args![id])
+            .await?
+            .ok_or_else(|| {
+                ApiError::new(
+                    404,
+                    "PROJECT_NOT_FOUND",
+                    format!("Project '{id}' does not exist"),
+                )
+                .into()
+            })
     }
 
     pub async fn task_row(&self, id: &str) -> Result<Option<Row>> {
-        db::first(&self.db, "SELECT * FROM tasks WHERE id = ? OR identifier = ?", args![id, id]).await
+        db::first(
+            &self.db,
+            "SELECT * FROM tasks WHERE id = ? OR identifier = ?",
+            args![id, id],
+        )
+        .await
     }
 
     /// Deletes stored attachment content.
@@ -119,9 +139,9 @@ impl Board {
     }
 
     pub async fn require_task_row(&self, id: &str) -> Result<Row> {
-        self.task_row(id)
-            .await?
-            .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into())
+        self.task_row(id).await?.ok_or_else(|| {
+            ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into()
+        })
     }
 
     /// `taskActivityStatement`: recorded only while the task still has `version` at `timestamp`.
@@ -177,7 +197,10 @@ impl Board {
     }
 
     pub async fn hydrate_comment(&self, row: &Row) -> Result<Value> {
-        Ok(records::comment(row, self.attachments_for_comment(text(row, "id")).await?))
+        Ok(records::comment(
+            row,
+            self.attachments_for_comment(text(row, "id")).await?,
+        ))
     }
 
     pub async fn hydrate_comments(&self, rows: &[Row]) -> Result<Vec<Value>> {
@@ -209,7 +232,9 @@ impl Board {
             })
             .collect();
         for row in self.chunked(ids, sql::task_relations_query).await? {
-            let Some(entry) = relations.get_mut(text(&row, "relation_task_id")) else { continue };
+            let Some(entry) = relations.get_mut(text(&row, "relation_task_id")) else {
+                continue;
+            };
             let summary = records::task_relation_summary(&row);
             match text(&row, "relation_field") {
                 "parent" => entry["parent"] = summary,
@@ -240,7 +265,9 @@ impl Board {
             .await?;
         let mut previews = HashMap::new();
         for row in rows {
-            previews.entry(text(&row, "task_id").to_owned()).or_insert_with(|| records::attachment(&row));
+            previews
+                .entry(text(&row, "task_id").to_owned())
+                .or_insert_with(|| records::attachment(&row));
         }
         Ok(previews)
     }
@@ -296,7 +323,11 @@ impl Board {
     }
 
     pub async fn hydrate_task(&self, row: Row) -> Result<Value> {
-        Ok(self.hydrate_tasks(vec![row]).await?.pop().unwrap_or(Value::Null))
+        Ok(self
+            .hydrate_tasks(vec![row])
+            .await?
+            .pop()
+            .unwrap_or(Value::Null))
     }
 
     /// `getTask`: the hydrated task, or `null`.
@@ -311,17 +342,33 @@ impl Board {
     pub async fn get_task_tree(&self, id: &str, direction: &str, depth: u32) -> Result<Value> {
         let root = self.require_task_row(id).await?;
         let root_id = value(&root, "id");
-        let mut nodes = vec![records::task_tree_node(&root, Value::Null, 0, vec![root_id.clone()])];
+        let mut nodes = vec![records::task_tree_node(
+            &root,
+            Value::Null,
+            0,
+            vec![root_id.clone()],
+        )];
         let mut seen = HashSet::from([text(&root, "id").to_owned()]);
         let mut frontier = vec![nodes[0].clone()];
         let (join_column, filter_column, parent_column) = if direction == "descendants" {
-            ("target_task_id", "source_task_id", "task_relations.source_task_id")
+            (
+                "target_task_id",
+                "source_task_id",
+                "task_relations.source_task_id",
+            )
         } else {
-            ("source_task_id", "target_task_id", "task_relations.target_task_id")
+            (
+                "source_task_id",
+                "target_task_id",
+                "task_relations.target_task_id",
+            )
         };
         let mut level = 1;
         while level <= depth && !frontier.is_empty() {
-            let ids: Vec<String> = frontier.iter().map(|node| node["id"].as_str().unwrap_or_default().to_owned()).collect();
+            let ids: Vec<String> = frontier
+                .iter()
+                .map(|node| node["id"].as_str().unwrap_or_default().to_owned())
+                .collect();
             let rows = self
                 .chunked(&ids, |placeholders| {
                     format!(

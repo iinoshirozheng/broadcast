@@ -141,7 +141,8 @@ if ($foreground) { $reason = '' }
 }))
 "#;
 
-static NOT_RUNNING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)not found|not running").expect("valid regex"));
+static NOT_RUNNING: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)not found|not running").expect("valid regex"));
 
 /// `runWindowsPowerShell`: the script's trimmed stdout, or its stderr as the error.
 async fn powershell(script: &str, environment: &[(&str, &str)]) -> Result<String> {
@@ -154,7 +155,14 @@ async fn powershell(script: &str, environment: &[(&str, &str)]) -> Result<String
         .await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        bail!("{}", if stderr.is_empty() { "Windows PowerShell command failed".to_owned() } else { stderr });
+        bail!(
+            "{}",
+            if stderr.is_empty() {
+                "Windows PowerShell command failed".to_owned()
+            } else {
+                stderr
+            }
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
@@ -173,7 +181,11 @@ pub async fn processes(app: &Path) -> Result<Vec<(Record, u32)>> {
     items
         .into_iter()
         .map(|item| {
-            let number = |field: &str| item[field].as_u64().and_then(|value| u32::try_from(value).ok());
+            let number = |field: &str| {
+                item[field]
+                    .as_u64()
+                    .and_then(|value| u32::try_from(value).ok())
+            };
             let (Some(pid), Some(parent)) = (number("ProcessId"), number("ParentProcessId")) else {
                 bail!("Unexpected Win32_Process record: {item}");
             };
@@ -189,7 +201,10 @@ pub async fn processes(app: &Path) -> Result<Vec<(Record, u32)>> {
 
 /// `managedCodexProcesses`: the root processes whose command line carries Broadcast's profile.
 pub async fn managed(app: &Path, profile: &Path) -> Result<Vec<Record>> {
-    let profile = std::path::absolute(profile).unwrap_or_else(|_| profile.to_path_buf()).to_string_lossy().to_lowercase();
+    let profile = std::path::absolute(profile)
+        .unwrap_or_else(|_| profile.to_path_buf())
+        .to_string_lossy()
+        .to_lowercase();
     let managed: Vec<(Record, u32)> = processes(app)
         .await?
         .into_iter()
@@ -199,7 +214,11 @@ pub async fn managed(app: &Path, profile: &Path) -> Result<Vec<Record>> {
         })
         .collect();
     let pids: Vec<u32> = managed.iter().map(|(record, _)| record.pid).collect();
-    Ok(managed.into_iter().filter(|(_, parent)| !pids.contains(parent)).map(|(record, _)| record).collect())
+    Ok(managed
+        .into_iter()
+        .filter(|(_, parent)| !pids.contains(parent))
+        .map(|(record, _)| record)
+        .collect())
 }
 
 /// `activateWindowsCodex`: start the packaged app with Broadcast's profile and debugging port.
@@ -230,14 +249,25 @@ pub async fn stop(pid: u32) -> Result<()> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() && !NOT_RUNNING.is_match(&stderr) {
         let stderr = stderr.trim();
-        bail!("{}", if stderr.is_empty() { format!("Unable to stop Codex process {pid}") } else { stderr.to_owned() });
+        bail!(
+            "{}",
+            if stderr.is_empty() {
+                format!("Unable to stop Codex process {pid}")
+            } else {
+                stderr.to_owned()
+            }
+        );
     }
     Ok(())
 }
 
 /// `activateWindowsCodexWindow`: restore the process's main window and bring it to the front.
 pub async fn activate_window(pid: u32) -> Result<()> {
-    let output = powershell(ACTIVATE_WINDOW, &[("BROADCAST_CODEX_APP_PID", &pid.to_string())]).await?;
+    let output = powershell(
+        ACTIVATE_WINDOW,
+        &[("BROADCAST_CODEX_APP_PID", &pid.to_string())],
+    )
+    .await?;
     let result: Value = serde_json::from_str(&output)?;
     if result["handle"] == 0 {
         bail!("Codex process {pid} has no main window to activate");

@@ -2,8 +2,8 @@
 
 use broadcast_domain::constants::JIRA_PROJECT_ID;
 use broadcast_domain::records::{
-    Actor, Attachment, Comment, DevelopmentContext, Project, ProjectReadmeAttachment, Recurrence, Task,
-    TaskActivity, TaskRelationSummary, TaskRelations, ThreadBinding, ThreadIdentity,
+    Actor, Attachment, Comment, DevelopmentContext, Project, ProjectReadmeAttachment, Recurrence,
+    Task, TaskActivity, TaskRelationSummary, TaskRelations, ThreadBinding, ThreadIdentity,
 };
 use rusqlite::Row;
 use rusqlite::types::Type;
@@ -20,14 +20,16 @@ pub(crate) fn optional_json<T: DeserializeOwned>(row: &Row<'_>, column: &str) ->
     let index = row.as_ref().column_index(column)?;
     let text: Option<String> = row.get(index)?;
     text.map(|text| {
-        serde_json::from_str(&text)
-            .map_err(|error| rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error)))
+        serde_json::from_str(&text).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+        })
     })
     .transpose()
 }
 
 fn json<T: DeserializeOwned>(row: &Row<'_>, column: &str) -> Result<T> {
-    optional_json(row, column)?.ok_or_else(|| rusqlite::Error::InvalidColumnType(0, column.to_owned(), Type::Null))
+    optional_json(row, column)?
+        .ok_or_else(|| rusqlite::Error::InvalidColumnType(0, column.to_owned(), Type::Null))
 }
 
 /// `<prefix>_type`, `<prefix>_id`, `<prefix>_name`, `<prefix>_avatar_url`.
@@ -69,7 +71,10 @@ impl ThreadColumns {
             codex_host_id: filled(self.codex_host_id.clone())?,
             workspace_path: filled(self.workspace_path.clone())?,
         };
-        Some(ThreadBinding { thread_id: filled(self.thread_id.clone())?, identity: Some(identity) })
+        Some(ThreadBinding {
+            thread_id: filled(self.thread_id.clone())?,
+            identity: Some(identity),
+        })
     }
 
     /// `legacyLocalThreadIdFromRow`: a thread id without any identity column.
@@ -84,13 +89,22 @@ impl ThreadColumns {
 
 /// `taskFromRow`, with empty enrichment fields.
 pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
-    let development_context = match (filled(row.get("worktree_path")?), filled(row.get("git_branch")?)) {
-        (Some(path), _) => Some(DevelopmentContext::Worktree { path: Some(path), branch: row.get("worktree_branch")? }),
+    let development_context = match (
+        filled(row.get("worktree_path")?),
+        filled(row.get("git_branch")?),
+    ) {
+        (Some(path), _) => Some(DevelopmentContext::Worktree {
+            path: Some(path),
+            branch: row.get("worktree_branch")?,
+        }),
         (None, Some(branch)) => Some(DevelopmentContext::Branch { branch }),
         (None, None) => None,
     };
     let interval: Option<i64> = row.get("recurrence_interval")?;
-    let recurrence = match (interval.filter(|interval| *interval != 0), filled(row.get("recurrence_unit")?)) {
+    let recurrence = match (
+        interval.filter(|interval| *interval != 0),
+        filled(row.get("recurrence_unit")?),
+    ) {
         (Some(interval), Some(unit)) => Some(Recurrence { interval, unit }),
         _ => None,
     };
@@ -119,7 +133,11 @@ pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
         start_date: row.get("start_date")?,
         due_date: row.get("due_date")?,
         recurrence,
-        source: if external_source.as_deref() == Some("jira") { "jira" } else { "local" },
+        source: if external_source.as_deref() == Some("jira") {
+            "jira"
+        } else {
+            "local"
+        },
         external_origin: row.get("external_origin")?,
         external_key: row.get("external_key")?,
         external_url: row.get("external_url")?,
@@ -221,7 +239,11 @@ pub(crate) fn readme_attachment(row: &Row<'_>) -> Result<ProjectReadmeAttachment
 pub(crate) fn project(row: &Row<'_>) -> Result<Project> {
     let id: String = row.get("id")?;
     Ok(Project {
-        source: if id == JIRA_PROJECT_ID { "jira" } else { "local" },
+        source: if id == JIRA_PROJECT_ID {
+            "jira"
+        } else {
+            "local"
+        },
         id,
         name: row.get("name")?,
         workspace_path: row.get("workspace_path")?,

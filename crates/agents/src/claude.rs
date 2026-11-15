@@ -18,7 +18,8 @@ use url::Url;
 const CLAUDE_AGENT_ID: &str = "claude-agent";
 /// Issues already in progress, done or canceled are not picked up.
 const SUMMONABLE_STATUSES: [&str; 4] = ["backlog", "todo", "in_review", "blocked"];
-static MENTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(^|\s)@claude(?-u:\b)").expect("mention pattern"));
+static MENTION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(^|\s)@claude(?-u:\b)").expect("mention pattern"));
 
 pub struct Options {
     pub url: Url,
@@ -106,7 +107,12 @@ struct Runner {
 }
 
 impl Runner {
-    async fn api<T: for<'de> Deserialize<'de>>(&self, method: Method, pathname: &str, body: Option<Value>) -> anyhow::Result<T> {
+    async fn api<T: for<'de> Deserialize<'de>>(
+        &self,
+        method: Method,
+        pathname: &str,
+        body: Option<Value>,
+    ) -> anyhow::Result<T> {
         let mut request = self
             .http
             .request(method, self.options.url.join(pathname)?)
@@ -148,19 +154,51 @@ impl Runner {
                 None | Some(Value::Null) => String::new(),
                 Some(other) => other.to_string(),
             };
-            let failed = result.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+            let failed = result
+                .get("is_error")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             return Ok(Outcome { ok: !failed, text });
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let code = output.status.code().map_or_else(|| "null".to_owned(), |code| code.to_string());
-        Ok(Outcome { ok: false, text: if stderr.is_empty() { format!("claude exited with code {code}") } else { stderr } })
+        let code = output
+            .status
+            .code()
+            .map_or_else(|| "null".to_owned(), |code| code.to_string());
+        Ok(Outcome {
+            ok: false,
+            text: if stderr.is_empty() {
+                format!("claude exited with code {code}")
+            } else {
+                stderr
+            },
+        })
     }
 
-    async fn work(&self, task: &Task, agent_session: &AgentSession, prompt: &str, session_args: [&str; 2]) -> anyhow::Result<()> {
+    async fn work(
+        &self,
+        task: &Task,
+        agent_session: &AgentSession,
+        prompt: &str,
+        session_args: [&str; 2],
+    ) -> anyhow::Result<()> {
         let claim = json!({ "status": "in_progress", "version": task.version, "agentSession": agent_session });
-        if let Err(error) = self.api::<Value>(Method::POST, &format!("/api/tasks/{}/move", task.id), Some(claim)).await {
-            if error.downcast_ref::<ApiRequestError>().is_some_and(|error| error.status == StatusCode::CONFLICT) {
-                log(&format!("{} was changed or claimed elsewhere; skipping", task.identifier));
+        if let Err(error) = self
+            .api::<Value>(
+                Method::POST,
+                &format!("/api/tasks/{}/move", task.id),
+                Some(claim),
+            )
+            .await
+        {
+            if error
+                .downcast_ref::<ApiRequestError>()
+                .is_some_and(|error| error.status == StatusCode::CONFLICT)
+            {
+                log(&format!(
+                    "{} was changed or claimed elsewhere; skipping",
+                    task.identifier
+                ));
                 return Ok(());
             }
             return Err(error);
@@ -172,17 +210,33 @@ impl Runner {
             self.options.cwd.display()
         ));
 
-        let outcome = self.run_claude(prompt, session_args).await.unwrap_or_else(|error| Outcome {
-            ok: false,
-            text: format!("Claude runner could not start claude: {error}"),
-        });
+        let outcome = self
+            .run_claude(prompt, session_args)
+            .await
+            .unwrap_or_else(|error| Outcome {
+                ok: false,
+                text: format!("Claude runner could not start claude: {error}"),
+            });
 
         let comment = json!({ "body": outcome.text, "agentSession": agent_session });
-        self.api::<Value>(Method::POST, &format!("/api/tasks/{}/comments", task.id), Some(comment)).await?;
-        let TaskResponse { task: current } = self.api(Method::GET, &format!("/api/tasks/{}", task.id), None).await?;
+        self.api::<Value>(
+            Method::POST,
+            &format!("/api/tasks/{}/comments", task.id),
+            Some(comment),
+        )
+        .await?;
+        let TaskResponse { task: current } = self
+            .api(Method::GET, &format!("/api/tasks/{}", task.id), None)
+            .await?;
         let status = if outcome.ok { "in_review" } else { "blocked" };
-        let finish = json!({ "status": status, "version": current.version, "agentSession": agent_session });
-        self.api::<Value>(Method::POST, &format!("/api/tasks/{}/move", task.id), Some(finish)).await?;
+        let finish =
+            json!({ "status": status, "version": current.version, "agentSession": agent_session });
+        self.api::<Value>(
+            Method::POST,
+            &format!("/api/tasks/{}/move", task.id),
+            Some(finish),
+        )
+        .await?;
         log(&format!("{} -> {status}", task.identifier));
         Ok(())
     }
@@ -197,21 +251,45 @@ impl Runner {
             if !SUMMONABLE_STATUSES.contains(&task.status.as_str()) {
                 continue;
             }
-            let Comments { comments } = self.api(Method::GET, &format!("/api/tasks/{}/comments", task.id), None).await?;
-            let start = comments.iter().rposition(|comment| comment.author_id == CLAUDE_AGENT_ID).map_or(0, |last| last + 1);
+            let Comments { comments } = self
+                .api(
+                    Method::GET,
+                    &format!("/api/tasks/{}/comments", task.id),
+                    None,
+                )
+                .await?;
+            let start = comments
+                .iter()
+                .rposition(|comment| comment.author_id == CLAUDE_AGENT_ID)
+                .map_or(0, |last| last + 1);
             let pending = &comments[start..];
             let delegated = task.status == "todo" && task.assignee.id == CLAUDE_AGENT_ID;
-            if !delegated && !pending.iter().any(|comment| MENTION.is_match(&comment.body)) {
+            if !delegated
+                && !pending
+                    .iter()
+                    .any(|comment| MENTION.is_match(&comment.body))
+            {
                 continue;
             }
 
-            let existing = task.agent_session.clone().filter(|session| session.platform == "claude");
+            let existing = task
+                .agent_session
+                .clone()
+                .filter(|session| session.platform == "claude");
             let resuming = existing.is_some();
-            let agent_session = existing
-                .unwrap_or_else(|| AgentSession { platform: "claude".to_owned(), session_id: uuid::Uuid::new_v4().to_string() });
+            let agent_session = existing.unwrap_or_else(|| AgentSession {
+                platform: "claude".to_owned(),
+                session_id: uuid::Uuid::new_v4().to_string(),
+            });
             let prompt = build_prompt(&task, pending, resuming);
             let flag = if resuming { "--resume" } else { "--session-id" };
-            self.work(&task, &agent_session, &prompt, [flag, &agent_session.session_id]).await?;
+            self.work(
+                &task,
+                &agent_session,
+                &prompt,
+                [flag, &agent_session.session_id],
+            )
+            .await?;
             return Ok(true);
         }
         Ok(false)
@@ -222,7 +300,10 @@ fn build_prompt(task: &Task, comments: &[Comment], resuming: bool) -> String {
     let heading = if resuming {
         format!("New comments on Broadcast issue {}:", task.identifier)
     } else {
-        format!("You are working on Broadcast issue {}: {}\n\n{}", task.identifier, task.title, task.description)
+        format!(
+            "You are working on Broadcast issue {}: {}\n\n{}",
+            task.identifier, task.title, task.description
+        )
     };
     std::iter::once(heading)
         .chain(comments.iter().map(|comment| format!("{}: {}", comment.author_name, comment.body)))
@@ -239,7 +320,10 @@ fn build_prompt(task: &Task, comments: &[Comment], resuming: bool) -> String {
 pub async fn run(options: Options) -> anyhow::Result<()> {
     let http = reqwest::Client::builder().build().context("HTTP client")?;
     let runner = Runner { options, http };
-    log(&format!("watching {} for issues delegated to or mentioning @claude", runner.options.url));
+    log(&format!(
+        "watching {} for issues delegated to or mentioning @claude",
+        runner.options.url
+    ));
     loop {
         match runner.work_on_next_issue().await {
             Ok(true) => continue,

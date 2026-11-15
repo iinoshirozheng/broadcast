@@ -34,28 +34,45 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 fn label(status: &str) -> Option<&'static str> {
-    STATUS_LABELS.iter().find(|(key, _)| *key == status).map(|(_, label)| *label)
+    STATUS_LABELS
+        .iter()
+        .find(|(key, _)| *key == status)
+        .map(|(_, label)| *label)
 }
 
 fn since(timestamp: &str) -> Option<chrono::TimeDelta> {
-    Some(Utc::now() - DateTime::parse_from_rfc3339(timestamp).ok()?.with_timezone(&Utc))
+    Some(
+        Utc::now()
+            - DateTime::parse_from_rfc3339(timestamp)
+                .ok()?
+                .with_timezone(&Utc),
+    )
 }
 
 /// `isDue`: never attempted, or the last attempt is a day old.
 fn is_due(summary: &ProjectSummary) -> bool {
-    summary.attempted_at.as_deref().is_none_or(|attempted| since(attempted).is_some_and(|age| age >= DAY))
+    summary
+        .attempted_at
+        .as_deref()
+        .is_none_or(|attempted| since(attempted).is_some_and(|age| age >= DAY))
 }
 
 fn build_prompt(project: &Project, tasks: &[Task]) -> String {
     let counts: Map<String, Value> = STATUS_LABELS
         .iter()
-        .map(|(status, label)| ((*label).to_owned(), json!(tasks.iter().filter(|task| task.status == *status).count())))
+        .map(|(status, label)| {
+            (
+                (*label).to_owned(),
+                json!(tasks.iter().filter(|task| task.status == *status).count()),
+            )
+        })
         .collect();
     let issues: Vec<Value> = tasks
         .iter()
         .filter(|task| {
             (task.status != "done" && task.status != "canceled")
-                || since(&task.activity_updated_at).is_some_and(|age| age <= chrono::TimeDelta::days(7))
+                || since(&task.activity_updated_at)
+                    .is_some_and(|age| age <= chrono::TimeDelta::days(7))
         })
         .map(|task| {
             let mut issue = Map::new();
@@ -119,7 +136,13 @@ pub struct ProjectSummaries {
 impl ProjectSummaries {
     /// Codex runs read-only in `workspace` (the server's directory).
     pub fn new(executable: String, workspace: PathBuf) -> Self {
-        Self { executable, workspace, active: Mutex::default(), closed: AtomicBool::new(false), timer: Mutex::default() }
+        Self {
+            executable,
+            workspace,
+            active: Mutex::default(),
+            closed: AtomicBool::new(false),
+            timer: Mutex::default(),
+        }
     }
 
     /// Refreshes due projects now and then every hour.
@@ -144,7 +167,13 @@ impl ProjectSummaries {
                 None => Ok(None),
             })
             .await?
-            .ok_or_else(|| ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{project_id}' was not found")))?;
+            .ok_or_else(|| {
+                ApiError::new(
+                    404,
+                    "PROJECT_NOT_FOUND",
+                    format!("Project '{project_id}' was not found"),
+                )
+            })?;
         if is_due(&summary) {
             refresh(app, project_id);
         }
@@ -173,17 +202,30 @@ impl ProjectSummaries {
     }
 
     /// `#generate`: the summary text, or `None` once the project is gone.
-    async fn generate(&self, app: &Arc<App>, project_id: &str, refresh: &Refresh) -> std::result::Result<Option<String>, String> {
+    async fn generate(
+        &self,
+        app: &Arc<App>,
+        project_id: &str,
+        refresh: &Refresh,
+    ) -> std::result::Result<Option<String>, String> {
         let id = project_id.to_owned();
         let loaded = app
             .store(move |store| {
-                let Some(project) = store.get_project(&id)? else { return Ok(None) };
-                let filters = TaskFilters { project_id: Some(id), status: None, archived: Archived::Exclude };
+                let Some(project) = store.get_project(&id)? else {
+                    return Ok(None);
+                };
+                let filters = TaskFilters {
+                    project_id: Some(id),
+                    status: None,
+                    archived: Archived::Exclude,
+                };
                 Ok(Some((project, store.list_tasks(&filters)?)))
             })
             .await
             .map_err(|error| anyhow::Error::from(error).to_string())?;
-        let Some((project, tasks)) = loaded else { return Ok(None) };
+        let Some((project, tasks)) = loaded else {
+            return Ok(None);
+        };
         let workspace = self.workspace.to_string_lossy().into_owned();
         let args: Vec<String> = [
             "exec",
@@ -203,8 +245,16 @@ impl ProjectSummaries {
         .into_iter()
         .map(str::to_owned)
         .collect();
-        let process = exec::spawn_turn(&self.executable, &args, &build_prompt(&project, &tasks)).await.map_err(|error| error.to_string())?;
-        let TurnProcess { pid, mut child, control, mut stdout, stderr } = process;
+        let process = exec::spawn_turn(&self.executable, &args, &build_prompt(&project, &tasks))
+            .await
+            .map_err(|error| error.to_string())?;
+        let TurnProcess {
+            pid,
+            mut child,
+            control,
+            mut stdout,
+            stderr,
+        } = process;
         *lock(&refresh.pid) = pid;
         tokio::spawn(exec::drain(stderr));
 
@@ -216,7 +266,10 @@ impl ProjectSummaries {
             match exec::read_line(&mut stdout, &mut line, exec::MAX_LINE_BYTES).await {
                 Ok(Line::Eof) => break,
                 Ok(Line::TooLong) => {
-                    fatal = Some(format!("Codex JSONL line exceeded {} bytes", exec::MAX_LINE_BYTES));
+                    fatal = Some(format!(
+                        "Codex JSONL line exceeded {} bytes",
+                        exec::MAX_LINE_BYTES
+                    ));
                     break;
                 }
                 Err(error) => {
@@ -234,7 +287,8 @@ impl ProjectSummaries {
                     };
                     let kind = event.get("type").and_then(Value::as_str);
                     if kind == Some("item.completed")
-                        && event.pointer("/item/type").and_then(Value::as_str) == Some("agent_message")
+                        && event.pointer("/item/type").and_then(Value::as_str)
+                            == Some("agent_message")
                         && let Some(text) = event.pointer("/item/text").and_then(Value::as_str)
                     {
                         summary = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -259,7 +313,9 @@ impl ProjectSummaries {
         let status = status.map_err(|error| error.to_string())?;
         if status.code() != Some(0) || !terminal_error.is_empty() {
             if terminal_error.is_empty() {
-                let code = status.code().map_or_else(|| "null".to_owned(), |code| code.to_string());
+                let code = status
+                    .code()
+                    .map_or_else(|| "null".to_owned(), |code| code.to_string());
                 return Err(format!("Codex 退出码 {code}"));
             }
             return Err(terminal_error);
@@ -278,7 +334,10 @@ fn refresh(app: &Arc<App>, project_id: &str) -> Arc<Refresh> {
     if let Some(current) = active.get(project_id) {
         return Arc::clone(current);
     }
-    let entry = Arc::new(Refresh { pid: Mutex::new(None), done: watch::channel(false).0 });
+    let entry = Arc::new(Refresh {
+        pid: Mutex::new(None),
+        done: watch::channel(false).0,
+    });
     active.insert(project_id.to_owned(), Arc::clone(&entry));
     let (app, id, running) = (Arc::clone(app), project_id.to_owned(), Arc::clone(&entry));
     tokio::spawn(async move {
@@ -287,10 +346,14 @@ fn refresh(app: &Arc<App>, project_id: &str) -> Arc<Refresh> {
         let key = id.clone();
         match outcome {
             Ok(Some(text)) => {
-                let _ = app.store(move |store| store.save_project_summary(&key, &text)).await;
+                let _ = app
+                    .store(move |store| store.save_project_summary(&key, &text))
+                    .await;
             }
             Err(message) if !summaries.closed.load(Ordering::SeqCst) => {
-                let _ = app.store(move |store| store.save_project_summary_error(&key, &message)).await;
+                let _ = app
+                    .store(move |store| store.save_project_summary_error(&key, &message))
+                    .await;
             }
             _ => {}
         }

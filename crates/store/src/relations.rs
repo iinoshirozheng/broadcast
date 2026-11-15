@@ -10,7 +10,9 @@ use broadcast_domain::{ApiError, Result};
 use rusqlite::{Connection, OptionalExtension, Row, TransactionBehavior, params, params_from_iter};
 use serde_json::{Value, json};
 
-use crate::tasks::{attribution_columns, get_task, record_activity, require_task, require_version, update_columns};
+use crate::tasks::{
+    attribution_columns, get_task, record_activity, require_task, require_version, update_columns,
+};
 use crate::{Store, now, rows};
 
 const TASK_TREE_MAX_NODES: usize = 1000;
@@ -21,11 +23,20 @@ fn activity_value(kind: &str, identifier: &str, external_key: Option<&str>, titl
 }
 
 fn task_activity_value(kind: &str, task: &Task) -> Value {
-    activity_value(kind, &task.identifier, task.external_key.as_deref(), &task.title)
+    activity_value(
+        kind,
+        &task.identifier,
+        task.external_key.as_deref(),
+        &task.title,
+    )
 }
 
 /// `#relationEndpoints`: (stored type, source, target).
-fn endpoints<'a>(kind: &str, task_id: &'a str, related_id: &'a str) -> (&'static str, &'a str, &'a str) {
+fn endpoints<'a>(
+    kind: &str,
+    task_id: &'a str,
+    related_id: &'a str,
+) -> (&'static str, &'a str, &'a str) {
     match kind {
         "parent" => ("parent", related_id, task_id),
         "blocks" => ("blocks", task_id, related_id),
@@ -36,15 +47,27 @@ fn endpoints<'a>(kind: &str, task_id: &'a str, related_id: &'a str) -> (&'static
 }
 
 /// Both tasks, version-checked and in the same project.
-fn relation_tasks(connection: &Connection, id: &str, related_id: &str, version: i64) -> Result<(Task, Task)> {
+fn relation_tasks(
+    connection: &Connection,
+    id: &str,
+    related_id: &str,
+    version: i64,
+) -> Result<(Task, Task)> {
     let task = require_task(connection, id)?;
     let related = require_task(connection, related_id)?;
     require_version(&task, version)?;
     if task.id == related.id {
-        return Err(ApiError::new(400, "SELF_RELATION", "An issue cannot be related to itself").into());
+        return Err(
+            ApiError::new(400, "SELF_RELATION", "An issue cannot be related to itself").into(),
+        );
     }
     if task.project_id != related.project_id {
-        return Err(ApiError::new(400, "CROSS_PROJECT_RELATION", "Issue relations must stay within one project").into());
+        return Err(ApiError::new(
+            400,
+            "CROSS_PROJECT_RELATION",
+            "Issue relations must stay within one project",
+        )
+        .into());
     }
     Ok((task, related))
 }
@@ -65,19 +88,33 @@ fn assert_no_parent_cycle(connection: &Connection, child_id: &str, parent_id: &s
         )
         .optional()?;
     if cycle.is_some() {
-        return Err(ApiError::new(409, "RELATION_CYCLE", "This parent would create a cycle").into());
+        return Err(
+            ApiError::new(409, "RELATION_CYCLE", "This parent would create a cycle").into(),
+        );
     }
     Ok(())
 }
 
 /// `#touchTask`: bump the version and record the mutation's attribution.
-fn touch_task(connection: &Connection, task: &Task, attribution: &Attribution, timestamp: &str) -> Result<()> {
+fn touch_task(
+    connection: &Connection,
+    task: &Task,
+    attribution: &Attribution,
+    timestamp: &str,
+) -> Result<()> {
     let columns = attribution_columns(task, attribution, true)?;
     update_columns(connection, &task.id, columns, timestamp)
 }
 
-fn relation_change(connection: &Connection, task_id: &str, related_id: &str) -> Result<RelationChange> {
-    Ok(RelationChange { task: require_task(connection, task_id)?, related_task: require_task(connection, related_id)? })
+fn relation_change(
+    connection: &Connection,
+    task_id: &str,
+    related_id: &str,
+) -> Result<RelationChange> {
+    Ok(RelationChange {
+        task: require_task(connection, task_id)?,
+        related_task: require_task(connection, related_id)?,
+    })
 }
 
 /// `](?project=..&issue=..)`, the Markdown link a mention writes.
@@ -98,7 +135,11 @@ struct TreeRow {
 fn tree_row(row: &Row<'_>, with_parent: bool) -> rusqlite::Result<TreeRow> {
     Ok(TreeRow {
         id: row.get("id")?,
-        parent_id: if with_parent { row.get("tree_parent_id")? } else { None },
+        parent_id: if with_parent {
+            row.get("tree_parent_id")?
+        } else {
+            None
+        },
         summary: TaskTreeSummary {
             identifier: row.get("identifier")?,
             title: row.get("title")?,
@@ -132,7 +173,12 @@ impl Store {
                 )
                 .optional()?;
             if existing.as_deref() == Some(related.id.as_str()) {
-                return Err(ApiError::new(409, "RELATION_EXISTS", "This parent relation already exists").into());
+                return Err(ApiError::new(
+                    409,
+                    "RELATION_EXISTS",
+                    "This parent relation already exists",
+                )
+                .into());
             }
             if existing.is_some() {
                 transaction.execute(
@@ -149,14 +195,22 @@ impl Store {
                 )
                 .optional()?;
             if existing.is_some() {
-                return Err(ApiError::new(409, "RELATION_EXISTS", "This issue relation already exists").into());
+                return Err(ApiError::new(
+                    409,
+                    "RELATION_EXISTS",
+                    "This issue relation already exists",
+                )
+                .into());
             }
         }
         let timestamp = now();
         let previous = match (&task.relations.parent, kind) {
-            (Some(parent), "parent") => {
-                activity_value(kind, &parent.identifier, parent.external_key.as_deref(), &parent.title)
-            }
+            (Some(parent), "parent") => activity_value(
+                kind,
+                &parent.identifier,
+                parent.external_key.as_deref(),
+                &parent.title,
+            ),
             _ => Value::Null,
         };
         transaction.execute(
@@ -165,7 +219,11 @@ impl Store {
             params![stored_kind, source, target, input.origin.unwrap_or("manual"), timestamp],
         )?;
         touch_task(&transaction, &task, &input.attribution, &timestamp)?;
-        let change = FieldChange { field: "relation", before: previous, after: task_activity_value(kind, &related) };
+        let change = FieldChange {
+            field: "relation",
+            before: previous,
+            after: task_activity_value(kind, &related),
+        };
         record_activity(&transaction, &task.id, actor, &[change], &timestamp)?;
         let result = relation_change(&transaction, &task.id, &related.id)?;
         transaction.commit()?;
@@ -240,7 +298,11 @@ impl Store {
         }
         let timestamp = now();
         touch_task(&transaction, &task, &input.attribution, &timestamp)?;
-        let change = FieldChange { field: "relation", before: task_activity_value(kind, &related), after: Value::Null };
+        let change = FieldChange {
+            field: "relation",
+            before: task_activity_value(kind, &related),
+            after: Value::Null,
+        };
         record_activity(&transaction, &task.id, actor, &[change], &timestamp)?;
         let result = relation_change(&transaction, &task.id, &related.id)?;
         transaction.commit()?;
@@ -251,17 +313,28 @@ impl Store {
     pub fn get_task_tree(&self, id: &str, direction: &'static str, depth: u32) -> Result<TaskTree> {
         let connection = self.connection();
         let root = connection
-            .query_row("SELECT * FROM tasks WHERE id = ?1 OR identifier = ?1", [id], |row| tree_row(row, false))
+            .query_row(
+                "SELECT * FROM tasks WHERE id = ?1 OR identifier = ?1",
+                [id],
+                |row| tree_row(row, false),
+            )
             .optional()?
-            .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")))?;
+            .ok_or_else(|| {
+                ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist"))
+            })?;
         let (join_column, filter_column) = if direction == "descendants" {
             ("target_task_id", "source_task_id")
         } else {
             ("source_task_id", "target_task_id")
         };
         let root_id = root.id.clone();
-        let mut nodes =
-            vec![TaskTreeNode { id: root.id.clone(), parent_id: None, depth: 0, path: vec![root.id.clone()], summary: root.summary }];
+        let mut nodes = vec![TaskTreeNode {
+            id: root.id.clone(),
+            parent_id: None,
+            depth: 0,
+            path: vec![root.id.clone()],
+            summary: root.summary,
+        }];
         let mut seen = HashSet::from([root_id.clone()]);
         let mut frontier = vec![0usize];
         let mut level = 1;
@@ -275,11 +348,20 @@ impl Store {
                    AND task_relations.{filter_column} IN ({placeholders})
                  ORDER BY tasks.sort_order, tasks.created_at, tasks.id"
             );
-            let ids: Vec<String> = frontier.iter().map(|&index| nodes[index].id.clone()).collect();
+            let ids: Vec<String> = frontier
+                .iter()
+                .map(|&index| nodes[index].id.clone())
+                .collect();
             let mut by_parent: HashMap<String, Vec<TreeRow>> = HashMap::new();
-            for row in connection.prepare(&sql)?.query_map(params_from_iter(&ids), |row| tree_row(row, true))? {
+            for row in connection
+                .prepare(&sql)?
+                .query_map(params_from_iter(&ids), |row| tree_row(row, true))?
+            {
                 let row = row?;
-                by_parent.entry(row.parent_id.clone().unwrap_or_default()).or_default().push(row);
+                by_parent
+                    .entry(row.parent_id.clone().unwrap_or_default())
+                    .or_default()
+                    .push(row);
             }
             let mut next = Vec::new();
             for &parent in &frontier {
@@ -311,14 +393,25 @@ impl Store {
             frontier = next;
             level += 1;
         }
-        Ok(TaskTree { root_id, direction, depth, node_count: nodes.len(), nodes })
+        Ok(TaskTree {
+            root_id,
+            direction,
+            depth,
+            node_count: nodes.len(),
+            nodes,
+        })
     }
 
     /// `listTaskActivities`.
     pub fn list_task_activities(&self, task_id: &str) -> Result<Vec<TaskActivity>> {
         let connection = self.connection();
-        let task = get_task(&connection, task_id)?
-            .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{task_id}' does not exist")))?;
+        let task = get_task(&connection, task_id)?.ok_or_else(|| {
+            ApiError::new(
+                404,
+                "TASK_NOT_FOUND",
+                format!("Task '{task_id}' does not exist"),
+            )
+        })?;
         let activities = connection
             .prepare("SELECT * FROM task_activities WHERE task_id = ? ORDER BY created_at, id")?
             .query_map([task.id], rows::activity)?

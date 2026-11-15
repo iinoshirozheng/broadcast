@@ -44,7 +44,13 @@ pub struct Parsed {
 
 impl Parsed {
     pub fn command(&self) -> String {
-        format!("{} {}", self.resource.as_deref().unwrap_or(""), self.action.as_deref().unwrap_or("")).trim().to_owned()
+        format!(
+            "{} {}",
+            self.resource.as_deref().unwrap_or(""),
+            self.action.as_deref().unwrap_or("")
+        )
+        .trim()
+        .to_owned()
     }
 
     pub fn option(&self, name: &str) -> Option<&str> {
@@ -56,11 +62,15 @@ impl Parsed {
     }
 
     pub fn flag(&self, name: &str) -> bool {
-        self.options.get(name).is_some_and(|value| value == &Value::Bool(true))
+        self.options
+            .get(name)
+            .is_some_and(|value| value == &Value::Bool(true))
     }
 
     pub fn required(&self, name: &str) -> Result<&str> {
-        self.option(name).filter(|value| !value.is_empty()).ok_or_else(|| usage(format!("Missing required option --{name}")))
+        self.option(name)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| usage(format!("Missing required option --{name}")))
     }
 
     pub fn operand(&self, index: usize) -> &str {
@@ -71,7 +81,11 @@ impl Parsed {
         if self.operands.len() == expected {
             return Ok(());
         }
-        let command = format!("{} {}", self.resource.as_deref().unwrap_or(""), self.action.as_deref().unwrap_or(""));
+        let command = format!(
+            "{} {}",
+            self.resource.as_deref().unwrap_or(""),
+            self.action.as_deref().unwrap_or("")
+        );
         Err(usage(match expected {
             0 => format!("{command} does not accept positional arguments"),
             1 => format!("{command} requires exactly 1 positional argument"),
@@ -132,7 +146,12 @@ pub fn parse(argv: &[String]) -> Result<Parsed> {
         options.insert(name.to_owned(), value);
     }
     let mut positionals = positionals.into_iter();
-    Ok(Parsed { resource: positionals.next(), action: positionals.next(), operands: positionals.collect(), options })
+    Ok(Parsed {
+        resource: positionals.next(),
+        action: positionals.next(),
+        operands: positionals.collect(),
+        options,
+    })
 }
 
 /// The options each command accepts besides the global ones.
@@ -148,7 +167,9 @@ pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
         "issue create" => with(&[&ISSUE_FIELDS, &ATTRIBUTION, &["json"]]),
         "issue update" => with(&[&ISSUE_FIELDS, &ATTRIBUTION, &["if-version", "json"]]),
         "issue move" => with(&[&["status"], &ATTRIBUTION, &BINDING, &["if-version", "json"]]),
-        "issue archive" | "issue restore" | "comment delete" => with(&[&ATTRIBUTION, &["if-version", "json"]]),
+        "issue archive" | "issue restore" | "comment delete" => {
+            with(&[&ATTRIBUTION, &["if-version", "json"]])
+        }
         "issue tree" => with(&[&["direction", "depth", "json"]]),
         "issue relation" => with(&[&["type", "issue"], &ATTRIBUTION, &["if-version", "json"]]),
         "comment list" => with(&[&["after", "json"]]),
@@ -156,7 +177,9 @@ pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
         "comment update" => with(&[&["body"], &ATTRIBUTION, &["if-version", "json"]]),
         "attachment list" => with(&[&["task", "comment", "after", "json"]]),
         "attachment download" => with(&[&["output", "json"]]),
-        "attachment upload" => with(&[&["file", "task", "comment", "content-type", "kind", "json"]]),
+        "attachment upload" => {
+            with(&[&["file", "task", "comment", "content-type", "kind", "json"]])
+        }
         "context current" => with(&[&["cwd", "json"]]),
         "runner claude" => with(&[&["url", "cwd", "permission-mode", "interval"]]),
         _ => None,
@@ -166,7 +189,8 @@ pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
 /// Help text for each supported command level.
 pub fn help(scope: &str) -> Option<&'static str> {
     Some(match scope {
-        "" => r#"Usage: broadcast RESOURCE ACTION [options]
+        "" => {
+            r#"Usage: broadcast RESOURCE ACTION [options]
 
 Commands:
   context current [--cwd PATH] [--json]
@@ -202,8 +226,10 @@ Conversation attribution for issue/comment writes:
   External options must be supplied together and ignore CODEX_THREAD_ID.
   --binding-* options remain separate native Codex bindings.
 
-Run broadcast issue --help for all issue arguments."#,
-        "issue" => r#"Usage: broadcast issue ACTION [arguments] [options]
+Run broadcast issue --help for all issue arguments."#
+        }
+        "issue" => {
+            r#"Usage: broadcast issue ACTION [arguments] [options]
 
 Actions:
   list [--project PROJECT_ID] [--status STATUS] [--archived true|false|all] [--json]
@@ -245,8 +271,10 @@ Statuses: backlog, todo, in_progress, in_review, blocked, done, canceled
 Priorities: none, urgent, high, medium, low
 
 Example:
-  broadcast issue get LOCAL-275 --json"#,
-        "comment add" => r#"Usage: broadcast comment add ISSUE_ID (--body TEXT | --body-file FILE)
+  broadcast issue get LOCAL-275 --json"#
+        }
+        "comment add" => {
+            r#"Usage: broadcast comment add ISSUE_ID (--body TEXT | --body-file FILE)
   [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID]
   [--binding-thread-id ID
     [--binding-codex-project-id ID --binding-codex-project-kind local|remote
@@ -255,16 +283,22 @@ Example:
 
 External attribution requires both options; Pi accepts a full session path or ID.
 CODEX_THREAD_ID is used only when no external attribution is supplied.
-Binding options remain independent, native Codex identity."#,
-        "comment update" => r#"Usage: broadcast comment update COMMENT_ID --body TEXT --if-version N
+Binding options remain independent, native Codex identity."#
+        }
+        "comment update" => {
+            r#"Usage: broadcast comment update COMMENT_ID --body TEXT --if-version N
   [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID] [--json]
 
-External attribution requires both options; otherwise Codex uses CODEX_THREAD_ID."#,
-        "comment delete" => r#"Usage: broadcast comment delete COMMENT_ID --if-version N
+External attribution requires both options; otherwise Codex uses CODEX_THREAD_ID."#
+        }
+        "comment delete" => {
+            r#"Usage: broadcast comment delete COMMENT_ID --if-version N
   [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID] [--json]
 
-Deleting a comment removes its saved session metadata with it."#,
-        "comment list" => r#"Usage: broadcast comment list ISSUE_ID [--after CURSOR] [--json]
+Deleting a comment removes its saved session metadata with it."#
+        }
+        "comment list" => {
+            r#"Usage: broadcast comment list ISSUE_ID [--after CURSOR] [--json]
 
 Options:
   --after CURSOR  Return comments created or modified after a prior nextCursor
@@ -274,7 +308,8 @@ Options:
 The response always includes nextCursor. Omit --after for the full list.
 
 Example:
-  broadcast comment list LOCAL-275 --after CURSOR --json"#,
+  broadcast comment list LOCAL-275 --after CURSOR --json"#
+        }
         _ => return None,
     })
 }

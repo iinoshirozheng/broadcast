@@ -18,7 +18,15 @@ pub async fn publish(file: &Path, url: &str) -> Result<()> {
     #[cfg(unix)]
     options.mode(0o600);
     let mut handle = options.open(&temporary).await?;
-    handle.write_all(format!("{}\n", json!({ "version": 1, "pid": std::process::id(), "url": url })).as_bytes()).await?;
+    handle
+        .write_all(
+            format!(
+                "{}\n",
+                json!({ "version": 1, "pid": std::process::id(), "url": url })
+            )
+            .as_bytes(),
+        )
+        .await?;
     handle.flush().await?;
     drop(handle);
     tokio::fs::rename(&temporary, file).await?;

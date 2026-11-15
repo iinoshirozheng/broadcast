@@ -44,19 +44,30 @@ fn now_ms() -> i64 {
 impl Host {
     /// The last report, if it is fresh.
     pub fn current(&self) -> Option<HostRuntime> {
-        let runtime = self.runtime.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        runtime.clone().filter(|runtime| now_ms() - runtime.updated_at <= TTL_MS)
+        let runtime = self
+            .runtime
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        runtime
+            .clone()
+            .filter(|runtime| now_ms() - runtime.updated_at <= TTL_MS)
     }
 
     pub fn report(&self, body: &Value) -> Result<HostRuntime> {
         let runtime = parse(body)?;
-        *self.runtime.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(runtime.clone());
+        *self
+            .runtime
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(runtime.clone());
         Ok(runtime)
     }
 
     /// `currentHostThreadBinding`: the full identity when the host is on `thread_id`.
     pub fn thread_binding(&self, thread_id: Option<&str>) -> Option<ThreadBinding> {
-        let runtime = self.runtime.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let runtime = self
+            .runtime
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let runtime = runtime.as_ref()?;
         if Some(runtime.thread_id.as_str()) != thread_id {
             return None;
@@ -75,7 +86,9 @@ impl Host {
 
     /// `resolveInputThreadBinding`: an unbound mutation inherits the host's thread identity.
     pub fn resolve(&self, mut attribution: Attribution) -> Attribution {
-        if attribution.thread_binding.is_some() || matches!(attribution.agent_session, Some(Some(_))) {
+        if attribution.thread_binding.is_some()
+            || matches!(attribution.agent_session, Some(Some(_)))
+        {
             return attribution;
         }
         if let Some(binding) = self.thread_binding(attribution.thread_id.as_deref()) {
@@ -109,7 +122,10 @@ fn parse(body: &Value) -> Result<HostRuntime> {
             let integer = |key: &str| progress.get(key).and_then(integer);
             match (integer("completed"), integer("total")) {
                 (Some(completed), Some(total)) if completed >= 0 && total >= 1 => {
-                    Some(TodoProgress { completed: completed.min(total), total })
+                    Some(TodoProgress {
+                        completed: completed.min(total),
+                        total,
+                    })
                 }
                 _ => return Err(ApiError::invalid_field("'threadTodoProgress' is invalid").into()),
             }

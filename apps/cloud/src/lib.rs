@@ -25,11 +25,20 @@ use crate::error::Result;
 pub use hub::RealtimeHub;
 
 async fn broadcast(env: &Env, revision: serde_json::Value) -> worker::Result<()> {
-    let response = hub::send(env, Method::Post, "/broadcast", Some(&json!({ "revision": revision }))).await?;
+    let response = hub::send(
+        env,
+        Method::Post,
+        "/broadcast",
+        Some(&json!({ "revision": revision })),
+    )
+    .await?;
     if (200..300).contains(&response.status_code()) {
         Ok(())
     } else {
-        Err(worker::Error::RustError(format!("Realtime broadcast failed ({})", response.status_code())))
+        Err(worker::Error::RustError(format!(
+            "Realtime broadcast failed ({})",
+            response.status_code()
+        )))
     }
 }
 
@@ -47,12 +56,19 @@ async fn handle(mut request: Request, env: Env, ctx: &Context) -> Result<Respons
     };
     let api = url.path().starts_with("/api/");
     let mut response = if api {
-        let board = Board { db: env.d1("DB")?, env: env.clone(), actor: session.actor };
+        let board = Board {
+            db: env.d1("DB")?,
+            env: env.clone(),
+            actor: session.actor,
+        };
         routes::route(&board, &mut request, &url).await?
     } else if let Ok(assets) = env.assets("ASSETS") {
         assets.fetch_request(request).await?
     } else {
-        http::json(404, &json!({ "error": { "code": "NOT_FOUND", "message": "Resource not found" } }))?
+        http::json(
+            404,
+            &json!({ "error": { "code": "NOT_FOUND", "message": "Resource not found" } }),
+        )?
     };
     if let Some(cookie) = &session.cookie
         && response.status_code() != 101
@@ -79,5 +95,7 @@ async fn fetch(request: Request, env: Env, ctx: Context) -> worker::Result<Respo
         Ok(response) => Ok(response),
         Err(failure) => http::failure_response(failure),
     };
-    response.and_then(http::with_security_headers).or_else(|_| Response::error("Internal server error", 500))
+    response
+        .and_then(http::with_security_headers)
+        .or_else(|_| Response::error("Internal server error", 500))
 }

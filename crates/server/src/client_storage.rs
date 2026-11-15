@@ -32,7 +32,10 @@ pub struct ClientStorage {
 
 impl ClientStorage {
     pub fn new(path: PathBuf) -> Self {
-        Self { path, lock: Mutex::new(()) }
+        Self {
+            path,
+            lock: Mutex::new(()),
+        }
     }
 
     async fn load(&self) -> Result<Map<String, Value>> {

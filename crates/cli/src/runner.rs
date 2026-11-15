@@ -19,15 +19,28 @@ pub async fn claude(parsed: &Parsed) -> Result<()> {
     let url = Url::parse(&url).map_err(|_| usage("Runner URL must be a valid URL"))?;
     let cwd = match parsed.option("cwd") {
         Some(cwd) => cwd.into(),
-        None => std::env::current_dir().map_err(|error| CliError::new(error.to_string(), "INTERNAL_ERROR", 1))?,
+        None => std::env::current_dir()
+            .map_err(|error| CliError::new(error.to_string(), "INTERNAL_ERROR", 1))?,
     };
-    let permission_mode = parsed.option("permission-mode").unwrap_or("acceptEdits").to_owned();
+    let permission_mode = parsed
+        .option("permission-mode")
+        .unwrap_or("acceptEdits")
+        .to_owned();
     let interval = match parsed.option("interval") {
-        Some(raw) => raw.parse().ok().and_then(|seconds| Duration::try_from_secs_f64(seconds).ok()),
+        Some(raw) => raw
+            .parse()
+            .ok()
+            .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok()),
         None => Some(Duration::from_secs(5)),
     };
-    let interval = interval.ok_or_else(|| usage("--interval must be a non-negative number of seconds"))?;
-    let options = claude::Options { url, cwd, permission_mode, interval };
+    let interval =
+        interval.ok_or_else(|| usage("--interval must be a non-negative number of seconds"))?;
+    let options = claude::Options {
+        url,
+        cwd,
+        permission_mode,
+        interval,
+    };
     // The runner future (and with it a running `claude`) is dropped once the select ends.
     tokio::select! {
         result = claude::run(options) => result.map_err(|error| CliError::new(format!("{error:#}"), "INTERNAL_ERROR", 1)),

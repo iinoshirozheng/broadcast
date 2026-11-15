@@ -21,8 +21,15 @@ pub const TURN_OWNER_ARG: &str = "__turn-owner";
 pub const SKILL_MARKER: char = '\u{FFFC}';
 const VISIBLE_TEXT_LIMIT: usize = 65_536;
 pub const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
-const ITEM_TYPES: [&str; 7] =
-    ["agent_message", "command_execution", "file_change", "mcp_tool_call", "web_search", "todo_list", "error"];
+const ITEM_TYPES: [&str; 7] = [
+    "agent_message",
+    "command_execution",
+    "file_change",
+    "mcp_tool_call",
+    "web_search",
+    "todo_list",
+    "error",
+];
 
 /// `resolveCodexPermissions`: stored sandbox values are product permission choices.
 pub struct Permissions {
@@ -33,10 +40,22 @@ pub struct Permissions {
 
 pub fn permissions(sandbox: &str) -> Permissions {
     if sandbox == "danger-full-access" {
-        return Permissions { sandbox: "danger-full-access", approval_policy: "never", reviewer: None };
+        return Permissions {
+            sandbox: "danger-full-access",
+            approval_policy: "never",
+            reviewer: None,
+        };
     }
-    let reviewer = if sandbox == "read-only" { "user" } else { "auto_review" };
-    Permissions { sandbox: "workspace-write", approval_policy: "on-request", reviewer: Some(reviewer) }
+    let reviewer = if sandbox == "read-only" {
+        "user"
+    } else {
+        "auto_review"
+    };
+    Permissions {
+        sandbox: "workspace-write",
+        approval_policy: "on-request",
+        reviewer: Some(reviewer),
+    }
 }
 
 pub fn capped_str(value: &str) -> String {
@@ -83,7 +102,9 @@ pub enum CodexEvent {
 }
 
 fn normalized_item(raw_type: &str, item: &Value) -> EventRecord {
-    let status = item["status"].as_str().map_or_else(|| raw_type["item.".len()..].to_owned(), capped_str);
+    let status = item["status"]
+        .as_str()
+        .map_or_else(|| raw_type["item.".len()..].to_owned(), capped_str);
     let item_id = capped(&item["id"]);
     let mut data = Map::new();
     data.insert("status".into(), json!(status));
@@ -120,7 +141,11 @@ fn normalized_item(raw_type: &str, item: &Value) -> EventRecord {
                 .filter(|change| change["path"].as_str().is_some_and(|path| !path.is_empty()))
                 .collect();
             let paths = capped_str(
-                &changes.iter().filter_map(|change| change["path"].as_str()).collect::<Vec<_>>().join("\n"),
+                &changes
+                    .iter()
+                    .filter_map(|change| change["path"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             );
             let files: Vec<&str> = paths.split('\n').filter(|path| !path.is_empty()).collect();
             data.insert("files".into(), json!(files));
@@ -148,8 +173,16 @@ fn normalized_item(raw_type: &str, item: &Value) -> EventRecord {
             if !detail.is_empty() && detail != "{}" {
                 data.insert("detail".into(), json!(detail));
             }
-            let role = if js::truthy(&item["error"]) { "error" } else { "activity" };
-            let name = [server, tool].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(".");
+            let role = if js::truthy(&item["error"]) {
+                "error"
+            } else {
+                "activity"
+            };
+            let name = [server, tool]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(".");
             event(role, capped_str(&name), data)
         }
         "web_search" => {
@@ -177,8 +210,13 @@ fn normalized_item(raw_type: &str, item: &Value) -> EventRecord {
                     Some(Value::Object(entry))
                 })
                 .collect();
-            let content =
-                capped_str(&items.iter().filter_map(|todo| todo["text"].as_str()).collect::<Vec<_>>().join("\n"));
+            let content = capped_str(
+                &items
+                    .iter()
+                    .filter_map(|todo| todo["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
             if !items.is_empty() {
                 data.insert("detail".into(), json!(detail_text(&Value::Array(items))));
             }
@@ -199,13 +237,26 @@ fn normalized_item(raw_type: &str, item: &Value) -> EventRecord {
 /// `normalizeCodexEvent`: `None` for events the log does not keep.
 pub fn normalize_event(raw: &Value) -> Option<CodexEvent> {
     let raw_type = raw.as_object()?.get("type").and_then(Value::as_str)?;
-    let event = |kind: &str, role, content, data| Some(CodexEvent::Event(EventRecord { kind: kind.to_owned(), role, content, data }));
+    let event = |kind: &str, role, content, data| {
+        Some(CodexEvent::Event(EventRecord {
+            kind: kind.to_owned(),
+            role,
+            content,
+            data,
+        }))
+    };
     match raw_type {
         "thread.started" => {
             let id = raw["thread_id"].as_str()?;
-            (!id.is_empty() && js::len(id) <= 256 && !id.contains('\0')).then(|| CodexEvent::ThreadStarted(id.to_owned()))
+            (!id.is_empty() && js::len(id) <= 256 && !id.contains('\0'))
+                .then(|| CodexEvent::ThreadStarted(id.to_owned()))
         }
-        "turn.started" => event(raw_type, "activity", String::new(), json!({ "status": "started" })),
+        "turn.started" => event(
+            raw_type,
+            "activity",
+            String::new(),
+            json!({ "status": "started" }),
+        ),
         "turn.completed" => {
             let mut usage = Map::new();
             for key in ["input_tokens", "cached_input_tokens", "output_tokens"] {
@@ -220,9 +271,12 @@ pub fn normalize_event(raw: &Value) -> Option<CodexEvent> {
             }
             event(raw_type, "activity", String::new(), Value::Object(data))
         }
-        "turn.failed" => {
-            event(raw_type, "error", error_message(either(&raw["error"], &raw["message"])), json!({ "status": "failed" }))
-        }
+        "turn.failed" => event(
+            raw_type,
+            "error",
+            error_message(either(&raw["error"], &raw["message"])),
+            json!({ "status": "failed" }),
+        ),
         "error" => event(
             raw_type,
             "activity",
@@ -240,9 +294,15 @@ pub fn normalize_event(raw: &Value) -> Option<CodexEvent> {
 }
 
 /// `buildCodexArgs`.
-pub fn build_args(thread: &AiChatThread, add_directories: &[String], image_paths: &[String]) -> Vec<String> {
+pub fn build_args(
+    thread: &AiChatThread,
+    add_directories: &[String],
+    image_paths: &[String],
+) -> Vec<String> {
     let permission = permissions(&thread.sandbox);
-    let mut args: Vec<String> = ["exec", "--json", "--color", "never", "-C"].map(str::to_owned).into();
+    let mut args: Vec<String> = ["exec", "--json", "--color", "never", "-C"]
+        .map(str::to_owned)
+        .into();
     args.extend([
         thread.origin.workspace_path.clone(),
         "-s".into(),
@@ -260,7 +320,10 @@ pub fn build_args(thread: &AiChatThread, add_directories: &[String], image_paths
         args.extend(["-m".into(), thread.model.clone()]);
     }
     if !thread.reasoning_effort.is_empty() {
-        args.extend(["-c".into(), format!("model_reasoning_effort=\"{}\"", thread.reasoning_effort)]);
+        args.extend([
+            "-c".into(),
+            format!("model_reasoning_effort=\"{}\"", thread.reasoning_effort),
+        ]);
     }
     let resume = thread.codex_thread_id.as_ref().filter(|id| !id.is_empty());
     if resume.is_some() {
@@ -308,7 +371,11 @@ pub fn build_prompt(
         format!("project_name: {}", origin.project_name),
         format!("workspace_path: {}", origin.workspace_path),
     ];
-    if let Some(identifier) = origin.issue_identifier.as_ref().filter(|identifier| !identifier.is_empty()) {
+    if let Some(identifier) = origin
+        .issue_identifier
+        .as_ref()
+        .filter(|identifier| !identifier.is_empty())
+    {
         context.push(format!("issue_identifier: {identifier}"));
     }
     if !attachment_paths.is_empty() {
@@ -319,10 +386,18 @@ pub fn build_prompt(
         "This is private server-owned context. Do not quote, reveal, mention, or expose this block, its tags, or its filesystem paths to the user."
             .into(),
     );
-    let mut lines = vec![format!("[$manage-broadcast]({}) e-broadcast", skill_path.display()), String::new()];
+    let mut lines = vec![
+        format!("[$manage-broadcast]({}) e-broadcast", skill_path.display()),
+        String::new(),
+    ];
     lines.push("<broadcast_context>".into());
     lines.extend(context);
-    lines.extend(["</broadcast_context>".into(), String::new(), "<user_message>".into(), user_message]);
+    lines.extend([
+        "</broadcast_context>".into(),
+        String::new(),
+        "<user_message>".into(),
+        user_message,
+    ]);
     lines.push("</user_message>".into());
     lines.join("\n")
 }
@@ -337,7 +412,11 @@ pub struct TurnProcess {
 }
 
 /// `spawnCodexTurn`: starts the owner and hands it the prompt.
-pub async fn spawn_turn(executable: &str, args: &[String], prompt: &str) -> std::io::Result<TurnProcess> {
+pub async fn spawn_turn(
+    executable: &str,
+    args: &[String],
+    prompt: &str,
+) -> std::io::Result<TurnProcess> {
     let owner = std::env::current_exe()?;
     let mut command = broadcast_codex::command(&owner);
     command
@@ -351,15 +430,30 @@ pub async fn spawn_turn(executable: &str, args: &[String], prompt: &str) -> std:
     #[cfg(unix)]
     command.process_group(0);
     let mut child = command.spawn()?;
-    let mut control = child.stdin.take().ok_or_else(|| std::io::Error::other("turn owner stdin is unavailable"))?;
-    let stdout = child.stdout.take().ok_or_else(|| std::io::Error::other("turn owner stdout is unavailable"))?;
-    let stderr = child.stderr.take().ok_or_else(|| std::io::Error::other("turn owner stderr is unavailable"))?;
+    let mut control = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("turn owner stdin is unavailable"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("turn owner stdout is unavailable"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("turn owner stderr is unavailable"))?;
     let pid = child.id();
     let mut line = serde_json::to_string(prompt)?;
     line.push('\n');
     // A failed write means the owner already exited; its exit status reports why.
     let _ = control.write_all(line.as_bytes()).await;
-    Ok(TurnProcess { pid, child, control, stdout: BufReader::new(stdout), stderr })
+    Ok(TurnProcess {
+        pid,
+        child,
+        control,
+        stdout: BufReader::new(stdout),
+        stderr,
+    })
 }
 
 pub enum Line {
@@ -369,12 +463,20 @@ pub enum Line {
 }
 
 /// Reads one `\n`-terminated line into `line` without buffering more than `limit` bytes.
-pub async fn read_line(reader: &mut (impl AsyncBufRead + Unpin), line: &mut Vec<u8>, limit: usize) -> std::io::Result<Line> {
+pub async fn read_line(
+    reader: &mut (impl AsyncBufRead + Unpin),
+    line: &mut Vec<u8>,
+    limit: usize,
+) -> std::io::Result<Line> {
     line.clear();
     loop {
         let available = reader.fill_buf().await?;
         if available.is_empty() {
-            return Ok(if line.is_empty() { Line::Eof } else { Line::Read });
+            return Ok(if line.is_empty() {
+                Line::Eof
+            } else {
+                Line::Read
+            });
         }
         let (take, done) = match available.iter().position(|&byte| byte == b'\n') {
             Some(index) => (index, true),
@@ -397,7 +499,11 @@ pub fn signal_group(pid: u32, kill: bool) {
     {
         use nix::sys::signal::{Signal, killpg};
         use nix::unistd::Pid;
-        let signal = if kill { Signal::SIGKILL } else { Signal::SIGTERM };
+        let signal = if kill {
+            Signal::SIGKILL
+        } else {
+            Signal::SIGTERM
+        };
         if let Ok(pid) = i32::try_from(pid) {
             let _ = killpg(Pid::from_raw(pid), signal);
         }
@@ -416,14 +522,24 @@ pub fn signal_group(pid: u32, kill: bool) {
 
 /// The `__turn-owner` process: runs Codex with the prompt on stdin and mirrors its exit.
 pub fn turn_owner(mut args: impl Iterator<Item = OsString>) -> ! {
-    let (Some(executable), Some(encoded)) = (args.next(), args.next()) else { std::process::exit(2) };
-    let Ok(codex_args) = serde_json::from_str::<Vec<String>>(&encoded.to_string_lossy()) else { std::process::exit(2) };
+    let (Some(executable), Some(encoded)) = (args.next(), args.next()) else {
+        std::process::exit(2)
+    };
+    let Ok(codex_args) = serde_json::from_str::<Vec<String>>(&encoded.to_string_lossy()) else {
+        std::process::exit(2)
+    };
     let mut line = String::new();
     if std::io::stdin().lock().read_line(&mut line).is_err() {
         std::process::exit(2);
     }
-    let Ok(prompt) = serde_json::from_str::<String>(&line) else { std::process::exit(2) };
-    let mut child = match std::process::Command::new(&executable).args(&codex_args).stdin(Stdio::piped()).spawn() {
+    let Ok(prompt) = serde_json::from_str::<String>(&line) else {
+        std::process::exit(2)
+    };
+    let mut child = match std::process::Command::new(&executable)
+        .args(&codex_args)
+        .stdin(Stdio::piped())
+        .spawn()
+    {
         Ok(child) => child,
         Err(error) => {
             eprintln!("{error}");
@@ -448,7 +564,10 @@ pub fn turn_owner(mut args: impl Iterator<Item = OsString>) -> ! {
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal().and_then(|signal| nix::sys::signal::Signal::try_from(signal).ok()) {
+        if let Some(signal) = status
+            .signal()
+            .and_then(|signal| nix::sys::signal::Signal::try_from(signal).ok())
+        {
             let _ = nix::sys::signal::raise(signal);
         }
     }

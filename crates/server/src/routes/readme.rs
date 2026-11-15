@@ -9,15 +9,22 @@ use broadcast_domain::{ApiError, Result, fields, input};
 use serde_json::{Value, json};
 
 use crate::App;
-use crate::http::{Reply, attachment_headers, json, method_not_allowed, read_json, read_json_limit, reject_query, segment};
+use crate::http::{
+    Reply, attachment_headers, json, method_not_allowed, read_json, read_json_limit, reject_query,
+    segment,
+};
 use crate::routes::attachments::{owned, store_upload};
 
 const README_LIMIT: usize = 3 * 1024 * 1024;
 
 fn project_id(request: &Request, routes: &str) -> Result<String> {
-    reject_query(request.uri(), &format!("{routes} do not accept query parameters"))?;
-    let id = decode_uri_component(segment(request.uri(), 3))
-        .ok_or_else(|| ApiError::new(400, "INVALID_PATH", "Project id contains invalid encoding"))?;
+    reject_query(
+        request.uri(),
+        &format!("{routes} do not accept query parameters"),
+    )?;
+    let id = decode_uri_component(segment(request.uri(), 3)).ok_or_else(|| {
+        ApiError::new(400, "INVALID_PATH", "Project id contains invalid encoding")
+    })?;
     Ok(fields::project_id(Some(&Value::String(id)))?)
 }
 
@@ -46,7 +53,8 @@ pub async fn labels(State(app): State<Arc<App>>, request: Request) -> Reply {
             }
         })
         .await?;
-    app.events.emit("project.labels.updated", json!({ "project": project }));
+    app.events
+        .emit("project.labels.updated", json!({ "project": project }));
     Ok(json(200, &json!({ "project": project })))
 }
 
@@ -54,15 +62,27 @@ pub async fn readme(State(app): State<Arc<App>>, request: Request) -> Reply {
     let project_id = project_id(&request, "Project README routes")?;
     match request.method().as_str() {
         "GET" => {
-            let readme = app.store(move |store| store.get_project_readme(&project_id)).await?;
+            let readme = app
+                .store(move |store| store.get_project_readme(&project_id))
+                .await?;
             Ok(json(200, &json!({ "readme": readme })))
         }
         "PUT" => {
-            let body = read_json_limit(request, README_LIMIT, "Project README request cannot exceed 3 MiB").await?;
+            let body = read_json_limit(
+                request,
+                README_LIMIT,
+                "Project README request cannot exceed 3 MiB",
+            )
+            .await?;
             let save = input::project_readme_save(&body)?;
             let id = project_id.clone();
-            let readme = app.store(move |store| store.save_project_readme(&id, &save.content, save.version)).await?;
-            app.events.emit("project.readme.updated", json!({ "projectId": project_id, "readmeVersion": readme.version }));
+            let readme = app
+                .store(move |store| store.save_project_readme(&id, &save.content, save.version))
+                .await?;
+            app.events.emit(
+                "project.readme.updated",
+                json!({ "projectId": project_id, "readmeVersion": readme.version }),
+            );
             Ok(json(200, &json!({ "readme": readme })))
         }
         _ => method_not_allowed(&["GET", "PUT"]),
@@ -76,7 +96,12 @@ pub async fn readme_attachments(State(app): State<Arc<App>>, request: Request) -
     }
     let headers = attachment_headers(request.headers())?;
     if headers.kind != "inline" {
-        return Err(ApiError::new(400, "INVALID_ATTACHMENT_KIND", "Project README attachments must be inline").into());
+        return Err(ApiError::new(
+            400,
+            "INVALID_ATTACHMENT_KIND",
+            "Project README attachments must be inline",
+        )
+        .into());
     }
     let upload = store_upload(&app, headers, request).await?;
     let record = owned(&upload);

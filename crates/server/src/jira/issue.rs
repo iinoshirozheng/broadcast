@@ -7,8 +7,18 @@ use sha2::{Digest, Sha256};
 
 use super::config::JiraConfig;
 
-pub const FIELDS: [&str; 10] =
-    ["summary", "description", "status", "priority", "labels", "duedate", "assignee", "reporter", "created", "updated"];
+pub const FIELDS: [&str; 10] = [
+    "summary",
+    "description",
+    "status",
+    "priority",
+    "labels",
+    "duedate",
+    "assignee",
+    "reporter",
+    "created",
+    "updated",
+];
 
 fn quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
@@ -19,9 +29,18 @@ pub fn jql(projects: &[String]) -> String {
     let filter = if projects.is_empty() {
         String::new()
     } else {
-        format!(" AND project in ({})", projects.iter().map(|project| quote(project)).collect::<Vec<_>>().join(", "))
+        format!(
+            " AND project in ({})",
+            projects
+                .iter()
+                .map(|project| quote(project))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     };
-    format!("assignee = currentUser(){filter} AND (statusCategory != Done OR updated >= -30d) ORDER BY updated DESC")
+    format!(
+        "assignee = currentUser(){filter} AND (statusCategory != Done OR updated >= -30d) ORDER BY updated DESC"
+    )
 }
 
 /// `String(value)` for the JSON values Jira returns; `None` for null or missing.
@@ -55,7 +74,9 @@ pub fn status(status: &Value) -> &'static str {
         Some("done") => "done",
         Some("new") if includes_any(name, &["backlog", "待立项", "需求池"]) => "backlog",
         Some("new") => "todo",
-        _ if includes_any(name, &["review", "verify", "test", "验收", "评审", "测试"]) => "in_review",
+        _ if includes_any(name, &["review", "verify", "test", "验收", "评审", "测试"]) => {
+            "in_review"
+        }
         _ if includes_any(name, &["block", "hold", "阻塞", "挂起"]) => "blocked",
         _ => "in_progress",
     }
@@ -64,7 +85,10 @@ pub fn status(status: &Value) -> &'static str {
 /// `taskPriorityFromJira`.
 pub fn priority(priority: &Value) -> &'static str {
     let name = &priority["name"];
-    if includes_any(name, &["highest", "critical", "blocker", "urgent", "紧急", "最高"]) {
+    if includes_any(
+        name,
+        &["highest", "critical", "blocker", "urgent", "紧急", "最高"],
+    ) {
         "urgent"
     } else if includes_any(name, &["high", "major", "高"]) {
         "high"
@@ -78,13 +102,23 @@ pub fn priority(priority: &Value) -> &'static str {
 }
 
 fn first_present<'a>(user: &'a Value, keys: &[&str]) -> &'a Value {
-    keys.iter().map(|key| &user[*key]).find(|value| !value.is_null()).unwrap_or(&Value::Null)
+    keys.iter()
+        .map(|key| &user[*key])
+        .find(|value| !value.is_null())
+        .unwrap_or(&Value::Null)
 }
 
 fn actor(user: &Value, fallback: &str) -> JiraActor {
     let avatars = &user["avatarUrls"];
     JiraActor {
-        id: format!("jira:{}", limited(first_present(user, &["key", "name", "accountId"]), fallback, 240)),
+        id: format!(
+            "jira:{}",
+            limited(
+                first_present(user, &["key", "name", "accountId"]),
+                fallback,
+                240
+            )
+        ),
         name: limited(first_present(user, &["displayName", "name"]), fallback, 120),
         avatar_url: text(first_present(avatars, &["48x48", "32x32"])),
     }
@@ -92,8 +126,16 @@ fn actor(user: &Value, fallback: &str) -> JiraActor {
 
 /// `jiraOriginId`: sha256 hex of the application-link id, stable across URL changes.
 pub fn origin_id(manifest: &Value) -> Option<String> {
-    let id = manifest["id"].as_str().map(js::trim).filter(|id| !id.is_empty())?;
-    Some(Sha256::digest(id.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect())
+    let id = manifest["id"]
+        .as_str()
+        .map(js::trim)
+        .filter(|id| !id.is_empty())?;
+    Some(
+        Sha256::digest(id.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    )
 }
 
 /// `normalizeIssue`: `index` orders tasks as Jira returned them.
@@ -103,7 +145,12 @@ pub fn normalize(issue: &Value, config: &JiraConfig, index: usize) -> JiraTask {
     let external_key = limited(&issue["key"], "JIRA", 128);
     let id = format!("JIRA:{}:{external_id}", config.origin_id.to_uppercase());
     let mut labels: Vec<String> = Vec::new();
-    for label in fields["labels"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+    for label in fields["labels"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
         let label = js::prefix(js::trim(label), 64);
         if !label.is_empty() && !labels.iter().any(|existing| existing == label) {
             labels.push(label.to_owned());
@@ -113,7 +160,10 @@ pub fn normalize(issue: &Value, config: &JiraConfig, index: usize) -> JiraTask {
     let string = |key: &str| fields[key].as_str().map(str::to_owned);
     JiraTask {
         title: limited(&fields["summary"], &external_key, 240),
-        description: fields["description"].as_str().map(|text| js::prefix(text, 100_000).to_owned()).unwrap_or_default(),
+        description: fields["description"]
+            .as_str()
+            .map(|text| js::prefix(text, 100_000).to_owned())
+            .unwrap_or_default(),
         status: status(&fields["status"]),
         priority: priority(&fields["priority"]),
         labels,
@@ -122,7 +172,11 @@ pub fn normalize(issue: &Value, config: &JiraConfig, index: usize) -> JiraTask {
         assignee: actor(&fields["assignee"], &config.display_name),
         due_date: string("duedate"),
         external_origin: config.origin_id.clone(),
-        external_url: format!("{}/browse/{}", config.base_url, js::encode_uri_component(&external_key)),
+        external_url: format!(
+            "{}/browse/{}",
+            config.base_url,
+            js::encode_uri_component(&external_key)
+        ),
         external_id,
         external_key,
         created_at: string("created").unwrap_or_else(broadcast_store::now),

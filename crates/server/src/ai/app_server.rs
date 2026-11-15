@@ -51,7 +51,12 @@ struct Connection {
 
 impl Connection {
     fn write(&self, line: String) {
-        if let Some(writer) = self.writer.lock().unwrap_or_else(|poison| poison.into_inner()).as_ref() {
+        if let Some(writer) = self
+            .writer
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .as_ref()
+        {
             let _ = writer.send(line);
         }
     }
@@ -61,7 +66,12 @@ impl Connection {
         if self.terminated.swap(true, Ordering::SeqCst) {
             return;
         }
-        let pending: Vec<_> = self.pending.lock().unwrap_or_else(|poison| poison.into_inner()).drain().collect();
+        let pending: Vec<_> = self
+            .pending
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .drain()
+            .collect();
         for (_, (_, reply)) in pending {
             let _ = reply.send(Err(message.to_owned()));
         }
@@ -76,15 +86,26 @@ impl Connection {
     }
 
     fn handle(&self, message: Value) {
-        let Some(object) = message.as_object() else { return };
+        let Some(object) = message.as_object() else {
+            return;
+        };
         let method = object.get("method");
         if object.contains_key("id") && !method.is_some_and(broadcast_domain::js::truthy) {
-            let Some(id) = object["id"].as_u64() else { return };
-            let Some((method, reply)) = self.pending.lock().unwrap_or_else(|poison| poison.into_inner()).remove(&id)
+            let Some(id) = object["id"].as_u64() else {
+                return;
+            };
+            let Some((method, reply)) = self
+                .pending
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .remove(&id)
             else {
                 return;
             };
-            let result = match object.get("error").filter(|error| broadcast_domain::js::truthy(error)) {
+            let result = match object
+                .get("error")
+                .filter(|error| broadcast_domain::js::truthy(error))
+            {
                 Some(error) => {
                     let detail = match &error["message"] {
                         Value::Null => "unknown error".to_owned(),
@@ -98,7 +119,9 @@ impl Connection {
             let _ = reply.send(result);
             return;
         }
-        let Some(method) = method.and_then(Value::as_str) else { return };
+        let Some(method) = method.and_then(Value::as_str) else {
+            return;
+        };
         if let Some(id) = object.get("id") {
             let error = json!({ "code": -32601, "message": format!("Unsupported server request '{method}'") });
             self.write(format!("{}\n", json!({ "id": id, "error": error })));
@@ -118,13 +141,22 @@ impl Connection {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
         let (reply, response) = oneshot::channel();
-        self.pending.lock().unwrap_or_else(|poison| poison.into_inner()).insert(id, (method.to_owned(), reply));
-        self.write(format!("{}\n", json!({ "id": id, "method": method, "params": params })));
+        self.pending
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .insert(id, (method.to_owned(), reply));
+        self.write(format!(
+            "{}\n",
+            json!({ "id": id, "method": method, "params": params })
+        ));
         match tokio::time::timeout(REQUEST_TIMEOUT, response).await {
             Ok(Ok(result)) => result.map_err(anyhow::Error::msg),
             Ok(Err(_)) => bail!("Codex app-server is not running"),
             Err(_) => {
-                self.pending.lock().unwrap_or_else(|poison| poison.into_inner()).remove(&id);
+                self.pending
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .remove(&id);
                 bail!("Codex app-server request '{method}' timed out")
             }
         }
@@ -135,13 +167,19 @@ pub(super) fn signal(pid: Option<u32>, kill: bool) {
     #[cfg(unix)]
     if let Some(pid) = pid.and_then(|pid| i32::try_from(pid).ok()) {
         use nix::sys::signal::Signal;
-        let signal = if kill { Signal::SIGKILL } else { Signal::SIGTERM };
+        let signal = if kill {
+            Signal::SIGKILL
+        } else {
+            Signal::SIGTERM
+        };
         let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), signal);
     }
     #[cfg(not(unix))]
     if let Some(pid) = pid {
         let _ = kill;
-        let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]).status();
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .status();
     }
 }
 
@@ -167,7 +205,12 @@ impl LocalAppServer {
 
     /// The generation of the running child, if any (`appServer.child`).
     pub async fn generation(&self) -> Option<u64> {
-        self.current.lock().await.as_ref().filter(|c| !c.terminated.load(Ordering::SeqCst)).map(|c| c.generation)
+        self.current
+            .lock()
+            .await
+            .as_ref()
+            .filter(|c| !c.terminated.load(Ordering::SeqCst))
+            .map(|c| c.generation)
     }
 
     pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
@@ -180,7 +223,10 @@ impl LocalAppServer {
             bail!("Codex app-server is closing");
         }
         let mut current = self.current.lock().await;
-        if let Some(connection) = current.as_ref().filter(|c| !c.terminated.load(Ordering::SeqCst)) {
+        if let Some(connection) = current
+            .as_ref()
+            .filter(|c| !c.terminated.load(Ordering::SeqCst))
+        {
             return Ok(Arc::clone(connection));
         }
         let mut command = broadcast_codex::command(&self.executable);
@@ -218,20 +264,42 @@ impl LocalAppServer {
 
     pub async fn close(&self) {
         self.closing.store(true, Ordering::SeqCst);
-        let Some(connection) = self.current.lock().await.take() else { return };
+        let Some(connection) = self.current.lock().await.take() else {
+            return;
+        };
         connection.terminate("Codex app-server closed");
-        connection.writer.lock().unwrap_or_else(|poison| poison.into_inner()).take();
+        connection
+            .writer
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .take();
         let mut exited = connection.exited.clone();
-        if tokio::time::timeout(CLOSE_GRACE, exited.wait_for(|exited| *exited)).await.is_err() {
+        if tokio::time::timeout(CLOSE_GRACE, exited.wait_for(|exited| *exited))
+            .await
+            .is_err()
+        {
             signal(connection.pid, true);
         }
     }
 }
 
-fn start_io(connection: &Arc<Connection>, child: &mut Child, mut lines: mpsc::UnboundedReceiver<String>) -> anyhow::Result<()> {
-    let mut stdin = child.stdin.take().context("app-server stdin is unavailable")?;
-    let stdout = child.stdout.take().context("app-server stdout is unavailable")?;
-    let stderr = child.stderr.take().context("app-server stderr is unavailable")?;
+fn start_io(
+    connection: &Arc<Connection>,
+    child: &mut Child,
+    mut lines: mpsc::UnboundedReceiver<String>,
+) -> anyhow::Result<()> {
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("app-server stdin is unavailable")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("app-server stdout is unavailable")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("app-server stderr is unavailable")?;
     let writer = Arc::clone(connection);
     tokio::spawn(async move {
         while let Some(line) = lines.recv().await {
@@ -249,7 +317,9 @@ fn start_io(connection: &Arc<Connection>, child: &mut Child, mut lines: mpsc::Un
             match exec::read_line(&mut stdout, &mut line, MAX_STDOUT_LINE).await {
                 Ok(Line::Read) => {}
                 Ok(Line::Eof) => return,
-                Ok(Line::TooLong) => return reader.terminate("Codex app-server output exceeded its limit"),
+                Ok(Line::TooLong) => {
+                    return reader.terminate("Codex app-server output exceeded its limit");
+                }
                 Err(error) => return reader.terminate(&error.to_string()),
             }
             let text = String::from_utf8_lossy(&line);
@@ -285,9 +355,16 @@ async fn wait_exit(connection: Arc<Connection>, mut child: Child, exited: watch:
     let _ = exited.send(true);
     let message = match status {
         Ok(status) => {
-            let stderr = String::from_utf8_lossy(&connection.stderr.lock().unwrap_or_else(|p| p.into_inner())).into_owned();
+            let stderr = String::from_utf8_lossy(
+                &connection.stderr.lock().unwrap_or_else(|p| p.into_inner()),
+            )
+            .into_owned();
             let stderr = stderr.trim();
-            let suffix = if stderr.is_empty() { String::new() } else { format!(": {stderr}") };
+            let suffix = if stderr.is_empty() {
+                String::new()
+            } else {
+                format!(": {stderr}")
+            };
             format!("Codex app-server exited ({}){suffix}", exit_label(&status))
         }
         Err(error) => error.to_string(),
@@ -301,10 +378,13 @@ pub fn exit_label(status: &std::process::ExitStatus) -> String {
     {
         use std::os::unix::process::ExitStatusExt;
         if let Some(signal) = status.signal() {
-            return nix::sys::signal::Signal::try_from(signal).map_or_else(|_| signal.to_string(), |s| s.as_str().to_owned());
+            return nix::sys::signal::Signal::try_from(signal)
+                .map_or_else(|_| signal.to_string(), |s| s.as_str().to_owned());
         }
     }
-    status.code().map_or_else(|| "null".to_owned(), |code| code.to_string())
+    status
+        .code()
+        .map_or_else(|| "null".to_owned(), |code| code.to_string())
 }
 
 /// `CodexHostAppServer`: a remote host's app-server, reached through the desktop launcher's host
@@ -317,14 +397,21 @@ pub struct HostAppServer {
 impl HostAppServer {
     pub async fn request(&self, method: &str, params: Value) -> anyhow::Result<Value> {
         let (reply, response) = oneshot::channel();
-        let request = broadcast_codex::HostRequest { host_id: self.host_id.clone(), method: method.to_owned(), params, reply };
+        let request = broadcast_codex::HostRequest {
+            host_id: self.host_id.clone(),
+            method: method.to_owned(),
+            params,
+            reply,
+        };
         if self.requests.send(request).is_err() {
             bail!("Codex host bridge is unavailable");
         }
         match tokio::time::timeout(REQUEST_TIMEOUT, response).await {
             Err(_) => bail!("Codex host request '{method}' timed out"),
             Ok(Err(_)) => bail!("Codex host bridge closed"),
-            Ok(Ok(result)) => result.map_err(|error| anyhow::anyhow!("Codex host rejected '{method}': {error:#}")),
+            Ok(Ok(result)) => {
+                result.map_err(|error| anyhow::anyhow!("Codex host rejected '{method}': {error:#}"))
+            }
         }
     }
 }
@@ -353,8 +440,17 @@ impl AppServer {
     }
 
     /// `listSkills`: `skills/list` for one workspace.
-    pub async fn list_skills(&self, workspace: &str, force_reload: bool) -> anyhow::Result<Vec<Value>> {
-        let result = self.request("skills/list", json!({ "cwds": [workspace], "forceReload": force_reload })).await?;
+    pub async fn list_skills(
+        &self,
+        workspace: &str,
+        force_reload: bool,
+    ) -> anyhow::Result<Vec<Value>> {
+        let result = self
+            .request(
+                "skills/list",
+                json!({ "cwds": [workspace], "forceReload": force_reload }),
+            )
+            .await?;
         Ok(result["data"].as_array().cloned().unwrap_or_default())
     }
 }

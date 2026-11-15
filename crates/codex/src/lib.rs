@@ -6,8 +6,8 @@ pub mod cdp;
 mod host;
 mod inject;
 pub mod launcher;
-mod process;
 mod policy;
+mod process;
 mod profile;
 mod quota;
 mod remote;
@@ -53,7 +53,10 @@ fn executable_file(candidate: PathBuf) -> Option<String> {
 /// `codexExecutableInApp`: the CLI the desktop app bundles.
 fn executable_in_app(app: &Path) -> PathBuf {
     if cfg!(windows) {
-        app.parent().unwrap_or(app).join("resources").join("codex.exe")
+        app.parent()
+            .unwrap_or(app)
+            .join("resources")
+            .join("codex.exe")
     } else if cfg!(target_os = "linux") {
         PathBuf::from("/usr/lib/chatgpt/resources/codex")
     } else {
@@ -70,12 +73,20 @@ pub fn executable(explicit: Option<&str>, app: Option<&Path>) -> String {
     if let Some(found) = app.and_then(|app| executable_file(executable_in_app(app))) {
         return found;
     }
-    let names: &[&str] = if cfg!(windows) { &["codex.exe", "node_modules/@openai/codex/bin/codex.js"] } else { &["codex"] };
+    let names: &[&str] = if cfg!(windows) {
+        &["codex.exe", "node_modules/@openai/codex/bin/codex.js"]
+    } else {
+        &["codex"]
+    };
     let on_path = std::env::var_os("PATH")
         .into_iter()
         .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
         .filter(|directory| !directory.as_os_str().is_empty())
-        .find_map(|directory| names.iter().find_map(|name| executable_file(directory.join(name))));
+        .find_map(|directory| {
+            names
+                .iter()
+                .find_map(|name| executable_file(directory.join(name)))
+        });
     if let Some(found) = on_path {
         return found;
     }
@@ -101,19 +112,33 @@ pub fn runnable_executable(executable: String, data_dir: &Path) -> std::io::Resu
     let source_directory = Path::new(&executable).parent().unwrap_or(Path::new(""));
     let cache = data_dir.join("codex-runtime");
     std::fs::create_dir_all(&cache)?;
-    for name in ["codex.exe", "codex-code-mode-host.exe", "codex-command-runner.exe", "codex-windows-sandbox-setup.exe"] {
+    for name in [
+        "codex.exe",
+        "codex-code-mode-host.exe",
+        "codex-command-runner.exe",
+        "codex-windows-sandbox-setup.exe",
+    ] {
         let source_path = source_directory.join(name);
         let cached_path = cache.join(name);
         let source = std::fs::metadata(&source_path)?;
         match std::fs::metadata(&cached_path) {
-            Ok(cached) if cached.len() == source.len() && cached.modified()? == source.modified()? => continue,
+            Ok(cached)
+                if cached.len() == source.len() && cached.modified()? == source.modified()? =>
+            {
+                continue;
+            }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
         std::fs::copy(&source_path, &cached_path)?;
-        let times = std::fs::FileTimes::new().set_accessed(source.accessed()?).set_modified(source.modified()?);
-        std::fs::File::options().write(true).open(&cached_path)?.set_times(times)?;
+        let times = std::fs::FileTimes::new()
+            .set_accessed(source.accessed()?)
+            .set_modified(source.modified()?);
+        std::fs::File::options()
+            .write(true)
+            .open(&cached_path)?
+            .set_times(times)?;
     }
     Ok(cache.join("codex.exe").to_string_lossy().into_owned())
 }
@@ -121,8 +146,12 @@ pub fn runnable_executable(executable: String, data_dir: &Path) -> std::io::Resu
 /// A command whose environment drops the launcher's `BROADCAST_*` variables.
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = Command::new(program);
-    command.env_clear().envs(std::env::vars_os().filter(|(name, _)| {
-        !name.to_str().is_some_and(|name| name.starts_with("BROADCAST_"))
-    }));
+    command
+        .env_clear()
+        .envs(std::env::vars_os().filter(|(name, _)| {
+            !name
+                .to_str()
+                .is_some_and(|name| name.starts_with("BROADCAST_"))
+        }));
     command
 }

@@ -25,17 +25,31 @@ fn projects_query(filter: &str, order: &str) -> String {
 }
 
 fn not_found(id: &str) -> ApiError {
-    ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{id}' does not exist"))
+    ApiError::new(
+        404,
+        "PROJECT_NOT_FOUND",
+        format!("Project '{id}' does not exist"),
+    )
 }
 
 impl Board {
     pub async fn list_projects(&self) -> Result<Vec<Value>> {
-        let rows = db::all(&self.db, projects_query("", "ORDER BY projects.created_at, projects.id"), vec![]).await?;
+        let rows = db::all(
+            &self.db,
+            projects_query("", "ORDER BY projects.created_at, projects.id"),
+            vec![],
+        )
+        .await?;
         Ok(rows.iter().map(records::project).collect())
     }
 
     pub async fn get_project(&self, id: &str) -> Result<Option<Value>> {
-        let row = db::first(&self.db, projects_query("WHERE projects.id = ?", ""), args![id]).await?;
+        let row = db::first(
+            &self.db,
+            projects_query("WHERE projects.id = ?", ""),
+            args![id],
+        )
+        .await?;
         Ok(row.as_ref().map(records::project))
     }
 
@@ -54,7 +68,12 @@ impl Board {
         )?;
         match insert.run().await {
             Err(error) if db::message(&error).contains("UNIQUE constraint failed") => {
-                return Err(ApiError::new(409, "PROJECT_EXISTS", format!("Project '{}' already exists", input.id)).into());
+                return Err(ApiError::new(
+                    409,
+                    "PROJECT_EXISTS",
+                    format!("Project '{}' already exists", input.id),
+                )
+                .into());
             }
             result => {
                 result?;
@@ -94,7 +113,10 @@ impl Board {
             )
         };
         self.db
-            .batch(vec![remove("projects", "", "id")?, remove("tasks", "version = version + 1, ", "project_id")?])
+            .batch(vec![
+                remove("projects", "", "id")?,
+                remove("tasks", "version = version + 1, ", "project_id")?,
+            ])
             .await?;
         self.project_record(project_id).await
     }
@@ -102,9 +124,12 @@ impl Board {
     pub async fn delete_project(&self, id: &str) -> Result<Value> {
         let project = self.get_project(id).await?.ok_or_else(|| not_found(id))?;
         if !id.starts_with("temp-") {
-            return Err(
-                ApiError::new(403, "PROJECT_DELETE_FORBIDDEN", "Only manually created projects can be deleted").into()
-            );
+            return Err(ApiError::new(
+                403,
+                "PROJECT_DELETE_FORBIDDEN",
+                "Only manually created projects can be deleted",
+            )
+            .into());
         }
         let result = db::run(
             &self.db,
@@ -113,12 +138,18 @@ impl Board {
         )
         .await?;
         if !db::changed(&result)? {
-            let count = db::first(&self.db, "SELECT COUNT(*) AS issue_count FROM tasks WHERE project_id = ?", args![id])
-                .await?
-                .map_or(0, |row| integer(&row, "issue_count"));
-            return Err(ApiError::new(409, "PROJECT_NOT_EMPTY", "Project still contains issues")
-                .with_details(json!({ "issueCount": count }))
-                .into());
+            let count = db::first(
+                &self.db,
+                "SELECT COUNT(*) AS issue_count FROM tasks WHERE project_id = ?",
+                args![id],
+            )
+            .await?
+            .map_or(0, |row| integer(&row, "issue_count"));
+            return Err(
+                ApiError::new(409, "PROJECT_NOT_EMPTY", "Project still contains issues")
+                    .with_details(json!({ "issueCount": count }))
+                    .into(),
+            );
         }
         Ok(project)
     }
@@ -130,7 +161,11 @@ impl Board {
             clauses.push("project_id = ?");
             values.push(db::arg(project_id));
         }
-        if let Some(status) = filters.status.as_deref().filter(|status| !status.is_empty()) {
+        if let Some(status) = filters
+            .status
+            .as_deref()
+            .filter(|status| !status.is_empty())
+        {
             clauses.push("status = ?");
             values.push(db::arg(status));
         }
@@ -139,7 +174,11 @@ impl Board {
             Archived::Only => clauses.push("archived_at IS NOT NULL"),
             Archived::All => {}
         }
-        let filter = if clauses.is_empty() { String::new() } else { format!("WHERE {}", clauses.join(" AND ")) };
+        let filter = if clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", clauses.join(" AND "))
+        };
         let rows = db::all(
             &self.db,
             format!(

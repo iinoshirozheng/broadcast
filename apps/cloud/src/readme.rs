@@ -9,14 +9,23 @@ use crate::db::{self, args, integer, value};
 use crate::error::{Failure, Result};
 
 fn conflict(expected: i64, actual: i64) -> Failure {
-    ApiError::new(409, "VERSION_CONFLICT", "Project README changed since it was last read")
-        .with_details(json!({ "expectedVersion": expected, "actualVersion": actual }))
-        .into()
+    ApiError::new(
+        409,
+        "VERSION_CONFLICT",
+        "Project README changed since it was last read",
+    )
+    .with_details(json!({ "expectedVersion": expected, "actualVersion": actual }))
+    .into()
 }
 
 impl Board {
     async fn readme_version(&self, project_id: &str) -> Result<Option<i64>> {
-        let row = db::first(&self.db, "SELECT version FROM project_readmes WHERE project_id = ?", args![project_id]).await?;
+        let row = db::first(
+            &self.db,
+            "SELECT version FROM project_readmes WHERE project_id = ?",
+            args![project_id],
+        )
+        .await?;
         Ok(row.map(|row| integer(&row, "version")))
     }
 
@@ -36,11 +45,17 @@ impl Board {
                 "createdAt": value(&row, "created_at"),
                 "updatedAt": value(&row, "updated_at"),
             }),
-            None => json!({ "projectId": project_id, "content": "", "version": 0, "createdAt": null, "updatedAt": null }),
+            None => {
+                json!({ "projectId": project_id, "content": "", "version": 0, "createdAt": null, "updatedAt": null })
+            }
         })
     }
 
-    pub async fn save_project_readme(&self, project_id: &str, input: &ProjectReadmeSave) -> Result<Value> {
+    pub async fn save_project_readme(
+        &self,
+        project_id: &str,
+        input: &ProjectReadmeSave,
+    ) -> Result<Value> {
         self.require_project(project_id).await?;
         let timestamp = now();
         let Some(expected) = input.version else {
@@ -71,7 +86,10 @@ impl Board {
             )
             .await?;
             if !db::changed(&result)? {
-                return Err(conflict(expected, self.readme_version(project_id).await?.unwrap_or(0)));
+                return Err(conflict(
+                    expected,
+                    self.readme_version(project_id).await?.unwrap_or(0),
+                ));
             }
         } else {
             let insert = db::statement(
@@ -81,7 +99,10 @@ impl Board {
             )?;
             if let Err(error) = insert.run().await {
                 if db::message(&error).contains("UNIQUE constraint failed") {
-                    return Err(conflict(expected, self.readme_version(project_id).await?.unwrap_or(0)));
+                    return Err(conflict(
+                        expected,
+                        self.readme_version(project_id).await?.unwrap_or(0),
+                    ));
                 }
                 return Err(error.into());
             }

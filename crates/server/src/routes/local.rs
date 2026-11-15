@@ -30,7 +30,12 @@ pub async fn codex_thread_progress(State(app): State<Arc<App>>, request: Request
     }
     let query = query(request.uri());
     if query.iter().any(|(key, _)| key != "threadId") {
-        return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", "Only 'threadId' is supported").into());
+        return Err(ApiError::new(
+            400,
+            "UNKNOWN_QUERY_PARAMETER",
+            "Only 'threadId' is supported",
+        )
+        .into());
     }
     let mut thread_ids: Vec<&str> = Vec::new();
     for (_, value) in &query {
@@ -40,11 +45,17 @@ pub async fn codex_thread_progress(State(app): State<Arc<App>>, request: Request
         }
     }
     if thread_ids.len() > 64 || !thread_ids.iter().all(|id| is_thread_id(id)) {
-        return Err(ApiError::invalid_field("'threadId' must contain valid Codex thread IDs").into());
+        return Err(
+            ApiError::invalid_field("'threadId' must contain valid Codex thread IDs").into(),
+        );
     }
     let mut progress = Map::new();
     for id in thread_ids {
-        let state = app.codex_sessions.state(id).await.map_err(broadcast_domain::Error::from)?;
+        let state = app
+            .codex_sessions
+            .state(id)
+            .await
+            .map_err(broadcast_domain::Error::from)?;
         progress.insert(id.to_owned(), state);
     }
     Ok(json(200, &json!({ "progress": progress })))
@@ -60,22 +71,43 @@ fn session(config: &CloudConfig) -> Value {
 }
 
 pub async fn cloud_session(State(app): State<Arc<App>>, request: Request) -> Reply {
-    reject_query(request.uri(), "Cloud session routes do not accept query parameters")?;
+    reject_query(
+        request.uri(),
+        "Cloud session routes do not accept query parameters",
+    )?;
     match request.method().as_str() {
-        "GET" => Ok(json(200, &session(&app.cloud.read().await.map_err(broadcast_domain::Error::from)?))),
+        "GET" => Ok(json(
+            200,
+            &session(
+                &app.cloud
+                    .read()
+                    .await
+                    .map_err(broadcast_domain::Error::from)?,
+            ),
+        )),
         "PUT" => {
             let body = read_json(request).await?;
             let body = fields::object(&body, &["remoteUrl", "actorName", "sharedKey"])?;
             let config = app
                 .cloud
-                .configure(body.get("remoteUrl"), body.get("actorName"), body.get("sharedKey"))
+                .configure(
+                    body.get("remoteUrl"),
+                    body.get("actorName"),
+                    body.get("sharedKey"),
+                )
                 .await
                 .map_err(|error| ApiError::new(400, error.code, error.message))?;
             Ok(json(200, &session(&config)))
         }
         "DELETE" => {
-            app.cloud.clear().await.map_err(broadcast_domain::Error::from)?;
-            Ok(json(200, &json!({ "mode": "local", "authenticated": false })))
+            app.cloud
+                .clear()
+                .await
+                .map_err(broadcast_domain::Error::from)?;
+            Ok(json(
+                200,
+                &json!({ "mode": "local", "authenticated": false }),
+            ))
         }
         _ => method_not_allowed(&["GET", "PUT", "DELETE"]),
     }
@@ -85,15 +117,25 @@ pub async fn project_mapping(State(app): State<Arc<App>>, request: Request) -> R
     if request.method() != "PUT" {
         return method_not_allowed(&["PUT"]);
     }
-    reject_query(request.uri(), "Project mapping routes do not accept query parameters")?;
-    let id = decode_uri_component(segment(request.uri(), 4))
-        .ok_or_else(|| ApiError::new(400, "INVALID_PATH", "Project id contains invalid encoding"))?;
+    reject_query(
+        request.uri(),
+        "Project mapping routes do not accept query parameters",
+    )?;
+    let id = decode_uri_component(segment(request.uri(), 4)).ok_or_else(|| {
+        ApiError::new(400, "INVALID_PATH", "Project id contains invalid encoding")
+    })?;
     let project_id = fields::project_id(Some(&Value::String(id)))?;
     let body = read_json(request).await?;
     let body = fields::object(&body, &["workspacePath"])?;
     let workspace = fields::path_field(body.get("workspacePath"), "workspacePath")?
         .filter(|path| Path::new(path).is_absolute())
         .ok_or_else(|| ApiError::invalid_field("'workspacePath' must be absolute"))?;
-    app.cloud.set_project_workspace(&project_id, &workspace).await.map_err(broadcast_domain::Error::from)?;
-    Ok(json(200, &json!({ "projectId": project_id, "workspacePath": workspace })))
+    app.cloud
+        .set_project_workspace(&project_id, &workspace)
+        .await
+        .map_err(broadcast_domain::Error::from)?;
+    Ok(json(
+        200,
+        &json!({ "projectId": project_id, "workspacePath": workspace }),
+    ))
 }

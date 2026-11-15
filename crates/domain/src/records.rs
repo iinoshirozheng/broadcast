@@ -39,9 +39,14 @@ pub struct ThreadBinding {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum DevelopmentContext {
-    Branch { branch: String },
+    Branch {
+        branch: String,
+    },
     /// The cloud board never keeps a worktree path.
-    Worktree { path: Option<String>, branch: Option<String> },
+    Worktree {
+        path: Option<String>,
+        branch: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -56,7 +61,12 @@ pub struct Actor {
 
 impl Actor {
     fn constant(kind: &str, id: &str, name: &str) -> Self {
-        Self { kind: kind.into(), id: id.into(), name: name.into(), avatar_url: None }
+        Self {
+            kind: kind.into(),
+            id: id.into(),
+            name: name.into(),
+            avatar_url: None,
+        }
     }
 
     pub fn local_user() -> Self {
@@ -235,9 +245,14 @@ pub struct TaskRelations {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged, rename_all_fields = "camelCase")]
 pub enum ConversationTarget {
-    AgentSession { agent_session: AgentSession },
+    AgentSession {
+        agent_session: AgentSession,
+    },
     Thread(ThreadBinding),
-    LegacyLocal { thread_id: String, legacy_local: bool },
+    LegacyLocal {
+        thread_id: String,
+        legacy_local: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -330,7 +345,11 @@ pub struct TaskChanges {
 
 impl TaskChanges {
     pub fn entries(&self) -> Vec<(&'static str, Value)> {
-        fn push<T: Serialize>(entries: &mut Vec<(&'static str, Value)>, field: &'static str, value: &Option<T>) {
+        fn push<T: Serialize>(
+            entries: &mut Vec<(&'static str, Value)>,
+            field: &'static str,
+            value: &Option<T>,
+        ) {
             if let Some(value) = value {
                 entries.push((field, serde_json::to_value(value).unwrap_or(Value::Null)));
             }
@@ -342,7 +361,11 @@ impl TaskChanges {
         push(&mut entries, "status", &self.status);
         push(&mut entries, "priority", &self.priority);
         push(&mut entries, "labels", &self.labels);
-        push(&mut entries, "developmentContext", &self.development_context);
+        push(
+            &mut entries,
+            "developmentContext",
+            &self.development_context,
+        );
         push(&mut entries, "startDate", &self.start_date);
         push(&mut entries, "dueDate", &self.due_date);
         push(&mut entries, "recurrence", &self.recurrence);
@@ -351,14 +374,21 @@ impl TaskChanges {
     }
 
     /// `taskFieldChanges`: entries whose JSON differs from the current task.
-    #[expect(clippy::cmp_owned, reason = "JSON.stringify comparison is key-order sensitive; Value equality is not")]
+    #[expect(
+        clippy::cmp_owned,
+        reason = "JSON.stringify comparison is key-order sensitive; Value equality is not"
+    )]
     pub fn diff(&self, task: &Task) -> Vec<FieldChange> {
         let current = serde_json::to_value(task).unwrap_or(Value::Null);
         self.entries()
             .into_iter()
             .filter_map(|(field, after)| {
                 let before = current.get(field).cloned().unwrap_or(Value::Null);
-                (before.to_string() != after.to_string()).then_some(FieldChange { field, before, after })
+                (before.to_string() != after.to_string()).then_some(FieldChange {
+                    field,
+                    before,
+                    after,
+                })
             })
             .collect()
     }
@@ -371,9 +401,19 @@ pub fn comment_conversation_title(body: Option<&str>) -> String {
         .split('\n')
         .map(js::trim)
         .find(|line| !line.is_empty());
-    let Some(first) = first else { return "评论".to_owned() };
-    let compact = first.split(js::is_whitespace).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ");
-    if js::len(&compact) > 80 { format!("{}…", js::prefix(&compact, 77)) } else { compact }
+    let Some(first) = first else {
+        return "评论".to_owned();
+    };
+    let compact = first
+        .split(js::is_whitespace)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if js::len(&compact) > 80 {
+        format!("{}…", js::prefix(&compact, 77))
+    } else {
+        compact
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

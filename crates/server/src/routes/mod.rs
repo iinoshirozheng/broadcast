@@ -32,30 +32,60 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/projects/{id}", any(projects::item))
         .route("/api/meta", any(device::meta))
         .route("/api/device-workspaces", any(device::workspaces))
-        .route("/api/projects/{id}/development-contexts", any(device::development_contexts))
+        .route(
+            "/api/projects/{id}/development-contexts",
+            any(device::development_contexts),
+        )
         .route("/api/projects/{id}/labels", any(readme::labels))
         .route("/api/projects/{id}/readme", any(readme::readme))
-        .route("/api/projects/{id}/readme/attachments", any(readme::readme_attachments))
+        .route(
+            "/api/projects/{id}/readme/attachments",
+            any(readme::readme_attachments),
+        )
         .route("/api/tasks", any(tasks::collection))
-        .route("/api/tasks/{id}", any(|State(app), request| tasks::item(app, request, None)))
-        .route("/api/tasks/{id}/move", any(|State(app), request| tasks::item(app, request, Some("move"))))
-        .route("/api/tasks/{id}/archive", any(|State(app), request| tasks::item(app, request, Some("archive"))))
-        .route("/api/tasks/{id}/restore", any(|State(app), request| tasks::item(app, request, Some("restore"))))
+        .route(
+            "/api/tasks/{id}",
+            any(|State(app), request| tasks::item(app, request, None)),
+        )
+        .route(
+            "/api/tasks/{id}/move",
+            any(|State(app), request| tasks::item(app, request, Some("move"))),
+        )
+        .route(
+            "/api/tasks/{id}/archive",
+            any(|State(app), request| tasks::item(app, request, Some("archive"))),
+        )
+        .route(
+            "/api/tasks/{id}/restore",
+            any(|State(app), request| tasks::item(app, request, Some("restore"))),
+        )
         .route("/api/tasks/{id}/comments", any(comments::for_task))
         .route("/api/tasks/{id}/attachments", any(attachments::for_task))
         .route("/api/tasks/{id}/activities", any(relations::activities))
         .route("/api/tasks/{id}/tree", any(relations::tree))
-        .route("/api/tasks/{id}/relations/{kind}/{related}", any(relations::relation))
+        .route(
+            "/api/tasks/{id}/relations/{kind}/{related}",
+            any(relations::relation),
+        )
         .route("/api/comments/{id}", any(comments::item))
-        .route("/api/comments/{id}/attachments", any(attachments::for_comment))
+        .route(
+            "/api/comments/{id}/attachments",
+            any(attachments::for_comment),
+        )
         .route("/api/attachments/{id}", any(attachments::item))
         .route("/api/attachments/{id}/content", any(attachments::content))
         .route("/api/attachments/{id}/download", any(attachments::content))
         .route("/api/client-storage", any(client_storage::client_storage))
         .route("/api/local/host-runtime", any(local::host_runtime))
-        .route("/api/local/codex-thread-progress", any(local::codex_thread_progress))
+        .route(
+            "/api/local/codex-thread-progress",
+            any(local::codex_thread_progress),
+        )
         .route("/api/local/cloud-session", any(local::cloud_session))
-        .route("/api/local/project-mappings/{id}", any(local::project_mapping))
+        .route(
+            "/api/local/project-mappings/{id}",
+            any(local::project_mapping),
+        )
         .route("/api/local/jira-connection", any(jira::connection))
         .route("/api/local/jira-connection/sync", any(jira::sync))
         .route("/api/local/ai/catalog", any(ai::catalog))
@@ -63,10 +93,16 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/local/ai/composer/rebind", any(ai::rebind))
         .route("/api/local/ai/threads", any(ai::threads))
         .route("/api/local/ai/threads/{id}", any(ai::thread))
-        .route("/api/local/ai/threads/{id}/summary", any(ai::thread_summary))
+        .route(
+            "/api/local/ai/threads/{id}/summary",
+            any(ai::thread_summary),
+        )
         .route("/api/local/ai/threads/{id}/events", any(ai::thread_events))
         .route("/api/local/ai/threads/{id}/turns", any(ai::thread_turns))
-        .route("/api/local/ai/threads/{id}/compact", any(ai::thread_compact))
+        .route(
+            "/api/local/ai/threads/{id}/compact",
+            any(ai::thread_compact),
+        )
         .route("/api/local/ai/runs/{id}/interrupt", any(ai::interrupt))
         .route("/api/local/projects/{id}/summary", any(ai::project_summary))
         .fallback(fallback)
@@ -81,14 +117,20 @@ async fn health(State(app): State<Arc<App>>, request: Request) -> Reply {
         return Ok(json(200, &json!({ "status": "ok" })));
     };
     let proof = trust::proof(launcher, request.headers())?;
-    Ok(json(200, &json!({ "status": "ok", "product": "broadcast", "version": app.config.version, "proof": proof })))
+    Ok(json(
+        200,
+        &json!({ "status": "ok", "product": "broadcast", "version": app.config.version, "proof": proof }),
+    ))
 }
 
 async fn events(State(app): State<Arc<App>>, request: Request) -> Reply {
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
-    reject_query(request.uri(), "GET /api/events does not accept query parameters")?;
+    reject_query(
+        request.uri(),
+        "GET /api/events does not accept query parameters",
+    )?;
     Ok(app.events.connect())
 }
 

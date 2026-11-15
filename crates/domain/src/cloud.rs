@@ -14,7 +14,9 @@ pub fn origin(value: &str) -> Result<String, &'static str> {
         && url.query().is_none_or(str::is_empty)
         && url.fragment().is_none_or(str::is_empty);
     if !scheme_ok || !exact {
-        return Err("Cloud broadcast URL must be an HTTPS origin (loopback HTTP is allowed for development)");
+        return Err(
+            "Cloud broadcast URL must be an HTTPS origin (loopback HTTP is allowed for development)",
+        );
     }
     Ok(url.origin().ascii_serialization())
 }

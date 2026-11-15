@@ -20,7 +20,12 @@ impl CliError {
 
     /// An error reported by the board API, with its code and details as sent.
     pub fn api(message: String, code: Value, exit_code: i32, details: Option<Value>) -> Self {
-        Self(Box::new(Fields { message, code, exit_code, details }))
+        Self(Box::new(Fields {
+            message,
+            code,
+            exit_code,
+            details,
+        }))
     }
 
     pub fn details(mut self, details: impl ToString) -> Self {

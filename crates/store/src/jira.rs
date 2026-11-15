@@ -38,7 +38,12 @@ pub struct JiraTask {
 impl Store {
     /// Upserts the Jira project and its tasks; a task is rewritten only when a synced column differs.
     /// With `archive_missing`, tasks no longer returned by Jira are archived.
-    pub fn sync_jira_tasks(&self, tasks: &[JiraTask], project_name: &str, archive_missing: bool) -> Result<()> {
+    pub fn sync_jira_tasks(
+        &self,
+        tasks: &[JiraTask],
+        project_name: &str,
+        archive_missing: bool,
+    ) -> Result<()> {
         let timestamp = now();
         let mut project_labels: Vec<&str> = Vec::new();
         for label in tasks.iter().flat_map(|task| &task.labels) {
@@ -159,7 +164,10 @@ impl Store {
                 )?;
             }
         }
-        transaction.execute("UPDATE projects SET updated_at = ?1 WHERE id = ?2", params![timestamp, JIRA_PROJECT_ID])?;
+        transaction.execute(
+            "UPDATE projects SET updated_at = ?1 WHERE id = ?2",
+            params![timestamp, JIRA_PROJECT_ID],
+        )?;
         transaction.commit()?;
         Ok(())
     }

@@ -87,7 +87,11 @@ impl Launcher {
         events: mpsc::UnboundedSender<Event>,
     ) -> (Self, JoinHandle<Result<()>>) {
         let (stop, _) = watch::channel(false);
-        let signals = Arc::new(Signals { open_requested: AtomicU64::new(u64::from(options.open)), stop, events });
+        let signals = Arc::new(Signals {
+            open_requested: AtomicU64::new(u64::from(options.open)),
+            stop,
+            events,
+        });
         let origin = format!("http://127.0.0.1:{}", options.port);
         let base_url = format!("{origin}/{}", host::encode_component(&options.token));
         let context = Arc::new(Context {
@@ -108,7 +112,10 @@ impl Launcher {
         });
         let source = Source::new(&context);
         let runner = Runner {
-            app: App { path: options.app_path.clone(), profile: options.profile.clone() },
+            app: App {
+                path: options.app_path.clone(),
+                profile: options.profile.clone(),
+            },
             options,
             context,
             source,
@@ -147,7 +154,11 @@ async fn stopped(mut stop: watch::Receiver<bool>) {
 }
 
 /// `handleCodexAppServerRequest`: each request waits for a window that can carry it.
-async fn serve_requests(context: Arc<Context>, mut requests: mpsc::UnboundedReceiver<HostRequest>, stop: watch::Receiver<bool>) {
+async fn serve_requests(
+    context: Arc<Context>,
+    mut requests: mpsc::UnboundedReceiver<HostRequest>,
+    stop: watch::Receiver<bool>,
+) {
     loop {
         let request = tokio::select! {
             request = requests.recv() => request,
@@ -161,8 +172,19 @@ async fn serve_requests(context: Arc<Context>, mut requests: mpsc::UnboundedRece
                 () = stopped(stop) => None,
             };
             let result = match session {
-                Some(session) => host::app_server_request(&session, &request.host_id, &request.method, request.params, host::APP_SERVER_TIMEOUT).await,
-                None => Err(anyhow::anyhow!("Codex renderer stopped before the remote request was sent")),
+                Some(session) => {
+                    host::app_server_request(
+                        &session,
+                        &request.host_id,
+                        &request.method,
+                        request.params,
+                        host::APP_SERVER_TIMEOUT,
+                    )
+                    .await
+                }
+                None => Err(anyhow::anyhow!(
+                    "Codex renderer stopped before the remote request was sent"
+                )),
             };
             let _ = request.reply.send(result);
         });
@@ -199,7 +221,11 @@ impl Runner {
             runtime::publish(file, &self.context.base_url).await?;
         }
         let stop = self.signals.stop.subscribe();
-        tokio::spawn(serve_requests(Arc::clone(&self.context), requests, stop.clone()));
+        tokio::spawn(serve_requests(
+            Arc::clone(&self.context),
+            requests,
+            stop.clone(),
+        ));
         let result = tokio::select! {
             result = self.run() => result,
             () = stopped(stop) => Ok(()),
@@ -255,18 +281,25 @@ impl Runner {
         if generation <= self.opened {
             return true;
         }
-        let window = self.injected.values().next().map(|window| window.bridge.session.clone());
+        let window = self
+            .injected
+            .values()
+            .next()
+            .map(|window| window.bridge.session.clone());
         if !self.native && window.is_none() {
             return false;
         }
         let opened = async {
             if self.native {
                 let mut link = url::Url::parse("codex://threads/new")?;
-                link.query_pairs_mut().append_pair("browserUrl", &self.context.page_url);
+                link.query_pairs_mut()
+                    .append_pair("browserUrl", &self.context.page_url);
                 host::open(link.as_str()).await?;
                 return anyhow::Ok(true);
             }
-            let Some(session) = window else { return Ok(false) };
+            let Some(session) = window else {
+                return Ok(false);
+            };
             let evaluation = session
                 .send(
                     "Runtime.evaluate",
@@ -308,15 +341,22 @@ impl Runner {
             let running = self.app.processes().await?;
             let mut debugging = false;
             for record in &running {
-                let Some(port) = process::debugging_port(record) else { continue };
+                let Some(port) = process::debugging_port(record) else {
+                    continue;
+                };
                 debugging = true;
-                if !process::reachable(self.http(), port).await || !process::has_codex_targets(self.http(), port).await {
+                if !process::reachable(self.http(), port).await
+                    || !process::has_codex_targets(self.http(), port).await
+                {
                     continue;
                 }
                 self.browser = Some(Browser::connect(self.http(), port).await?);
                 self.app_pid = Some(record.pid);
                 self.attach_existing = true;
-                println!("{}", json!({ "reusedCodexPid": record.pid, "cdpPort": port }));
+                println!(
+                    "{}",
+                    json!({ "reusedCodexPid": record.pid, "cdpPort": port })
+                );
                 return Ok(true);
             }
             if !running.is_empty() {
@@ -324,7 +364,11 @@ impl Runner {
                 return Ok(false);
             }
         }
-        profile::import(self.options.source_profile.as_deref(), &self.options.profile).await?;
+        profile::import(
+            self.options.source_profile.as_deref(),
+            &self.options.profile,
+        )
+        .await?;
         match self.options.cdp {
             Cdp::Pipe => self.launch_with_pipe().await?,
             Cdp::Port(port) => {
@@ -369,8 +413,12 @@ impl Runner {
     /// `recoverManagedCodexAfterUpdate`: when the managed instance quit because the app updated
     /// itself and the updater relaunched an ordinary instance, swap that one for a managed one.
     async fn recover_after_update(&mut self) -> Result<bool> {
-        let Some((pid, build)) = self.exited.clone() else { return Ok(false) };
-        let Some((_, replacement)) = self.app.update_replacement(pid, Some(&build)).await? else { return Ok(false) };
+        let Some((pid, build)) = self.exited.clone() else {
+            return Ok(false);
+        };
+        let Some((_, replacement)) = self.app.update_replacement(pid, Some(&build)).await? else {
+            return Ok(false);
+        };
         self.exited = None;
         let restarted = async {
             self.app.stop(&replacement).await?;
@@ -410,15 +458,27 @@ impl Runner {
                 self.app_pid = None;
                 self.native = false;
                 self.idle = true;
-                self.waiting(&format!("Waiting for Codex after update recovery failed: {error:#}"));
+                self.waiting(&format!(
+                    "Waiting for Codex after update recovery failed: {error:#}"
+                ));
             }
         }
         Ok(true)
     }
 
     async fn inject(&mut self, open: bool) -> Result<Vec<Value>> {
-        let Some(browser) = &self.browser else { bail!("Codex DevTools are not connected") };
-        inject::inject_all(browser, &self.context, &self.source, open, &mut self.injected, self.attach_existing).await
+        let Some(browser) = &self.browser else {
+            bail!("Codex DevTools are not connected")
+        };
+        inject::inject_all(
+            browser,
+            &self.context,
+            &self.source,
+            open,
+            &mut self.injected,
+            self.attach_existing,
+        )
+        .await
     }
 
     fn report_injected(&self, results: &[Value]) {
@@ -434,19 +494,35 @@ impl Runner {
             Cdp::Pipe => false,
         };
         if reachable {
-            let Cdp::Port(port) = self.options.cdp else { unreachable!() };
-            let running = self.app.processes().await?.into_iter().find(|record| process::debugging_port(record) == Some(port));
-            let Some(running) = running else { bail!("Codex CDP port {port} belongs to another process") };
+            let Cdp::Port(port) = self.options.cdp else {
+                unreachable!()
+            };
+            let running = self
+                .app
+                .processes()
+                .await?
+                .into_iter()
+                .find(|record| process::debugging_port(record) == Some(port));
+            let Some(running) = running else {
+                bail!("Codex CDP port {port} belongs to another process")
+            };
             if !process::has_codex_targets(self.http(), port).await {
                 bail!("Codex CDP port {port} belongs to another process");
             }
-            self.managed = self.app.managed().await?.filter(|record| record.pid == running.pid);
+            self.managed = self
+                .app
+                .managed()
+                .await?
+                .filter(|record| record.pid == running.pid);
             self.app_pid = Some(running.pid);
             if self.managed.is_some() {
                 self.build = self.app.bundle_build().await;
             } else {
                 self.attach_existing = true;
-                println!("{}", json!({ "reusedCodexPid": running.pid, "cdpPort": port }));
+                println!(
+                    "{}",
+                    json!({ "reusedCodexPid": running.pid, "cdpPort": port })
+                );
             }
             self.browser = Some(Browser::connect(self.http(), port).await?);
         } else {
@@ -492,7 +568,9 @@ impl Runner {
                 if self.app.processes().await?.is_empty() {
                     self.native = false;
                     self.idle = true;
-                    self.waiting("Waiting for Codex after exit; open Broadcast again to restart it.");
+                    self.waiting(
+                        "Waiting for Codex after exit; open Broadcast again to restart it.",
+                    );
                     continue;
                 }
                 if self.open_pending() {
@@ -552,7 +630,10 @@ impl Runner {
             let exit = match self.child.as_mut() {
                 Some(child) => match child.try_wait()? {
                     Some(status) => Some(status),
-                    None => tokio::time::timeout(Duration::from_millis(250), child.wait()).await.ok().transpose()?,
+                    None => tokio::time::timeout(Duration::from_millis(250), child.wait())
+                        .await
+                        .ok()
+                        .transpose()?,
                 },
                 None => None,
             };
@@ -564,7 +645,12 @@ impl Runner {
         let exited = match self.options.cdp {
             Cdp::Pipe => false,
             Cdp::Port(_) => match self.app_pid {
-                Some(pid) => !self.app.processes().await?.iter().any(|record| record.pid == pid),
+                Some(pid) => !self
+                    .app
+                    .processes()
+                    .await?
+                    .iter()
+                    .any(|record| record.pid == pid),
                 None => false,
             },
         };
@@ -579,7 +665,9 @@ impl Runner {
         }
         let pid = self.app_pid;
         self.exited = match (&self.managed, &self.build) {
-            (Some(managed), Some(build)) if Some(managed.pid) == pid => Some((managed.pid, build.clone())),
+            (Some(managed), Some(build)) if Some(managed.pid) == pid => {
+                Some((managed.pid, build.clone()))
+            }
             _ => None,
         };
         self.close_windows();
@@ -602,7 +690,9 @@ impl Runner {
         self.child = None;
         if status.success() {
             self.idle = true;
-            self.waiting("Waiting for Codex after normal exit; open Broadcast again to restart it.");
+            self.waiting(
+                "Waiting for Codex after normal exit; open Broadcast again to restart it.",
+            );
             return Ok(());
         }
         eprintln!("Codex exited unexpectedly; restarting it for the broadcast launcher.");
@@ -633,7 +723,11 @@ impl Runner {
         if managed.is_none()
             && let Cdp::Port(port) = self.options.cdp
         {
-            managed = self.app.managed().await?.filter(|record| process::uses_port(record, port));
+            managed = self
+                .app
+                .managed()
+                .await?
+                .filter(|record| process::uses_port(record, port));
         }
         if let Some(managed) = managed {
             self.app.stop(&managed).await?;
@@ -645,7 +739,10 @@ impl Runner {
             if let Some(pid) = child.id() {
                 process::signal(pid, nix::sys::signal::Signal::SIGTERM)?;
             }
-            if tokio::time::timeout(Duration::from_secs(5), child.wait()).await.is_err() {
+            if tokio::time::timeout(Duration::from_secs(5), child.wait())
+                .await
+                .is_err()
+            {
                 let _ = child.start_kill();
                 let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
             }
@@ -658,7 +755,10 @@ impl Runner {
 fn cli_command(options: &Options) -> String {
     let command = crate::automation::shell_quote(&options.cli.to_string_lossy());
     match &options.runtime_file {
-        Some(file) => format!("{command} --runtime-file {}", crate::automation::shell_quote(&file.to_string_lossy())),
+        Some(file) => format!(
+            "{command} --runtime-file {}",
+            crate::automation::shell_quote(&file.to_string_lossy())
+        ),
         None => command,
     }
 }

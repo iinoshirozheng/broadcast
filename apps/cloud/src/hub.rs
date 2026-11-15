@@ -4,8 +4,9 @@
 use broadcast_domain::js;
 use serde_json::{Map, Value, json};
 use worker::{
-    DurableObject, Env, Error, ListOptions, Method, Request, RequestInit, Response, Result, State, Stub, WebSocket,
-    WebSocketIncomingMessage, WebSocketPair, durable_object, wasm_bindgen, wasm_bindgen::JsValue,
+    DurableObject, Env, Error, ListOptions, Method, Request, RequestInit, Response, Result, State,
+    Stub, WebSocket, WebSocketIncomingMessage, WebSocketPair, durable_object, wasm_bindgen,
+    wasm_bindgen::JsValue,
 };
 
 use crate::http;
@@ -24,7 +25,10 @@ fn respond(response: crate::error::Result<Response>) -> Result<Response> {
 }
 
 fn error(status: u16, code: &str, message: &str) -> crate::error::Result<Response> {
-    http::json(status, &json!({ "error": { "code": code, "message": message } }))
+    http::json(
+        status,
+        &json!({ "error": { "code": code, "message": message } }),
+    )
 }
 
 #[durable_object]
@@ -37,11 +41,14 @@ impl RealtimeHub {
         let storage = self.state.storage();
         match request.method() {
             Method::Get => {
-                let stored = storage.list_with_options(ListOptions::new().prefix(DISPLAY_SETTINGS_PREFIX)).await?;
+                let stored = storage
+                    .list_with_options(ListOptions::new().prefix(DISPLAY_SETTINGS_PREFIX))
+                    .await?;
                 let mut entries = Map::new();
                 for entry in stored.entries() {
                     let entry = worker::js_sys::Array::from(&entry.map_err(Error::from)?);
-                    let value: Value = serde_wasm_bindgen::from_value(entry.get(1)).map_err(Error::from)?;
+                    let value: Value =
+                        serde_wasm_bindgen::from_value(entry.get(1)).map_err(Error::from)?;
                     entries.insert(entry.get(0).as_string().unwrap_or_default(), value);
                 }
                 http::json(200, &json!({ "entries": entries }))
@@ -67,7 +74,9 @@ impl RealtimeHub {
 
     async fn broadcast(&self, mut request: Request) -> crate::error::Result<Response> {
         let payload: Value = request.json().await?;
-        let Some(revision) = js::safe_integer(payload.get("revision")).filter(|&revision| revision >= 0) else {
+        let Some(revision) =
+            js::safe_integer(payload.get("revision")).filter(|&revision| revision >= 0)
+        else {
             return error(400, "INVALID_REVISION", "revision must be non-negative");
         };
         let message = json!({ "type": "revision", "revision": revision }).to_string();
@@ -88,10 +97,16 @@ impl DurableObject for RealtimeHub {
         let path = request.path();
         match path.as_str() {
             "/connect" => {
-                let upgrade = request.headers().get("upgrade")?.map(|value| value.to_lowercase());
+                let upgrade = request
+                    .headers()
+                    .get("upgrade")?
+                    .map(|value| value.to_lowercase());
                 if upgrade.as_deref() != Some("websocket") {
-                    let mut response =
-                        respond(error(426, "WEBSOCKET_REQUIRED", "A WebSocket upgrade is required"))?;
+                    let mut response = respond(error(
+                        426,
+                        "WEBSOCKET_REQUIRED",
+                        "A WebSocket upgrade is required",
+                    ))?;
                     response.headers_mut().set("upgrade", "websocket")?;
                     return Ok(response);
                 }
@@ -100,16 +115,28 @@ impl DurableObject for RealtimeHub {
                 Response::from_websocket(pair.client)
             }
             "/client-storage" => respond(self.client_storage(request).await),
-            "/broadcast" if request.method() == Method::Post => respond(self.broadcast(request).await),
+            "/broadcast" if request.method() == Method::Post => {
+                respond(self.broadcast(request).await)
+            }
             _ => respond(error(404, "NOT_FOUND", "Resource not found")),
         }
     }
 
-    async fn websocket_message(&self, socket: WebSocket, _message: WebSocketIncomingMessage) -> Result<()> {
+    async fn websocket_message(
+        &self,
+        socket: WebSocket,
+        _message: WebSocketIncomingMessage,
+    ) -> Result<()> {
         socket.close(Some(1008), Some("Client messages are not supported"))
     }
 
-    async fn websocket_close(&self, _socket: WebSocket, _code: usize, _reason: String, _clean: bool) -> Result<()> {
+    async fn websocket_close(
+        &self,
+        _socket: WebSocket,
+        _code: usize,
+        _reason: String,
+        _clean: bool,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -129,7 +156,8 @@ pub async fn send(env: &Env, method: Method, path: &str, body: Option<&Value>) -
     if let Some(body) = body {
         let headers = worker::Headers::new();
         headers.set("content-type", "application/json")?;
-        init.with_headers(headers).with_body(Some(JsValue::from_str(&body.to_string())));
+        init.with_headers(headers)
+            .with_body(Some(JsValue::from_str(&body.to_string())));
     }
     let request = Request::new_with_init(&format!("https://realtime.internal{path}"), &init)?;
     stub(env)?.fetch_with_request(request).await

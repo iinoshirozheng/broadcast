@@ -30,13 +30,25 @@ impl Api {
             None
         } else {
             let client = reqwest::Client::builder().no_proxy().build();
-            Some(client.map_err(|error| CliError::new("HTTP client is not available", "CLIENT_UNAVAILABLE", 3).details(error))?)
+            Some(client.map_err(|error| {
+                CliError::new("HTTP client is not available", "CLIENT_UNAVAILABLE", 3)
+                    .details(error)
+            })?)
         };
         Ok(Self { base, http })
     }
 
-    async fn send(&self, method: &str, pathname: &str, headers: &[(&str, &str)], body: Option<Vec<u8>>) -> Result<Reply> {
-        let mut all = BTreeMap::from([("accept", "application/json"), ("x-broadcast-client", "broadcast")]);
+    async fn send(
+        &self,
+        method: &str,
+        pathname: &str,
+        headers: &[(&str, &str)],
+        body: Option<Vec<u8>>,
+    ) -> Result<Reply> {
+        let mut all = BTreeMap::from([
+            ("accept", "application/json"),
+            ("x-broadcast-client", "broadcast"),
+        ]);
         all.extend(headers.iter().copied());
         let reply = match self.resolve(pathname) {
             Ok(url) => match &self.http {
@@ -46,7 +58,12 @@ impl Api {
             Err(error) => Err(error),
         };
         let reply = reply.map_err(|details| {
-            CliError::new(format!("Cannot reach broadcast service at {}", self.base), "SERVICE_UNAVAILABLE", 3).details(details)
+            CliError::new(
+                format!("Cannot reach broadcast service at {}", self.base),
+                "SERVICE_UNAVAILABLE",
+                3,
+            )
+            .details(details)
         })?;
         if (200..300).contains(&reply.status) {
             return Ok(reply);
@@ -57,12 +74,29 @@ impl Api {
 
     fn resolve(&self, pathname: &str) -> std::result::Result<Url, String> {
         let base = Url::parse(&format!("{}/", self.base)).map_err(|error| error.to_string())?;
-        base.join(pathname.strip_prefix('/').unwrap_or(pathname)).map_err(|error| error.to_string())
+        base.join(pathname.strip_prefix('/').unwrap_or(pathname))
+            .map_err(|error| error.to_string())
     }
 
-    pub async fn request(&self, method: &str, pathname: &str, body: Option<Value>) -> Result<Map<String, Value>> {
-        let headers: &[(&str, &str)] = if body.is_some() { &[("content-type", "application/json")] } else { &[] };
-        let reply = self.send(method, pathname, headers, body.map(|body| body.to_string().into_bytes())).await?;
+    pub async fn request(
+        &self,
+        method: &str,
+        pathname: &str,
+        body: Option<Value>,
+    ) -> Result<Map<String, Value>> {
+        let headers: &[(&str, &str)] = if body.is_some() {
+            &[("content-type", "application/json")]
+        } else {
+            &[]
+        };
+        let reply = self
+            .send(
+                method,
+                pathname,
+                headers,
+                body.map(|body| body.to_string().into_bytes()),
+            )
+            .await?;
         json_object(&reply.body)
     }
 
@@ -70,10 +104,20 @@ impl Api {
         self.send("GET", pathname, &[("accept", "*/*")], None).await
     }
 
-    pub async fn upload(&self, pathname: &str, body: Vec<u8>, content_type: &str, filename: &str, kind: &str) -> Result<Map<String, Value>> {
+    pub async fn upload(
+        &self,
+        pathname: &str,
+        body: Vec<u8>,
+        content_type: &str,
+        filename: &str,
+        kind: &str,
+    ) -> Result<Map<String, Value>> {
         let filename = broadcast_domain::js::encode_uri_component(filename);
-        let headers =
-            [("content-type", content_type), ("x-broadcast-filename", filename.as_str()), ("x-broadcast-attachment-kind", kind)];
+        let headers = [
+            ("content-type", content_type),
+            ("x-broadcast-filename", filename.as_str()),
+            ("x-broadcast-attachment-kind", kind),
+        ];
         let reply = self.send("POST", pathname, &headers, Some(body)).await?;
         json_object(&reply.body)
     }
@@ -84,7 +128,11 @@ fn normalize_base_url(raw: &str) -> Result<String> {
     if !matches!(url.scheme(), "http" | "https") {
         return Err(usage("BROADCAST_URL must use http or https"));
     }
-    let path = url.path().strip_suffix('/').unwrap_or(url.path()).to_owned();
+    let path = url
+        .path()
+        .strip_suffix('/')
+        .unwrap_or(url.path())
+        .to_owned();
     url.set_path(&path);
     url.set_query(None);
     url.set_fragment(None);
@@ -99,7 +147,8 @@ async fn fetch(
     headers: &BTreeMap<&str, &str>,
     body: Option<Vec<u8>>,
 ) -> std::result::Result<Reply, String> {
-    let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|error| error.to_string())?;
+    let method =
+        reqwest::Method::from_bytes(method.as_bytes()).map_err(|error| error.to_string())?;
     let mut request = http.request(method, url);
     for (name, value) in headers {
         request = request.header(*name, *value);
@@ -108,11 +157,26 @@ async fn fetch(
         request = request.body(body);
     }
     let response = request.send().await.map_err(|error| error_chain(&error))?;
-    let header = |name| response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_owned);
+    let header = |name| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
     let (content_type, content_length) = (header("content-type"), header("content-length"));
     let status = response.status().as_u16();
-    let body = response.bytes().await.map_err(|error| error_chain(&error))?.to_vec();
-    Ok(Reply { status, content_type, content_length, body })
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| error_chain(&error))?
+        .to_vec();
+    Ok(Reply {
+        status,
+        content_type,
+        content_length,
+        body,
+    })
 }
 
 fn error_chain(error: &dyn std::error::Error) -> String {
@@ -134,7 +198,17 @@ async fn fetch_through_windows(
     body: Option<Vec<u8>>,
 ) -> std::result::Result<Reply, String> {
     const MARKER: &str = "__BROADCAST_CURL_RESPONSE__";
-    let mut args = ["--disable", "--noproxy", "*", "--silent", "--show-error", "--request", method].map(str::to_owned).to_vec();
+    let mut args = [
+        "--disable",
+        "--noproxy",
+        "*",
+        "--silent",
+        "--show-error",
+        "--request",
+        method,
+    ]
+    .map(str::to_owned)
+    .to_vec();
     for (name, value) in headers {
         args.extend(["--header".to_owned(), format!("{name}: {value}")]);
     }
@@ -154,20 +228,36 @@ async fn fetch_through_windows(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| error.to_string())?;
-    let mut stdin = child.stdin.take().ok_or("curl.exe stdin is not available")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or("curl.exe stdin is not available")?;
     let writer = tokio::spawn(async move {
         if let Some(body) = body {
             stdin.write_all(&body).await?;
         }
         stdin.shutdown().await
     });
-    let output = child.wait_with_output().await.map_err(|error| error.to_string())?;
-    writer.await.map_err(|error| error.to_string())?.map_err(|error| error.to_string())?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|error| error.to_string())?;
+    writer
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
     let error_text = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
         let trimmed = broadcast_domain::js::trim(&error_text);
-        let code = output.status.code().map_or_else(|| "null".to_owned(), |code| code.to_string());
-        return Err(if trimmed.is_empty() { format!("curl.exe exited with {code}") } else { trimmed.to_owned() });
+        let code = output
+            .status
+            .code()
+            .map_or_else(|| "null".to_owned(), |code| code.to_string());
+        return Err(if trimmed.is_empty() {
+            format!("curl.exe exited with {code}")
+        } else {
+            trimmed.to_owned()
+        });
     }
     let Some(index) = error_text.rfind(MARKER) else {
         return Err("curl.exe did not return HTTP response metadata".to_owned());
@@ -179,7 +269,12 @@ async fn fetch_through_windows(
     }
     let present = |value: Option<&str>| value.filter(|value| !value.is_empty()).map(str::to_owned);
     let (content_type, content_length) = (present(metadata.next()), present(metadata.next()));
-    Ok(Reply { status: status as u16, content_type, content_length, body: output.stdout })
+    Ok(Reply {
+        status: status as u16,
+        content_type,
+        content_length,
+        body: output.stdout,
+    })
 }
 
 /// An empty body reads as `{}`.
@@ -189,14 +284,23 @@ fn read_payload(body: &[u8]) -> Result<Value> {
     if text.is_empty() {
         return Ok(Value::Object(Map::new()));
     }
-    serde_json::from_str(text)
-        .map_err(|_| CliError::new("Broadcast service returned invalid JSON", "INVALID_RESPONSE", 4))
+    serde_json::from_str(text).map_err(|_| {
+        CliError::new(
+            "Broadcast service returned invalid JSON",
+            "INVALID_RESPONSE",
+            4,
+        )
+    })
 }
 
 fn json_object(body: &[u8]) -> Result<Map<String, Value>> {
     match read_payload(body)? {
         Value::Object(object) => Ok(object),
-        _ => Err(CliError::new("Broadcast service returned an invalid JSON response", "INVALID_RESPONSE", 4)),
+        _ => Err(CliError::new(
+            "Broadcast service returned an invalid JSON response",
+            "INVALID_RESPONSE",
+            4,
+        )),
     }
 }
 
@@ -207,7 +311,8 @@ fn api_error(payload: &Value, status: u16) -> CliError {
     let (code, message, details) = match payload.get("error") {
         Some(error @ (Value::Object(_) | Value::Array(_))) => (
             present(error.get("code")).unwrap_or_else(fallback_code),
-            present(error.get("message")).map_or_else(fallback_message, |message| js_string(&message)),
+            present(error.get("message"))
+                .map_or_else(fallback_message, |message| js_string(&message)),
             error.get("details").cloned(),
         ),
         error => (
@@ -227,7 +332,17 @@ fn api_error(payload: &Value, status: u16) -> CliError {
 pub fn js_string(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
-        Value::Array(items) => items.iter().map(|item| if item.is_null() { String::new() } else { js_string(item) }).collect::<Vec<_>>().join(","),
+        Value::Array(items) => items
+            .iter()
+            .map(|item| {
+                if item.is_null() {
+                    String::new()
+                } else {
+                    js_string(item)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(","),
         Value::Object(_) => "[object Object]".to_owned(),
         other => other.to_string(),
     }

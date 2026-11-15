@@ -11,24 +11,40 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::attachments::attachments_for_comment;
-use crate::tasks::{CHUNK, ThreadValues, consume_attachment_body_fallback, require_task, stored_thread_binding};
+use crate::tasks::{
+    CHUNK, ThreadValues, consume_attachment_body_fallback, require_task, stored_thread_binding,
+};
 use crate::{Store, next_revision, now, rows};
 
 /// `#requireTaskRecord`: the raw task id for an id or identifier.
 pub(crate) fn require_task_id(connection: &Connection, id: &str) -> Result<String> {
     connection
-        .query_row("SELECT id FROM tasks WHERE id = ?1 OR identifier = ?1", [id], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM tasks WHERE id = ?1 OR identifier = ?1",
+            [id],
+            |row| row.get(0),
+        )
         .optional()?
-        .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into())
+        .ok_or_else(|| {
+            ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into()
+        })
 }
 
 pub(crate) fn comment_not_found(id: &str) -> ApiError {
-    ApiError::new(404, "COMMENT_NOT_FOUND", format!("Comment '{id}' does not exist"))
+    ApiError::new(
+        404,
+        "COMMENT_NOT_FOUND",
+        format!("Comment '{id}' does not exist"),
+    )
 }
 
 pub(crate) fn get_comment(connection: &Connection, id: &str) -> Result<Option<Comment>> {
-    let comment = connection.query_row("SELECT * FROM comments WHERE id = ?", [id], rows::comment).optional()?;
-    let Some(mut comment) = comment else { return Ok(None) };
+    let comment = connection
+        .query_row("SELECT * FROM comments WHERE id = ?", [id], rows::comment)
+        .optional()?;
+    let Some(mut comment) = comment else {
+        return Ok(None);
+    };
     comment.attachments = attachments_for_comment(connection, &comment.id, None)?;
     Ok(Some(comment))
 }
@@ -41,9 +57,13 @@ fn require_comment_version(comment: &Comment, expected: i64) -> Result<()> {
     if comment.version == expected {
         return Ok(());
     }
-    Err(ApiError::new(409, "VERSION_CONFLICT", "Comment was changed by another client")
-        .with_details(json!({ "expectedVersion": expected, "actualVersion": comment.version }))
-        .into())
+    Err(ApiError::new(
+        409,
+        "VERSION_CONFLICT",
+        "Comment was changed by another client",
+    )
+    .with_details(json!({ "expectedVersion": expected, "actualVersion": comment.version }))
+    .into())
 }
 
 /// `#commentsWithAttachments`: one attachment query per chunk of comments.
@@ -55,7 +75,10 @@ fn with_attachments(connection: &Connection, mut comments: Vec<Comment>) -> Resu
             "SELECT * FROM attachments WHERE comment_id IN ({placeholders}) ORDER BY comment_id, created_at, id"
         );
         let mut statement = connection.prepare(&sql)?;
-        let attachments = statement.query_map(params_from_iter(chunk.iter().map(|comment| &comment.id)), rows::attachment)?;
+        let attachments = statement.query_map(
+            params_from_iter(chunk.iter().map(|comment| &comment.id)),
+            rows::attachment,
+        )?;
         for attachment in attachments {
             let attachment = attachment?;
             if let Some(comment_id) = attachment.comment_id.clone() {
@@ -95,7 +118,12 @@ impl Store {
         get_comment(&self.connection(), id)
     }
 
-    pub fn create_comment(&self, task_id: &str, input: &CommentCreate, actor: &Actor) -> Result<Comment> {
+    pub fn create_comment(
+        &self,
+        task_id: &str,
+        input: &CommentCreate,
+        actor: &Actor,
+    ) -> Result<Comment> {
         let id = Uuid::new_v4().to_string();
         let timestamp = now();
         let attribution = &input.attribution;
@@ -103,11 +131,17 @@ impl Store {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let task = require_task(&transaction, task_id)?;
         let revision = next_revision(&transaction)?;
-        let [thread_id, project_id, project_kind, host_id, workspace_path] = thread_columns(stored_thread_binding(
-            &attribution.thread_binding,
-            attribution.thread_id.as_deref(),
-        ));
-        let session = attribution.agent_session.clone().flatten().map(|session| serde_json::to_string(&session)).transpose()?;
+        let [thread_id, project_id, project_kind, host_id, workspace_path] =
+            thread_columns(stored_thread_binding(
+                &attribution.thread_binding,
+                attribution.thread_id.as_deref(),
+            ));
+        let session = attribution
+            .agent_session
+            .clone()
+            .flatten()
+            .map(|session| serde_json::to_string(&session))
+            .transpose()?;
         transaction.execute(
             "INSERT INTO comments (
                id, task_id, body, thread_id, thread_codex_project_id, thread_codex_project_kind,
@@ -142,7 +176,10 @@ impl Store {
         let attribution = &input.attribution;
         let mut assignments = String::from("body = ?, ");
         let mut values: Vec<SqlValue> = vec![input.body.clone().into()];
-        if let Some(stored) = stored_thread_binding(&attribution.thread_binding, attribution.thread_id.as_deref()) {
+        if let Some(stored) = stored_thread_binding(
+            &attribution.thread_binding,
+            attribution.thread_id.as_deref(),
+        ) {
             assignments.push_str(
                 "thread_id = ?, thread_codex_project_id = ?, thread_codex_project_kind = ?, \
                  thread_codex_host_id = ?, thread_workspace_path = ?, ",
@@ -151,14 +188,25 @@ impl Store {
         }
         if let Some(session) = &attribution.agent_session {
             assignments.push_str("agent_session = ?, ");
-            values.push(session.as_ref().map(serde_json::to_string).transpose()?.into());
+            values.push(
+                session
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?
+                    .into(),
+            );
         }
         let mut connection = self.connection();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let current = require_comment(&transaction, id)?;
         require_comment_version(&current, input.version)?;
         let revision = next_revision(&transaction)?;
-        values.extend([now().into(), revision.into(), id.to_owned().into(), input.version.into()]);
+        values.extend([
+            now().into(),
+            revision.into(),
+            id.to_owned().into(),
+            input.version.into(),
+        ]);
         transaction.execute(
             &format!(
                 "UPDATE comments SET {assignments}version = version + 1, updated_at = ?, change_revision = ?
@@ -176,7 +224,10 @@ impl Store {
         let connection = self.connection();
         let current = require_comment(&connection, id)?;
         require_comment_version(&current, version)?;
-        connection.execute("DELETE FROM comments WHERE id = ? AND version = ?", params![id, version])?;
+        connection.execute(
+            "DELETE FROM comments WHERE id = ? AND version = ?",
+            params![id, version],
+        )?;
         Ok(current)
     }
 }

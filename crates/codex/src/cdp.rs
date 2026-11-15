@@ -46,15 +46,24 @@ struct Pending {
 
 impl Connection {
     fn state(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn receive(&self, text: &str) {
-        let Ok(message) = serde_json::from_str::<Value>(text) else { return };
+        let Ok(message) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
         if let Some(id) = message["id"].as_u64() {
-            let Some(pending) = self.state().pending.remove(&id) else { return };
+            let Some(pending) = self.state().pending.remove(&id) else {
+                return;
+            };
             let reply = match message.get("error") {
-                Some(error) => Err(error["message"].as_str().unwrap_or("CDP command failed").to_owned()),
+                Some(error) => Err(error["message"]
+                    .as_str()
+                    .unwrap_or("CDP command failed")
+                    .to_owned()),
                 None => Ok(message.get("result").cloned().unwrap_or_else(|| json!({}))),
             };
             let _ = pending.reply.send(reply);
@@ -76,8 +85,12 @@ impl Connection {
     fn close_session(&self, session: &str) {
         let mut state = self.state();
         state.sessions.remove(session);
-        let detached: Vec<u64> =
-            state.pending.iter().filter(|(_, pending)| pending.session.as_deref() == Some(session)).map(|(id, _)| *id).collect();
+        let detached: Vec<u64> = state
+            .pending
+            .iter()
+            .filter(|(_, pending)| pending.session.as_deref() == Some(session))
+            .map(|(id, _)| *id)
+            .collect();
         for id in detached {
             if let Some(pending) = state.pending.remove(&id) {
                 let _ = pending.reply.send(Err("CDP session closed".to_owned()));
@@ -104,7 +117,12 @@ impl Browser {
     fn start() -> (Self, mpsc::UnboundedReceiver<String>, watch::Receiver<bool>) {
         let (outgoing, requests) = mpsc::unbounded_channel();
         let (closed, stopped) = watch::channel(false);
-        let connection = Connection { outgoing, next_id: AtomicU64::new(0), state: Mutex::default(), closed };
+        let connection = Connection {
+            outgoing,
+            next_id: AtomicU64::new(0),
+            state: Mutex::default(),
+            closed,
+        };
         (Self(Arc::new(connection)), requests, stopped)
     }
 
@@ -118,7 +136,9 @@ impl Browser {
             .json()
             .await?;
         let endpoint = loopback_endpoint(version["webSocketDebuggerUrl"].as_str(), port)?;
-        let (socket, _) = tokio_tungstenite::connect_async(endpoint.as_str()).await.context("CDP WebSocket connection failed")?;
+        let (socket, _) = tokio_tungstenite::connect_async(endpoint.as_str())
+            .await
+            .context("CDP WebSocket connection failed")?;
         let (mut sink, mut stream) = socket.split();
         let (browser, mut requests, mut stopped) = Self::start();
         tokio::spawn(async move {
@@ -202,11 +222,18 @@ impl Browser {
 
     async fn open(&self) -> Result<()> {
         self.send("Browser.getVersion", json!({})).await?;
-        self.send("Target.setDiscoverTargets", json!({ "discover": true })).await?;
+        self.send("Target.setDiscoverTargets", json!({ "discover": true }))
+            .await?;
         Ok(())
     }
 
-    async fn command(&self, session: Option<&str>, method: &str, params: Value, timeout: Duration) -> Result<Value> {
+    async fn command(
+        &self,
+        session: Option<&str>,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value> {
         let id = self.0.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let (reply, response) = oneshot::channel();
         {
@@ -219,7 +246,13 @@ impl Browser {
             {
                 bail!("CDP session closed");
             }
-            state.pending.insert(id, Pending { session: session.map(str::to_owned), reply });
+            state.pending.insert(
+                id,
+                Pending {
+                    session: session.map(str::to_owned),
+                    reply,
+                },
+            );
         }
         let mut message = json!({ "id": id, "method": method, "params": params });
         if let Some(session) = session {
@@ -243,16 +276,36 @@ impl Browser {
     /// `Target.getTargets`.
     pub async fn targets(&self) -> Result<Vec<Value>> {
         let result = self.send("Target.getTargets", json!({})).await?;
-        Ok(result["targetInfos"].as_array().cloned().unwrap_or_default())
+        Ok(result["targetInfos"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default())
     }
 
     /// A flattened session on the target and the events it receives until it detaches.
-    pub async fn attach(&self, target_id: &str) -> Result<(Session, mpsc::UnboundedReceiver<Event>)> {
-        let result = self.send("Target.attachToTarget", json!({ "targetId": target_id, "flatten": true })).await?;
-        let id = result["sessionId"].as_str().context("CDP attach returned no session")?.to_owned();
+    pub async fn attach(
+        &self,
+        target_id: &str,
+    ) -> Result<(Session, mpsc::UnboundedReceiver<Event>)> {
+        let result = self
+            .send(
+                "Target.attachToTarget",
+                json!({ "targetId": target_id, "flatten": true }),
+            )
+            .await?;
+        let id = result["sessionId"]
+            .as_str()
+            .context("CDP attach returned no session")?
+            .to_owned();
         let (events, receiver) = mpsc::unbounded_channel();
         self.0.state().sessions.insert(id.clone(), events);
-        Ok((Session { browser: self.clone(), id }, receiver))
+        Ok((
+            Session {
+                browser: self.clone(),
+                id,
+            },
+            receiver,
+        ))
     }
 
     pub fn is_closed(&self) -> bool {
@@ -273,7 +326,10 @@ pub struct Pipe {
 
 #[cfg(unix)]
 impl Pipe {
-    pub fn spawn(program: &std::path::Path, arguments: &[String]) -> std::io::Result<(tokio::process::Child, Self)> {
+    pub fn spawn(
+        program: &std::path::Path,
+        arguments: &[String],
+    ) -> std::io::Result<(tokio::process::Child, Self)> {
         use command_fds::{CommandFdExt, FdMapping};
         use std::os::fd::OwnedFd;
 
@@ -286,8 +342,14 @@ impl Pipe {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .fd_mappings(vec![
-                FdMapping { parent_fd: OwnedFd::from(child_input), child_fd: 3 },
-                FdMapping { parent_fd: OwnedFd::from(child_output), child_fd: 4 },
+                FdMapping {
+                    parent_fd: OwnedFd::from(child_input),
+                    child_fd: 3,
+                },
+                FdMapping {
+                    parent_fd: OwnedFd::from(child_output),
+                    child_fd: 4,
+                },
             ])
             .map_err(std::io::Error::other)?;
         let child = command.spawn()?;
@@ -309,7 +371,10 @@ fn loopback_endpoint(value: Option<&str>, port: u16) -> Result<Url> {
         || !endpoint.username().is_empty()
         || endpoint.password().is_some()
     {
-        bail!("Rejected unexpected Codex CDP target URL: {}", endpoint.origin().ascii_serialization());
+        bail!(
+            "Rejected unexpected Codex CDP target URL: {}",
+            endpoint.origin().ascii_serialization()
+        );
     }
     Ok(endpoint)
 }
@@ -329,7 +394,9 @@ impl Session {
         if method == "Target.getTargets" {
             return self.browser.command(None, method, params, timeout).await;
         }
-        self.browser.command(Some(&self.id), method, params, timeout).await
+        self.browser
+            .command(Some(&self.id), method, params, timeout)
+            .await
     }
 
     pub fn is_closed(&self) -> bool {
@@ -346,7 +413,9 @@ impl Session {
         let browser = self.browser.clone();
         let id = self.id.clone();
         tokio::spawn(async move {
-            let _ = browser.send("Target.detachFromTarget", json!({ "sessionId": id })).await;
+            let _ = browser
+                .send("Target.detachFromTarget", json!({ "sessionId": id }))
+                .await;
         });
     }
 
@@ -358,5 +427,10 @@ impl Session {
 /// The description of a failed `Runtime.evaluate`.
 pub fn exception(evaluation: &Value) -> Option<String> {
     let details = evaluation.get("exceptionDetails")?;
-    Some(details["exception"]["description"].as_str().unwrap_or_default().to_owned())
+    Some(
+        details["exception"]["description"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+    )
 }

@@ -17,12 +17,23 @@ pub struct NewAttachment<'a> {
     pub size: i64,
 }
 
-fn collect(connection: &Connection, sql: &str, params: impl rusqlite::Params) -> Result<Vec<Attachment>> {
-    Ok(connection.prepare(sql)?.query_map(params, rows::attachment)?.collect::<rusqlite::Result<_>>()?)
+fn collect(
+    connection: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> Result<Vec<Attachment>> {
+    Ok(connection
+        .prepare(sql)?
+        .query_map(params, rows::attachment)?
+        .collect::<rusqlite::Result<_>>()?)
 }
 
 /// `#attachmentsForComment`.
-pub(crate) fn attachments_for_comment(connection: &Connection, comment_id: &str, after: Option<i64>) -> Result<Vec<Attachment>> {
+pub(crate) fn attachments_for_comment(
+    connection: &Connection,
+    comment_id: &str,
+    after: Option<i64>,
+) -> Result<Vec<Attachment>> {
     match after {
         Some(revision) => collect(
             connection,
@@ -38,10 +49,21 @@ pub(crate) fn attachments_for_comment(connection: &Connection, comment_id: &str,
 }
 
 fn get_attachment(connection: &Connection, id: &str) -> Result<Option<Attachment>> {
-    Ok(connection.query_row("SELECT * FROM attachments WHERE id = ?", [id], rows::attachment).optional()?)
+    Ok(connection
+        .query_row(
+            "SELECT * FROM attachments WHERE id = ?",
+            [id],
+            rows::attachment,
+        )
+        .optional()?)
 }
 
-fn insert(connection: &Connection, task_id: &str, comment_id: Option<&str>, input: &NewAttachment<'_>) -> Result<()> {
+fn insert(
+    connection: &Connection,
+    task_id: &str,
+    comment_id: Option<&str>,
+    input: &NewAttachment<'_>,
+) -> Result<()> {
     let revision = next_revision(connection)?;
     connection.execute(
         "INSERT INTO attachments (id, task_id, comment_id, kind, filename, content_type, size, created_at, change_revision)
@@ -71,7 +93,11 @@ impl Store {
         }
     }
 
-    pub fn create_attachment(&self, task_id: &str, input: &NewAttachment<'_>) -> Result<Attachment> {
+    pub fn create_attachment(
+        &self,
+        task_id: &str,
+        input: &NewAttachment<'_>,
+    ) -> Result<Attachment> {
         let mut connection = self.connection();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let task = require_task(&transaction, task_id)?;
@@ -80,16 +106,28 @@ impl Store {
         Ok(get_attachment(&connection, input.id)?.expect("inserted attachment"))
     }
 
-    pub fn list_comment_attachments(&self, comment_id: &str, after: Option<i64>) -> Result<Vec<Attachment>> {
+    pub fn list_comment_attachments(
+        &self,
+        comment_id: &str,
+        after: Option<i64>,
+    ) -> Result<Vec<Attachment>> {
         let connection = self.connection();
-        let exists = connection.query_row("SELECT 1 FROM comments WHERE id = ?", [comment_id], |_| Ok(())).optional()?;
+        let exists = connection
+            .query_row("SELECT 1 FROM comments WHERE id = ?", [comment_id], |_| {
+                Ok(())
+            })
+            .optional()?;
         if exists.is_none() {
             return Err(comment_not_found(comment_id).into());
         }
         attachments_for_comment(&connection, comment_id, after)
     }
 
-    pub fn create_comment_attachment(&self, comment_id: &str, input: &NewAttachment<'_>) -> Result<Attachment> {
+    pub fn create_comment_attachment(
+        &self,
+        comment_id: &str,
+        input: &NewAttachment<'_>,
+    ) -> Result<Attachment> {
         let mut connection = self.connection();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let comment = require_comment(&transaction, comment_id)?;
@@ -104,8 +142,13 @@ impl Store {
 
     pub fn delete_attachment(&self, id: &str) -> Result<Attachment> {
         let connection = self.connection();
-        let attachment = get_attachment(&connection, id)?
-            .ok_or_else(|| ApiError::new(404, "ATTACHMENT_NOT_FOUND", format!("Attachment '{id}' does not exist")))?;
+        let attachment = get_attachment(&connection, id)?.ok_or_else(|| {
+            ApiError::new(
+                404,
+                "ATTACHMENT_NOT_FOUND",
+                format!("Attachment '{id}' does not exist"),
+            )
+        })?;
         connection.execute("DELETE FROM attachments WHERE id = ?", [id])?;
         Ok(attachment)
     }

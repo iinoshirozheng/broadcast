@@ -25,7 +25,9 @@ pub use attachments::NewAttachment;
 pub use jira::{JiraActor, JiraTask};
 pub use tasks::DeletedTask;
 
-const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!("../../../db/migrations/0001_initial.sql"))];
+const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!(
+    "../../../db/migrations/0001_initial.sql"
+))];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 
 pub struct Store {
@@ -43,17 +45,23 @@ impl Store {
         )?;
         MIGRATIONS.to_latest(&mut connection)?;
         ai_chat::interrupt_abandoned_runs(&mut connection)?;
-        Ok(Self { connection: Mutex::new(connection) })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 
     fn connection(&self) -> MutexGuard<'_, Connection> {
-        self.connection.lock().unwrap_or_else(PoisonError::into_inner)
+        self.connection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 /// `new Date().toISOString()`.
 pub fn now() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 /// `#nextCommentAttachmentRevision`: the shared cursor for comments and attachments.

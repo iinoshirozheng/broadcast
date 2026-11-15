@@ -14,7 +14,9 @@ pub fn state_path(codex_home: &Path) -> PathBuf {
 }
 
 pub fn processes_path(codex_home: &Path) -> PathBuf {
-    codex_home.join("process_manager").join("chat_processes.json")
+    codex_home
+        .join("process_manager")
+        .join("chat_processes.json")
 }
 
 async fn read_json(path: &Path) -> Option<Value> {
@@ -23,17 +25,29 @@ async fn read_json(path: &Path) -> Option<Value> {
 
 /// `codexProjectRoot`: the first non-blank root of a Codex local project.
 fn project_root(state: &Value, project_id: Option<&str>) -> Option<String> {
-    let root = state.get("local-projects")?.get(project_id.filter(|id| !id.is_empty())?)?.get("rootPaths")?.get(0)?;
-    root.as_str().filter(|root| !root.trim().is_empty()).map(str::to_owned)
+    let root = state
+        .get("local-projects")?
+        .get(project_id.filter(|id| !id.is_empty())?)?
+        .get("rootPaths")?
+        .get(0)?;
+    root.as_str()
+        .filter(|root| !root.trim().is_empty())
+        .map(str::to_owned)
 }
 
 /// `readCodexProjectWorkspaces`: Codex project id → workspace root.
 pub async fn workspaces(codex_home: &Path) -> Map<String, Value> {
-    let Some(state) = read_json(&state_path(codex_home)).await else { return Map::new() };
-    let Some(projects) = state.get("local-projects").and_then(Value::as_object) else { return Map::new() };
+    let Some(state) = read_json(&state_path(codex_home)).await else {
+        return Map::new();
+    };
+    let Some(projects) = state.get("local-projects").and_then(Value::as_object) else {
+        return Map::new();
+    };
     projects
         .keys()
-        .filter_map(|id| project_root(&state, Some(id)).map(|root| (id.clone(), Value::String(root))))
+        .filter_map(|id| {
+            project_root(&state, Some(id)).map(|root| (id.clone(), Value::String(root)))
+        })
         .collect()
 }
 
@@ -45,11 +59,17 @@ fn latest_thread_cwd(value: &Value, thread_id: &str) -> Option<String> {
         match candidate {
             Value::Array(items) => stack.extend(items),
             Value::Object(object) => {
-                let cwd = object.get("cwd").and_then(Value::as_str).filter(|cwd| !cwd.trim().is_empty());
+                let cwd = object
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .filter(|cwd| !cwd.trim().is_empty());
                 if let Some(cwd) = cwd
                     && object.get("conversationId").and_then(Value::as_str) == Some(thread_id)
                 {
-                    let updated = object.get("updatedAtMs").and_then(Value::as_f64).unwrap_or(0.0);
+                    let updated = object
+                        .get("updatedAtMs")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0);
                     if best.is_none_or(|(latest, _)| updated > latest) {
                         best = Some((updated, cwd));
                     }
@@ -91,7 +111,10 @@ pub async fn resolve_workspace(
 async fn git(args: &[&str]) -> Option<String> {
     let mut command = broadcast_codex::command("git");
     command.args(args).kill_on_drop(true);
-    let output = tokio::time::timeout(GIT_TIMEOUT, command.output()).await.ok()?.ok()?;
+    let output = tokio::time::timeout(GIT_TIMEOUT, command.output())
+        .await
+        .ok()?
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -103,12 +126,23 @@ pub async fn development_contexts(workspace: Option<&str>) -> Value {
     let Some(workspace) = workspace.filter(|path| !path.is_empty()) else {
         return json!({ "workspacePath": null, "contexts": [] });
     };
-    scan(workspace).await.unwrap_or_else(|| json!({ "workspacePath": workspace, "contexts": [] }))
+    scan(workspace)
+        .await
+        .unwrap_or_else(|| json!({ "workspacePath": workspace, "contexts": [] }))
 }
 
 async fn scan(workspace: &str) -> Option<Value> {
-    let root = git(&["-C", workspace, "rev-parse", "--show-toplevel"]).await?.trim().to_owned();
-    let branch_args = ["-C", &root, "for-each-ref", "--format=%(refname:short)", "refs/heads"];
+    let root = git(&["-C", workspace, "rev-parse", "--show-toplevel"])
+        .await?
+        .trim()
+        .to_owned();
+    let branch_args = [
+        "-C",
+        &root,
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "refs/heads",
+    ];
     let worktree_args = ["-C", &root, "worktree", "list", "--porcelain"];
     let (branches, worktrees) = tokio::join!(git(&branch_args), git(&worktree_args));
     let (branches, worktrees) = (branches?, worktrees?);
@@ -136,8 +170,15 @@ async fn parse_worktrees(output: &str) -> Option<Vec<Value>> {
     }
     blocks.push(block);
     for block in blocks {
-        let path = block.iter().rev().find_map(|line| line.strip_prefix("worktree ")).unwrap_or_default();
-        let branch = block.iter().rev().find_map(|line| line.strip_prefix("branch refs/heads/"));
+        let path = block
+            .iter()
+            .rev()
+            .find_map(|line| line.strip_prefix("worktree "))
+            .unwrap_or_default();
+        let branch = block
+            .iter()
+            .rev()
+            .find_map(|line| line.strip_prefix("branch refs/heads/"));
         if path.is_empty() || block.iter().any(|line| line.starts_with("prunable")) {
             continue;
         }

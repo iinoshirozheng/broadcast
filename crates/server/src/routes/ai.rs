@@ -24,8 +24,8 @@ use crate::ai::exec::SKILL_MARKER;
 use crate::ai::{Attachment, CandidateQuery, NewThread, ThreadPatch, Turn, TurnBody};
 use crate::events::sse;
 use crate::http::{
-    Reply, assert_allowed_query, assert_empty_body, empty, json, method_not_allowed, query, read_json, read_json_limit,
-    segment,
+    Reply, assert_allowed_query, assert_empty_body, empty, json, method_not_allowed, query,
+    read_json, read_json_limit, segment,
 };
 
 type Fields<T> = std::result::Result<T, ApiError>;
@@ -34,7 +34,12 @@ const TURN_BODY_LIMIT: usize = 25 * 1024 * 1024;
 const ATTACHMENT_LIMIT: usize = 10;
 const TEXT_LIMIT: usize = 100_000;
 const NODE_LIMIT: usize = 200;
-const TARGET_FIELDS: [&str; 4] = ["codexProjectId", "codexProjectKind", "codexHostId", "workspacePath"];
+const TARGET_FIELDS: [&str; 4] = [
+    "codexProjectId",
+    "codexProjectKind",
+    "codexHostId",
+    "workspacePath",
+];
 
 /// `assertNoQuery`.
 fn no_query(request: &Request, label: &str) -> broadcast_domain::Result<()> {
@@ -43,15 +48,27 @@ fn no_query(request: &Request, label: &str) -> broadcast_domain::Result<()> {
 
 /// `searchParams.get`: the first value of `key`.
 fn first<'a>(query: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    query.iter().find(|(name, _)| name == key).map(|(_, value)| value.as_str())
+    query
+        .iter()
+        .find(|(name, _)| name == key)
+        .map(|(_, value)| value.as_str())
 }
 
 /// `decodeRouteSegment`: path segment `n`, decoded, 1..=256 units and free of NUL.
 fn route_segment(request: &Request, n: usize, name: &str) -> Fields<String> {
-    let decoded = decode_uri_component(segment(request.uri(), n))
-        .ok_or_else(|| ApiError::new(400, "INVALID_PATH", format!("{name} contains invalid encoding")))?;
+    let decoded = decode_uri_component(segment(request.uri(), n)).ok_or_else(|| {
+        ApiError::new(
+            400,
+            "INVALID_PATH",
+            format!("{name} contains invalid encoding"),
+        )
+    })?;
     if decoded.is_empty() || js::len(&decoded) > 256 || decoded.contains('\0') {
-        return Err(ApiError::new(400, "INVALID_PATH", format!("{name} is invalid")));
+        return Err(ApiError::new(
+            400,
+            "INVALID_PATH",
+            format!("{name} is invalid"),
+        ));
     }
     Ok(decoded)
 }
@@ -68,7 +85,10 @@ fn setting(value: Option<&Value>, name: &str, max_length: usize) -> Fields<Optio
 /// `parseAiSandbox`.
 fn sandbox(value: Option<&Value>) -> Fields<Option<String>> {
     let Some(value) = value else { return Ok(None) };
-    match value.as_str().filter(|mode| AI_SANDBOX_MODES.contains(mode)) {
+    match value
+        .as_str()
+        .filter(|mode| AI_SANDBOX_MODES.contains(mode))
+    {
         Some(mode) => Ok(Some(mode.to_owned())),
         None => Err(ApiError::new(
             400,
@@ -81,32 +101,45 @@ fn sandbox(value: Option<&Value>) -> Fields<Option<String>> {
 /// `parseAiExecutionTarget`: all four Codex project fields or none; only a remote project
 /// changes where the conversation runs.
 fn target(object: &Object) -> Fields<Option<RemoteTarget>> {
-    let present = TARGET_FIELDS.iter().filter(|field| object.contains_key(**field)).count();
+    let present = TARGET_FIELDS
+        .iter()
+        .filter(|field| object.contains_key(**field))
+        .count();
     if present == 0 {
         return Ok(None);
     }
     let invalid = |message: &str| ApiError::new(400, "INVALID_CODEX_TARGET", message.to_owned());
     if present != TARGET_FIELDS.len() {
-        return Err(invalid("Codex project identity must contain all four fields"));
+        return Err(invalid(
+            "Codex project identity must contain all four fields",
+        ));
     }
     let kind = setting(object.get("codexProjectKind"), "codexProjectKind", 16)?.unwrap_or_default();
     if kind != "local" && kind != "remote" {
         return Err(invalid("'codexProjectKind' must be local or remote"));
     }
-    let workspace_path = setting(object.get("workspacePath"), "workspacePath", 4096)?.unwrap_or_default();
+    let workspace_path =
+        setting(object.get("workspacePath"), "workspacePath", 4096)?.unwrap_or_default();
     if workspace_path.contains('\0') {
         return Err(invalid("'workspacePath' cannot contain null bytes"));
     }
-    let codex_project_id = setting(object.get("codexProjectId"), "codexProjectId", 256)?.unwrap_or_default();
+    let codex_project_id =
+        setting(object.get("codexProjectId"), "codexProjectId", 256)?.unwrap_or_default();
     let codex_host_id = setting(object.get("codexHostId"), "codexHostId", 512)?.unwrap_or_default();
-    Ok((kind == "remote").then_some(RemoteTarget { codex_project_id, codex_host_id, workspace_path }))
+    Ok((kind == "remote").then_some(RemoteTarget {
+        codex_project_id,
+        codex_host_id,
+        workspace_path,
+    }))
 }
 
 /// `aiExecutionTargetFromQuery`.
 fn query_target(query: &[(String, String)]) -> Fields<Option<RemoteTarget>> {
     let object: Object = TARGET_FIELDS
         .iter()
-        .filter_map(|field| first(query, field).map(|value| ((*field).to_owned(), Value::String(value.to_owned()))))
+        .filter_map(|field| {
+            first(query, field).map(|value| ((*field).to_owned(), Value::String(value.to_owned())))
+        })
         .collect();
     target(&object)
 }
@@ -114,7 +147,18 @@ fn query_target(query: &[(String, String)]) -> Fields<Option<RemoteTarget>> {
 fn new_thread(body: &Value) -> Fields<NewThread> {
     let body = fields::object(
         body,
-        &["projectId", "issueId", "title", "model", "reasoningEffort", "sandbox", TARGET_FIELDS[0], TARGET_FIELDS[1], TARGET_FIELDS[2], TARGET_FIELDS[3]],
+        &[
+            "projectId",
+            "issueId",
+            "title",
+            "model",
+            "reasoningEffort",
+            "sandbox",
+            TARGET_FIELDS[0],
+            TARGET_FIELDS[1],
+            TARGET_FIELDS[2],
+            TARGET_FIELDS[3],
+        ],
     )?;
     Ok(NewThread {
         project_id: fields::project_id(body.get("projectId"))?,
@@ -135,8 +179,16 @@ fn thread_patch(body: &Value) -> Fields<ThreadPatch> {
         reasoning_effort: setting(body.get("reasoningEffort"), "reasoningEffort", 64)?,
         sandbox: sandbox(body.get("sandbox"))?,
     };
-    if patch.title.is_none() && patch.model.is_none() && patch.reasoning_effort.is_none() && patch.sandbox.is_none() {
-        return Err(ApiError::new(400, "INVALID_BODY", "PATCH requires at least one thread setting"));
+    if patch.title.is_none()
+        && patch.model.is_none()
+        && patch.reasoning_effort.is_none()
+        && patch.sandbox.is_none()
+    {
+        return Err(ApiError::new(
+            400,
+            "INVALID_BODY",
+            "PATCH requires at least one thread setting",
+        ));
     }
     Ok(patch)
 }
@@ -145,17 +197,23 @@ fn confirmed(body: &Object) -> Fields<bool> {
     match body.get("dangerFullAccessConfirmed") {
         None => Ok(false),
         Some(Value::Bool(confirmed)) => Ok(*confirmed),
-        Some(_) => Err(ApiError::invalid_field("'dangerFullAccessConfirmed' must be a boolean")),
+        Some(_) => Err(ApiError::invalid_field(
+            "'dangerFullAccessConfirmed' must be a boolean",
+        )),
     }
 }
 
 /// `parseAiSkillIds`.
 fn skill_ids(value: Option<&Value>) -> Fields<Vec<String>> {
-    let Some(value) = value else { return Ok(Vec::new()) };
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
     let ids = value
         .as_array()
         .filter(|ids| ids.len() <= 20)
-        .ok_or_else(|| ApiError::invalid_field("'skillIds' must be an array with at most 20 entries"))?;
+        .ok_or_else(|| {
+            ApiError::invalid_field("'skillIds' must be an array with at most 20 entries")
+        })?;
     ids.iter()
         .enumerate()
         .map(|(index, id)| fields::required_string(Some(id), &format!("skillIds[{index}]"), 256))
@@ -168,17 +226,25 @@ fn base64_shaped(encoded: &str) -> bool {
     encoded.len().is_multiple_of(4)
         && encoded.len() - data.len() <= 2
         && !data.is_empty()
-        && data.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
+        && data
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
 }
 
 /// `parseAiAttachments`: files sent inline as canonical base64.
 fn attachments(value: Option<&Value>) -> Fields<Vec<Attachment>> {
-    let Some(value) = value else { return Ok(Vec::new()) };
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
     let invalid = |message: String| ApiError::new(400, "INVALID_ATTACHMENT", message);
     let entries = value
         .as_array()
         .filter(|entries| entries.len() <= ATTACHMENT_LIMIT)
-        .ok_or_else(|| invalid(format!("'attachments' must be an array with at most {ATTACHMENT_LIMIT} files")))?;
+        .ok_or_else(|| {
+            invalid(format!(
+                "'attachments' must be an array with at most {ATTACHMENT_LIMIT} files"
+            ))
+        })?;
     entries
         .iter()
         .enumerate()
@@ -186,12 +252,26 @@ fn attachments(value: Option<&Value>) -> Fields<Vec<Attachment>> {
             let entry = fields::object(entry, &["filename", "contentType", "dataBase64"])?;
             let name = |field: &str| format!("attachments[{index}].{field}");
             let filename = fields::required_string(entry.get("filename"), &name("filename"), 240)?;
-            if filename.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}' || c == '/' || c == '\\') {
+            if filename
+                .chars()
+                .any(|c| c <= '\u{1f}' || c == '\u{7f}' || c == '/' || c == '\\')
+            {
                 return Err(invalid(format!("'{}' is invalid", name("filename"))));
             }
-            let content_type = fields::required_string(entry.get("contentType"), &name("contentType"), 256)?.to_lowercase();
-            let encoded = fields::required_string(entry.get("dataBase64"), &name("dataBase64"), TURN_BODY_LIMIT)?;
-            let malformed = || invalid(format!("'{}' must contain valid base64", name("dataBase64")));
+            let content_type =
+                fields::required_string(entry.get("contentType"), &name("contentType"), 256)?
+                    .to_lowercase();
+            let encoded = fields::required_string(
+                entry.get("dataBase64"),
+                &name("dataBase64"),
+                TURN_BODY_LIMIT,
+            )?;
+            let malformed = || {
+                invalid(format!(
+                    "'{}' must contain valid base64",
+                    name("dataBase64")
+                ))
+            };
             if !base64_shaped(&encoded) {
                 return Err(malformed());
             }
@@ -199,7 +279,11 @@ fn attachments(value: Option<&Value>) -> Fields<Vec<Attachment>> {
             if data.is_empty() || STANDARD.encode(&data) != encoded {
                 return Err(malformed());
             }
-            Ok(Attachment { filename, content_type, data })
+            Ok(Attachment {
+                filename,
+                content_type,
+                data,
+            })
         })
         .collect()
 }
@@ -210,34 +294,72 @@ fn turn(body: &Value) -> Fields<Turn> {
     if body.contains_key("contractVersion") {
         return composer_turn(body);
     }
-    fields::assert_allowed_keys(body, &["message", "skillIds", "dangerFullAccessConfirmed", "attachments"])?;
+    fields::assert_allowed_keys(
+        body,
+        &[
+            "message",
+            "skillIds",
+            "dangerFullAccessConfirmed",
+            "attachments",
+        ],
+    )?;
     let confirmed = confirmed(body)?;
     let blank = Value::String(String::new());
-    let message =
-        fields::optional_string(Some(fields::nullish(body.get("message")).unwrap_or(&blank)), "message", TEXT_LIMIT)?
-            .unwrap_or_default();
+    let message = fields::optional_string(
+        Some(fields::nullish(body.get("message")).unwrap_or(&blank)),
+        "message",
+        TEXT_LIMIT,
+    )?
+    .unwrap_or_default();
     let skill_ids = skill_ids(body.get("skillIds"))?;
     if message.matches(SKILL_MARKER).count() != skill_ids.len() {
-        return Err(ApiError::invalid_field("'skillIds' must match the Skill markers in 'message'"));
+        return Err(ApiError::invalid_field(
+            "'skillIds' must match the Skill markers in 'message'",
+        ));
     }
     let attachments = attachments(body.get("attachments"))?;
     if message.is_empty() && attachments.is_empty() {
-        return Err(ApiError::new(400, "INVALID_MESSAGE", "A message or at least one attachment is required"));
+        return Err(ApiError::new(
+            400,
+            "INVALID_MESSAGE",
+            "A message or at least one attachment is required",
+        ));
     }
-    Ok(Turn { confirmed, attachments, body: TurnBody::Message { message, skill_ids } })
+    Ok(Turn {
+        confirmed,
+        attachments,
+        body: TurnBody::Message { message, skill_ids },
+    })
 }
 
 /// `parseComposerTurn`.
 fn composer_turn(body: &Object) -> Fields<Turn> {
-    fields::assert_allowed_keys(body, &["contractVersion", "revision", "document", "dangerFullAccessConfirmed", "attachments"])?;
+    fields::assert_allowed_keys(
+        body,
+        &[
+            "contractVersion",
+            "revision",
+            "document",
+            "dangerFullAccessConfirmed",
+            "attachments",
+        ],
+    )?;
     if body.get("contractVersion").and_then(Value::as_str) != Some(composer::CONTRACT_VERSION) {
-        return Err(ApiError::new(400, "INVALID_COMPOSER_DOCUMENT", "'contractVersion' must be 'composer.v1'"));
+        return Err(ApiError::new(
+            400,
+            "INVALID_COMPOSER_DOCUMENT",
+            "'contractVersion' must be 'composer.v1'",
+        ));
     }
     let confirmed = confirmed(body)?;
     let revision = fields::required_string(body.get("revision"), "revision", 512)?;
     let nodes = composer_document(body.get("document").unwrap_or(&Value::Null))?;
     let attachments = attachments(body.get("attachments"))?;
-    Ok(Turn { confirmed, attachments, body: TurnBody::Composer { revision, nodes } })
+    Ok(Turn {
+        confirmed,
+        attachments,
+        body: TurnBody::Composer { revision, nodes },
+    })
 }
 
 /// `parseComposerDocument`.
@@ -251,7 +373,11 @@ fn composer_document(value: &Value) -> Fields<Vec<DocumentNode>> {
         .get("nodes")
         .and_then(Value::as_array)
         .filter(|nodes| nodes.len() <= NODE_LIMIT)
-        .ok_or_else(|| invalid(format!("'document.nodes' must be an array with at most {NODE_LIMIT} entries")))?;
+        .ok_or_else(|| {
+            invalid(format!(
+                "'document.nodes' must be an array with at most {NODE_LIMIT} entries"
+            ))
+        })?;
     let mut text_length = 0;
     let mut parsed = Vec::with_capacity(nodes.len());
     for (index, node) in nodes.iter().enumerate() {
@@ -264,10 +390,9 @@ fn composer_document(value: &Value) -> Fields<Vec<DocumentNode>> {
         parsed.push(match kind {
             "text" => {
                 fields::assert_allowed_keys(node, &["type", "text"])?;
-                let text = node
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| invalid(format!("'document.nodes[{index}].text' must be a string")))?;
+                let text = node.get("text").and_then(Value::as_str).ok_or_else(|| {
+                    invalid(format!("'document.nodes[{index}].text' must be a string"))
+                })?;
                 text_length += js::len(text);
                 DocumentNode::Text(text.to_owned())
             }
@@ -280,14 +405,20 @@ fn composer_document(value: &Value) -> Fields<Vec<DocumentNode>> {
                         &format!("document.nodes[{index}].candidateRef"),
                         512,
                     )?,
-                    label: fields::required_string(node.get("label"), &format!("document.nodes[{index}].label"), 256)?,
+                    label: fields::required_string(
+                        node.get("label"),
+                        &format!("document.nodes[{index}].label"),
+                        256,
+                    )?,
                 }
             }
             other => DocumentNode::Other(other.to_owned()),
         });
     }
     if text_length > TEXT_LIMIT {
-        return Err(invalid(format!("Composer text cannot exceed {TEXT_LIMIT} characters")));
+        return Err(invalid(format!(
+            "Composer text cannot exceed {TEXT_LIMIT} characters"
+        )));
     }
     Ok(parsed)
 }
@@ -301,18 +432,32 @@ struct Rebind {
 /// `parseComposerRebindRequest`: persisted reference markers to resolve against the catalog.
 fn rebind_request(value: &Value) -> Fields<Rebind> {
     let invalid = |message: String| ApiError::new(400, "INVALID_COMPOSER_REBIND_REQUEST", message);
-    let keys = |object: &Object, allowed: &[&str], field: &str| match js::object_keys(object).into_iter().find(|key| !allowed.contains(key)) {
+    let keys = |object: &Object, allowed: &[&str], field: &str| match js::object_keys(object)
+        .into_iter()
+        .find(|key| !allowed.contains(key))
+    {
         Some(key) => Err(invalid(format!("'{field}.{key}' is not allowed"))),
         None => Ok(()),
     };
-    let body = value.as_object().ok_or_else(|| invalid("Composer rebind body must be an object".into()))?;
-    keys(body, &["contractVersion", "projectId", "threadId", "document"], "body")?;
+    let body = value
+        .as_object()
+        .ok_or_else(|| invalid("Composer rebind body must be an object".into()))?;
+    keys(
+        body,
+        &["contractVersion", "projectId", "threadId", "document"],
+        "body",
+    )?;
     if body.get("contractVersion").and_then(Value::as_str) != Some(composer::CONTRACT_VERSION) {
         return Err(invalid("'contractVersion' must be 'composer.v1'".into()));
     }
-    let project_id = fields::project_id(body.get("projectId")).map_err(|_| invalid("'projectId' is invalid".into()))?;
-    let thread_id = fields::thread_id(body.get("threadId")).map_err(|_| invalid("'threadId' is invalid".into()))?;
-    let document = body.get("document").and_then(Value::as_object).ok_or_else(|| invalid("'document' must be an object".into()))?;
+    let project_id = fields::project_id(body.get("projectId"))
+        .map_err(|_| invalid("'projectId' is invalid".into()))?;
+    let thread_id = fields::thread_id(body.get("threadId"))
+        .map_err(|_| invalid("'threadId' is invalid".into()))?;
+    let document = body
+        .get("document")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid("'document' must be an object".into()))?;
     keys(document, &["version", "nodes"], "document")?;
     if document.get("version").and_then(Value::as_f64) != Some(1.0) {
         return Err(invalid("'document.version' must be 1".into()));
@@ -321,18 +466,25 @@ fn rebind_request(value: &Value) -> Fields<Rebind> {
         .get("nodes")
         .and_then(Value::as_array)
         .filter(|nodes| nodes.len() <= NODE_LIMIT)
-        .ok_or_else(|| invalid(format!("'document.nodes' must contain at most {NODE_LIMIT} entries")))?;
+        .ok_or_else(|| {
+            invalid(format!(
+                "'document.nodes' must contain at most {NODE_LIMIT} entries"
+            ))
+        })?;
     let mut text_length = 0;
     let mut parsed = Vec::with_capacity(nodes.len());
     for (index, node) in nodes.iter().enumerate() {
         let path = format!("document.nodes[{index}]");
-        let node = node.as_object().ok_or_else(|| invalid(format!("'{path}' must be an object")))?;
+        let node = node
+            .as_object()
+            .ok_or_else(|| invalid(format!("'{path}' must be an object")))?;
         let text = |key: &str| node.get(key).and_then(Value::as_str);
         let label_valid = text("label").is_some_and(|label| (1..=256).contains(&js::len(label)));
         match text("type") {
             Some("text") => {
                 keys(node, &["type", "text"], &path)?;
-                let content = text("text").ok_or_else(|| invalid(format!("'{path}.text' must be a string")))?;
+                let content = text("text")
+                    .ok_or_else(|| invalid(format!("'{path}.text' must be a string")))?;
                 text_length += js::len(content);
                 parsed.push(RebindNode::Text(content.to_owned()));
             }
@@ -349,29 +501,45 @@ fn rebind_request(value: &Value) -> Fields<Rebind> {
                     .map(|rest| rest.split('/').collect())
                     .unwrap_or_default();
                 let [format, kind, key] = parts.as_slice() else {
-                    return Err(invalid(format!("'{path}.referenceUri' is not a composer reference marker")));
+                    return Err(invalid(format!(
+                        "'{path}.referenceUri' is not a composer reference marker"
+                    )));
                 };
                 if format.is_empty() || kind.is_empty() || key.is_empty() {
-                    return Err(invalid(format!("'{path}.referenceUri' is not a composer reference marker")));
+                    return Err(invalid(format!(
+                        "'{path}.referenceUri' is not a composer reference marker"
+                    )));
                 }
                 if composer::decode_key(key).is_none() {
-                    return Err(invalid(format!("'{path}.referenceUri' has an invalid reference key")));
+                    return Err(invalid(format!(
+                        "'{path}.referenceUri' has an invalid reference key"
+                    )));
                 }
                 let reason_code = if *format != "v1" {
                     "REFERENCE_FORMAT_UNSUPPORTED"
                 } else if *kind != "skill" && *kind != "agent" {
                     "REFERENCE_KIND_UNSUPPORTED"
                 } else {
-                    return Err(invalid(format!("'{path}' must use persistedReference for supported markers")));
+                    return Err(invalid(format!(
+                        "'{path}' must use persistedReference for supported markers"
+                    )));
                 };
                 parsed.push(RebindNode::Unsupported { reason_code });
             }
             Some("persistedReference") => {
-                keys(node, &["type", "referenceKind", "referenceKey", "label"], &path)?;
+                keys(
+                    node,
+                    &["type", "referenceKind", "referenceKey", "label"],
+                    &path,
+                )?;
                 let kind = match text("referenceKind") {
                     Some("skill") => "skill",
                     Some("agent") => "agent",
-                    _ => return Err(invalid(format!("'{path}.referenceKind' must be skill or agent"))),
+                    _ => {
+                        return Err(invalid(format!(
+                            "'{path}.referenceKind' must be skill or agent"
+                        )));
+                    }
                 };
                 let key = text("referenceKey")
                     .filter(|key| (1..=512).contains(&js::len(key)))
@@ -379,10 +547,13 @@ fn rebind_request(value: &Value) -> Fields<Rebind> {
                 if !label_valid {
                     return Err(invalid(format!("'{path}.label' is invalid")));
                 }
-                let stable_id =
-                    composer::decode_key(key).ok_or_else(|| invalid(format!("'{path}.referenceKey' is not canonical base64url")))?;
+                let stable_id = composer::decode_key(key).ok_or_else(|| {
+                    invalid(format!("'{path}.referenceKey' is not canonical base64url"))
+                })?;
                 if kind == "skill" && stable_id != composer::nfc(&stable_id) {
-                    return Err(invalid(format!("'{path}.referenceKey' does not contain an NFC Skill name")));
+                    return Err(invalid(format!(
+                        "'{path}.referenceKey' does not contain an NFC Skill name"
+                    )));
                 }
                 parsed.push(RebindNode::Persisted { kind, stable_id });
             }
@@ -394,9 +565,15 @@ fn rebind_request(value: &Value) -> Fields<Rebind> {
         }
     }
     if text_length > TEXT_LIMIT {
-        return Err(invalid(format!("Composer text cannot exceed {TEXT_LIMIT} characters")));
+        return Err(invalid(format!(
+            "Composer text cannot exceed {TEXT_LIMIT} characters"
+        )));
     }
-    Ok(Rebind { project_id, thread_id, nodes: parsed })
+    Ok(Rebind {
+        project_id,
+        thread_id,
+        nodes: parsed,
+    })
 }
 
 pub async fn catalog(State(app): State<Arc<App>>, request: Request) -> Reply {
@@ -404,9 +581,19 @@ pub async fn catalog(State(app): State<Arc<App>>, request: Request) -> Reply {
         return method_not_allowed(&["GET"]);
     }
     let query = query(request.uri());
-    let allowed = ["projectId", TARGET_FIELDS[0], TARGET_FIELDS[1], TARGET_FIELDS[2], TARGET_FIELDS[3]];
+    let allowed = [
+        "projectId",
+        TARGET_FIELDS[0],
+        TARGET_FIELDS[1],
+        TARGET_FIELDS[2],
+        TARGET_FIELDS[3],
+    ];
     assert_allowed_query(&query, &allowed, "GET /api/local/ai/catalog")?;
-    let project_id = fields::project_id(first(&query, "projectId").map(|id| Value::String(id.to_owned())).as_ref())?;
+    let project_id = fields::project_id(
+        first(&query, "projectId")
+            .map(|id| Value::String(id.to_owned()))
+            .as_ref(),
+    )?;
     let remote = query_target(&query)?;
     // A missing Codex CLI makes the optional catalog unavailable rather than broken.
     let catalog = match app.ai.catalog(&app, &project_id, remote.as_ref()).await {
@@ -436,7 +623,10 @@ pub async fn candidates(State(app): State<Arc<App>>, request: Request) -> Reply 
     let invalid = |message: &str| ApiError::new(400, "INVALID_COMPOSER_QUERY", message.to_owned());
     let text = |value: &str| Value::String(value.to_owned());
     let project_id = first(&query, "projectId")
-        .map(|id| fields::project_id(Some(&text(id))).map_err(|_| invalid("Composer project id is invalid")))
+        .map(|id| {
+            fields::project_id(Some(&text(id)))
+                .map_err(|_| invalid("Composer project id is invalid"))
+        })
         .transpose()?;
     let trigger = first(&query, "trigger")
         .filter(|trigger| *trigger == "/" || *trigger == "@")
@@ -453,9 +643,18 @@ pub async fn candidates(State(app): State<Arc<App>>, request: Request) -> Reply 
         return Err(invalid("Composer surface is invalid").into());
     }
     let remote = query_target(&query)?;
-    let input = CandidateQuery { project_id, thread_id, trigger: trigger.clone(), query: search.clone(), remote };
+    let input = CandidateQuery {
+        project_id,
+        thread_id,
+        trigger: trigger.clone(),
+        query: search.clone(),
+        remote,
+    };
     let response = app.ai.candidates(&app, input).await?;
-    Ok(json(200, &composer::for_surface(response, surface, &trigger, &search)))
+    Ok(json(
+        200,
+        &composer::for_surface(response, surface, &trigger, &search),
+    ))
 }
 
 pub async fn rebind(State(app): State<Arc<App>>, request: Request) -> Reply {
@@ -464,7 +663,17 @@ pub async fn rebind(State(app): State<Arc<App>>, request: Request) -> Reply {
     }
     no_query(&request, "POST /api/local/ai/composer/rebind")?;
     let input = rebind_request(&read_json(request).await?)?;
-    Ok(json(200, &app.ai.rebind(&app, &input.project_id, input.thread_id.as_deref(), input.nodes).await?))
+    Ok(json(
+        200,
+        &app.ai
+            .rebind(
+                &app,
+                &input.project_id,
+                input.thread_id.as_deref(),
+                input.nodes,
+            )
+            .await?,
+    ))
 }
 
 pub async fn project_summary(State(app): State<Arc<App>>, request: Request) -> Reply {
@@ -472,17 +681,27 @@ pub async fn project_summary(State(app): State<Arc<App>>, request: Request) -> R
         return method_not_allowed(&["GET"]);
     }
     no_query(&request, "GET /api/local/projects/:id/summary")?;
-    let project_id = fields::project_id(Some(&Value::String(route_segment(&request, 4, "Project id")?)))?;
+    let project_id = fields::project_id(Some(&Value::String(route_segment(
+        &request,
+        4,
+        "Project id",
+    )?)))?;
     Ok(json(200, &app.summary.get(&app, &project_id).await?))
 }
 
 pub async fn threads(State(app): State<Arc<App>>, request: Request) -> Reply {
     no_query(&request, "/api/local/ai/threads")?;
     match request.method().as_str() {
-        "GET" => Ok(json(200, &json!({ "threads": app.ai.threads(&app).await? }))),
+        "GET" => Ok(json(
+            200,
+            &json!({ "threads": app.ai.threads(&app).await? }),
+        )),
         "POST" => {
             let input = new_thread(&read_json(request).await?)?;
-            Ok(json(201, &json!({ "thread": app.ai.create(&app, input).await? })))
+            Ok(json(
+                201,
+                &json!({ "thread": app.ai.create(&app, input).await? }),
+            ))
         }
         _ => method_not_allowed(&["GET", "POST"]),
     }
@@ -495,7 +714,10 @@ pub async fn thread(State(app): State<Arc<App>>, request: Request) -> Reply {
         "GET" => Ok(json(200, &app.ai.snapshot(&app, &thread_id).await?)),
         "PATCH" => {
             let patch = thread_patch(&read_json(request).await?)?;
-            Ok(json(200, &json!({ "thread": app.ai.update(&app, &thread_id, patch).await? })))
+            Ok(json(
+                200,
+                &json!({ "thread": app.ai.update(&app, &thread_id, patch).await? }),
+            ))
         }
         "DELETE" => {
             assert_empty_body(request, "DELETE /api/local/ai/threads/:id").await?;
@@ -528,10 +750,19 @@ pub async fn thread_events(State(app): State<Arc<App>>, request: Request) -> Rep
         .take_while(Option::is_some)
         .filter_map(move |message| message.filter(|(id, _)| *id == thread_id))
         .map(|(_, event)| {
-            let kind = if event.get("type").and_then(Value::as_str) == Some("ai.run") { "ai.run" } else { "ai.event" };
+            let kind = if event.get("type").and_then(Value::as_str) == Some("ai.run") {
+                "ai.run"
+            } else {
+                "ai.event"
+            };
             Event::default().event(kind).data(event.to_string())
         });
-    let opening = [Event::default().comment("connected"), Event::default().event("ai.event").data(r#"{"type":"ai.event"}"#)];
+    let opening = [
+        Event::default().comment("connected"),
+        Event::default()
+            .event("ai.event")
+            .data(r#"{"type":"ai.event"}"#),
+    ];
     Ok(sse(tokio_stream::iter(opening).chain(updates)))
 }
 
@@ -541,7 +772,12 @@ pub async fn thread_turns(State(app): State<Arc<App>>, request: Request) -> Repl
     }
     no_query(&request, "POST /api/local/ai/threads/:id/turns")?;
     let thread_id = route_segment(&request, 5, "Thread id")?;
-    let body = read_json_limit(request, TURN_BODY_LIMIT, "AI chat turn body cannot exceed 25 MiB").await?;
+    let body = read_json_limit(
+        request,
+        TURN_BODY_LIMIT,
+        "AI chat turn body cannot exceed 25 MiB",
+    )
+    .await?;
     let run = app.ai.start_turn(&app, &thread_id, turn(&body)?).await?;
     Ok(json(202, &json!({ "run": run })))
 }
@@ -553,7 +789,10 @@ pub async fn thread_compact(State(app): State<Arc<App>>, request: Request) -> Re
     no_query(&request, "POST /api/local/ai/threads/:id/compact")?;
     let thread_id = route_segment(&request, 5, "Thread id")?;
     assert_empty_body(request, "POST /api/local/ai/threads/:id/compact").await?;
-    Ok(json(200, &json!({ "thread": app.ai.compact(&app, &thread_id).await? })))
+    Ok(json(
+        200,
+        &json!({ "thread": app.ai.compact(&app, &thread_id).await? }),
+    ))
 }
 
 pub async fn interrupt(State(app): State<Arc<App>>, request: Request) -> Reply {
@@ -563,5 +802,8 @@ pub async fn interrupt(State(app): State<Arc<App>>, request: Request) -> Reply {
     no_query(&request, "POST /api/local/ai/runs/:id/interrupt")?;
     let run_id = route_segment(&request, 5, "Run id")?;
     assert_empty_body(request, "POST /api/local/ai/runs/:id/interrupt").await?;
-    Ok(json(200, &json!({ "run": app.ai.interrupt(&app, &run_id).await? })))
+    Ok(json(
+        200,
+        &json!({ "run": app.ai.interrupt(&app, &run_id).await? }),
+    ))
 }

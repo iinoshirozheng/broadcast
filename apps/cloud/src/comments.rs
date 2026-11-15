@@ -13,14 +13,25 @@ const COMMENT_CHANGED: &str = "Comment was changed by another client";
 
 fn assert_comment_version(row: &Row, expected: i64) -> Result<()> {
     let actual = integer(row, "version");
-    if actual == expected { Ok(()) } else { Err(version_conflict(COMMENT_CHANGED, expected, actual)) }
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(version_conflict(COMMENT_CHANGED, expected, actual))
+    }
 }
 
 impl Board {
     pub async fn require_comment_row(&self, id: &str) -> Result<Row> {
         db::first(&self.db, "SELECT * FROM comments WHERE id = ?", args![id])
             .await?
-            .ok_or_else(|| ApiError::new(404, "COMMENT_NOT_FOUND", format!("Comment '{id}' does not exist")).into())
+            .ok_or_else(|| {
+                ApiError::new(
+                    404,
+                    "COMMENT_NOT_FOUND",
+                    format!("Comment '{id}' does not exist"),
+                )
+                .into()
+            })
     }
 
     async fn comment_conflict(&self, id: &str, expected: i64) -> Failure {
@@ -55,18 +66,29 @@ impl Board {
             }
             None => db::all(&self.db, "SELECT * FROM comments WHERE task_id = ? ORDER BY created_at, id", args![id]).await?,
         };
-        Ok(json!({ "comments": self.hydrate_comments(&rows).await?, "nextCursor": next_cursor(&rows, after) }))
+        Ok(
+            json!({ "comments": self.hydrate_comments(&rows).await?, "nextCursor": next_cursor(&rows, after) }),
+        )
     }
 
     pub async fn create_comment(&self, task_id: &str, input: &CommentCreate) -> Result<Value> {
         let task = self.require_task_row(task_id).await?;
         let id = uuid();
         let timestamp = now();
-        let binding = records::stored_thread_binding(&input.attribution).unwrap_or_else(|| vec![Value::Null; 5]);
+        let binding = records::stored_thread_binding(&input.attribution)
+            .unwrap_or_else(|| vec![Value::Null; 5]);
         let session = records::stored_agent_session(&input.attribution).unwrap_or(Value::Null);
         let mut values = args![id, text(&task, "id"), input.body];
         values.extend(binding.iter().map(db::arg));
-        values.extend(args![self.actor.kind, self.actor.id, self.actor.name, Value::Null, timestamp, timestamp, session]);
+        values.extend(args![
+            self.actor.kind,
+            self.actor.id,
+            self.actor.name,
+            Value::Null,
+            timestamp,
+            timestamp,
+            session
+        ]);
         db::run(
             &self.db,
             format!(
@@ -131,13 +153,25 @@ impl Board {
         let current = self.require_comment_row(id).await?;
         assert_comment_version(&current, version)?;
         let comment_id = text(&current, "id");
-        let attachments = db::all(&self.db, "SELECT id FROM attachments WHERE comment_id = ?", args![comment_id]).await?;
-        let result =
-            db::run(&self.db, "DELETE FROM comments WHERE id = ? AND version = ?", args![comment_id, version]).await?;
+        let attachments = db::all(
+            &self.db,
+            "SELECT id FROM attachments WHERE comment_id = ?",
+            args![comment_id],
+        )
+        .await?;
+        let result = db::run(
+            &self.db,
+            "DELETE FROM comments WHERE id = ? AND version = ?",
+            args![comment_id, version],
+        )
+        .await?;
         if !db::changed(&result)? {
             return Err(self.comment_conflict(comment_id, version).await);
         }
-        let ids: Vec<String> = attachments.iter().map(|row| text(row, "id").to_owned()).collect();
+        let ids: Vec<String> = attachments
+            .iter()
+            .map(|row| text(row, "id").to_owned())
+            .collect();
         self.delete_objects(&ids).await
     }
 }

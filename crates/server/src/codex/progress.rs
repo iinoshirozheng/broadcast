@@ -17,7 +17,8 @@ const TAIL_BYTES: u64 = 16 * 1024 * 1024;
 const MISS_TTL: Duration = Duration::from_secs(5);
 
 static PLAN_STATUS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"["']?status["']?\s*:\s*["'](completed|in_progress|pending)["']"#).expect("valid pattern")
+    Regex::new(r#"["']?status["']?\s*:\s*["'](completed|in_progress|pending)["']"#)
+        .expect("valid pattern")
 });
 
 struct Search {
@@ -39,7 +40,11 @@ pub struct Sessions {
 
 impl Sessions {
     pub fn new(codex_home: &Path) -> Self {
-        Self { directory: codex_home.join("sessions"), searches: Mutex::default(), states: Mutex::default() }
+        Self {
+            directory: codex_home.join("sessions"),
+            searches: Mutex::default(),
+            states: Mutex::default(),
+        }
     }
 
     /// `findCodexSession`: the `*-<thread>.jsonl` file anywhere under `sessions/`.
@@ -68,14 +73,22 @@ impl Sessions {
                 }
             }
         }
-        let search = Search { path: found.clone(), checked: Instant::now() };
-        self.searches.lock().expect("lock").insert(thread_id.to_owned(), search);
+        let search = Search {
+            path: found.clone(),
+            checked: Instant::now(),
+        };
+        self.searches
+            .lock()
+            .expect("lock")
+            .insert(thread_id.to_owned(), search);
         Ok(found)
     }
 
     /// `readCodexSessionState`: `{ completed, total, running }`, or null without a session.
     pub async fn state(&self, thread_id: &str) -> std::io::Result<Value> {
-        let Some(path) = self.find(thread_id).await? else { return Ok(Value::Null) };
+        let Some(path) = self.find(thread_id).await? else {
+            return Ok(Value::Null);
+        };
         let metadata = tokio::fs::metadata(&path).await?;
         let (size, modified) = (metadata.len(), metadata.modified()?);
         if let Some(cached) = self.states.lock().expect("lock").get(&path)
@@ -91,9 +104,20 @@ impl Sessions {
         file.read_exact(&mut buffer).await?;
         let text = String::from_utf8_lossy(&buffer);
         let skip = usize::from(length < size);
-        let records: Vec<Value> = text.split('\n').skip(skip).filter_map(|line| serde_json::from_str(line).ok()).collect();
+        let records: Vec<Value> = text
+            .split('\n')
+            .skip(skip)
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect();
         let state = summarize(&records);
-        self.states.lock().expect("lock").insert(path, Cached { size, modified, state: state.clone() });
+        self.states.lock().expect("lock").insert(
+            path,
+            Cached {
+                size,
+                modified,
+                state: state.clone(),
+            },
+        );
         Ok(state)
     }
 }
@@ -102,7 +126,12 @@ fn summarize(records: &[Value]) -> Value {
     let mut running: Option<&str> = None;
     for record in records {
         let payload = &record["payload"];
-        let Some(turn) = payload["turn_id"].as_str().filter(|_| record["type"] == "event_msg") else { continue };
+        let Some(turn) = payload["turn_id"]
+            .as_str()
+            .filter(|_| record["type"] == "event_msg")
+        else {
+            continue;
+        };
         match payload["type"].as_str() {
             Some("task_started") => running = Some(turn),
             Some("task_complete" | "turn_aborted") if running == Some(turn) => running = None,
@@ -111,9 +140,19 @@ fn summarize(records: &[Value]) -> Value {
     }
     let progress = records.iter().rev().find_map(|record| {
         let payload = &record["payload"];
-        let input = payload["input"].as_str().filter(|_| payload["type"] == "custom_tool_call")?;
+        let input = payload["input"]
+            .as_str()
+            .filter(|_| payload["type"] == "custom_tool_call")?;
         let statuses = plan_statuses(payload["name"].as_str(), input);
-        (!statuses.is_empty()).then(|| (statuses.iter().filter(|status| **status == "completed").count(), statuses.len()))
+        (!statuses.is_empty()).then(|| {
+            (
+                statuses
+                    .iter()
+                    .filter(|status| **status == "completed")
+                    .count(),
+                statuses.len(),
+            )
+        })
     });
     json!({
         "completed": progress.map(|(completed, _)| completed),
@@ -128,11 +167,21 @@ fn plan_statuses(name: Option<&str>, input: &str) -> Vec<Value> {
         Some("update_plan") => serde_json::from_str::<Value>(input)
             .ok()
             .and_then(|input| input.get("plan")?.as_array().cloned())
-            .map(|plan| plan.iter().map(|item| item["status"].clone()).filter(js::truthy).collect())
+            .map(|plan| {
+                plan.iter()
+                    .map(|item| item["status"].clone())
+                    .filter(js::truthy)
+                    .collect()
+            })
             .unwrap_or_default(),
         Some("exec") => input
             .rfind("tools.update_plan(")
-            .map(|start| PLAN_STATUS.captures_iter(&input[start..]).map(|capture| json!(&capture[1])).collect())
+            .map(|start| {
+                PLAN_STATUS
+                    .captures_iter(&input[start..])
+                    .map(|capture| json!(&capture[1]))
+                    .collect()
+            })
             .unwrap_or_default(),
         _ => Vec::new(),
     }
@@ -143,12 +192,23 @@ pub fn strip_thread_prefix(value: &str) -> &str {
     let value = js::trim(value);
     ["local:", "cloud:"]
         .iter()
-        .find_map(|prefix| value.get(..prefix.len()).filter(|head| head.eq_ignore_ascii_case(prefix)).map(|_| &value[prefix.len()..]))
+        .find_map(|prefix| {
+            value
+                .get(..prefix.len())
+                .filter(|head| head.eq_ignore_ascii_case(prefix))
+                .map(|_| &value[prefix.len()..])
+        })
         .unwrap_or(value)
 }
 
 /// A Codex thread id is a hyphenated UUID.
 pub fn is_thread_id(id: &str) -> bool {
     id.len() == 36
-        && id.char_indices().all(|(index, c)| if [8, 13, 18, 23].contains(&index) { c == '-' } else { c.is_ascii_hexdigit() })
+        && id.char_indices().all(|(index, c)| {
+            if [8, 13, 18, 23].contains(&index) {
+                c == '-'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
 }

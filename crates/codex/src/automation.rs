@@ -58,7 +58,12 @@ const FIELDS: [&str; 18] = [
     "model",
     "reasoningEffort",
 ];
-const REMOTE_PROJECT_FIELDS: [&str; 4] = ["codexProjectId", "codexProjectKind", "codexHostId", "workspacePath"];
+const REMOTE_PROJECT_FIELDS: [&str; 4] = [
+    "codexProjectId",
+    "codexProjectKind",
+    "codexHostId",
+    "workspacePath",
+];
 const INTERVAL_MINUTES: [u64; 5] = [5, 10, 15, 30, 60];
 
 /// A validated `automation` host request.
@@ -88,7 +93,10 @@ impl Request {
     }
 
     pub fn with_operation(&self, operation: Operation) -> Self {
-        Self { operation, ..self.clone() }
+        Self {
+            operation,
+            ..self.clone()
+        }
     }
 
     pub fn rrule(&self) -> String {
@@ -99,7 +107,9 @@ impl Request {
 /// `parseBroadcastAutomationHostRequest`.
 pub fn parse(value: &Value) -> Option<Request> {
     let object = value.as_object()?;
-    if object.keys().any(|field| !FIELDS.contains(&field.as_str())) || value["action"] != "automation" {
+    if object.keys().any(|field| !FIELDS.contains(&field.as_str()))
+        || value["action"] != "automation"
+    {
         return None;
     }
     identifier(&value["id"], 80)?;
@@ -129,8 +139,11 @@ pub fn parse(value: &Value) -> Option<Request> {
         Some(_) => return None,
     };
     let valid_project = |project: &Value| {
-        project.as_object().is_some_and(|fields| fields.keys().all(|field| REMOTE_PROJECT_FIELDS.contains(&field.as_str())))
-            && text(&project["codexProjectId"], 256).is_some()
+        project.as_object().is_some_and(|fields| {
+            fields
+                .keys()
+                .all(|field| REMOTE_PROJECT_FIELDS.contains(&field.as_str()))
+        }) && text(&project["codexProjectId"], 256).is_some()
             && project["codexProjectKind"] == "remote"
             && project["codexHostId"] == codex_host_id.as_str()
             && absolute_path(&project["workspacePath"]).is_some()
@@ -138,7 +151,11 @@ pub fn parse(value: &Value) -> Option<Request> {
     if !remote_projects.iter().all(valid_project) || (!remote && !remote_projects.is_empty()) {
         return None;
     }
-    let interval_minutes = value["intervalMinutes"].as_f64().filter(|minutes| INTERVAL_MINUTES.iter().any(|allowed| *allowed as f64 == *minutes))? as u64;
+    let interval_minutes = value["intervalMinutes"].as_f64().filter(|minutes| {
+        INTERVAL_MINUTES
+            .iter()
+            .any(|allowed| *allowed as f64 == *minutes)
+    })? as u64;
     let model = text(&value["model"], 256)?;
     let reasoning_effort = text(&value["reasoningEffort"], 100)?;
     let automation_id = match value.get("automationId") {
@@ -221,10 +238,17 @@ pub fn prompt(request: &Request, command: &str) -> String {
     let mut lines = vec![
         format!(
             "[$manage-broadcast]({}) e-broadcast 每 {} 分钟检查任务面板中的「{}」项目（项目 ID：{project}，项目目录：{}）。",
-            request.skill_path, request.interval_minutes, request.project_name, request.workspace_path,
+            request.skill_path,
+            request.interval_minutes,
+            request.project_name,
+            request.workspace_path,
         ),
-        format!("本轮所有 broadcast 操作都使用完整命令前缀 {command}，不要使用 PATH 中的 broadcast。"),
-        format!("开始时先运行 {command} issue list --project {project} --status todo --json。若没有 todo，直接结束；Broadcast 主机侧会暂停当前自动化，不要创建或打开新的任务会话。"),
+        format!(
+            "本轮所有 broadcast 操作都使用完整命令前缀 {command}，不要使用 PATH 中的 broadcast。"
+        ),
+        format!(
+            "开始时先运行 {command} issue list --project {project} --status todo --json。若没有 todo，直接结束；Broadcast 主机侧会暂停当前自动化，不要创建或打开新的任务会话。"
+        ),
     ];
     lines.extend(execution_instructions);
     lines.push(format!("本次处理或交接后，再次运行 {command} issue list --project {project} --status todo --json。若没有 todo，直接结束；Broadcast 主机侧会暂停当前自动化，避免后续创建空会话。"));
@@ -297,7 +321,12 @@ impl Rpc {
 pub async fn reconcile(request: &Request, command: &str, rpc: &Rpc) -> Result<Map<String, Value>> {
     let listed = rpc.call("list-automations", json!({})).await?;
     let name = name(request);
-    let matching: Vec<&Value> = listed["items"].as_array().into_iter().flatten().filter(|item| item["name"] == name.as_str()).collect();
+    let matching: Vec<&Value> = listed["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|item| item["name"] == name.as_str())
+        .collect();
     if request.operation == Operation::List {
         let items: Vec<Value> = matching.into_iter().filter_map(sanitize).collect();
         return Ok(Map::from_iter([("items".to_owned(), Value::Array(items))]));
@@ -305,7 +334,11 @@ pub async fn reconcile(request: &Request, command: &str, rpc: &Rpc) -> Result<Ma
     let existing = request
         .automation_id
         .as_ref()
-        .and_then(|automation_id| matching.iter().find(|item| item["id"] == automation_id.as_str()))
+        .and_then(|automation_id| {
+            matching
+                .iter()
+                .find(|item| item["id"] == automation_id.as_str())
+        })
         .or(matching.first())
         .copied();
     let spec = spec(request, command);
@@ -318,7 +351,9 @@ pub async fn reconcile(request: &Request, command: &str, rpc: &Rpc) -> Result<Ma
         if request.operation == Operation::Pause {
             return Ok(Map::from_iter([("error".to_owned(), "not-found".into())]));
         }
-        return Ok(object(rpc.call("automation-create", Value::Object(spec)).await?));
+        return Ok(object(
+            rpc.call("automation-create", Value::Object(spec)).await?,
+        ));
     };
     if matches_spec(existing, &spec, status) {
         return Ok(Map::from_iter([("item".to_owned(), existing.clone())]));
@@ -328,7 +363,9 @@ pub async fn reconcile(request: &Request, command: &str, rpc: &Rpc) -> Result<Ma
         update.insert("id".to_owned(), id.clone());
     }
     update.insert("status".to_owned(), status.into());
-    Ok(object(rpc.call("automation-update", Value::Object(update)).await?))
+    Ok(object(
+        rpc.call("automation-update", Value::Object(update)).await?,
+    ))
 }
 
 fn object(value: Value) -> Map<String, Value> {
@@ -341,11 +378,15 @@ fn object(value: Value) -> Map<String, Value> {
 /// `sanitizeAutomation`.
 fn sanitize(item: &Value) -> Option<Value> {
     let id = text(&item["id"], 256)?;
-    let status = item["status"].as_str().filter(|status| *status == "ACTIVE" || *status == "PAUSED")?;
+    let status = item["status"]
+        .as_str()
+        .filter(|status| *status == "ACTIVE" || *status == "PAUSED")?;
     let model = text(&item["model"], 256)?;
     let reasoning_effort = text(&item["reasoningEffort"], 100)?;
     let rrule = item["rrule"].as_str().filter(|rrule| {
-        rrule.strip_prefix("RRULE:FREQ=MINUTELY;INTERVAL=").is_some_and(|minutes| ["5", "10", "15", "30", "60"].contains(&minutes))
+        rrule
+            .strip_prefix("RRULE:FREQ=MINUTELY;INTERVAL=")
+            .is_some_and(|minutes| ["5", "10", "15", "30", "60"].contains(&minutes))
     })?;
     let mut sanitized = json!({ "id": id, "status": status, "model": model, "reasoningEffort": reasoning_effort, "rrule": rrule });
     if let Some(next_run_at @ (Value::Null | Value::Number(_))) = item.get("nextRunAt") {
@@ -359,11 +400,15 @@ fn matches_spec(item: &Value, spec: &Map<String, Value>, status: &str) -> bool {
     item["status"] == status
         && spec.iter().all(|(field, value)| {
             if field == "projectId" {
-                let project = [item.get("projectId"), item.get("target").and_then(|target| target.get("projectId"))]
-                    .into_iter()
-                    .flatten()
-                    .find(|project| !project.is_null())
-                    .unwrap_or(&Value::Null);
+                let project = [
+                    item.get("projectId"),
+                    item.get("target")
+                        .and_then(|target| target.get("projectId")),
+                ]
+                .into_iter()
+                .flatten()
+                .find(|project| !project.is_null())
+                .unwrap_or(&Value::Null);
                 project == value
             } else {
                 item.get(field) == Some(value)
@@ -428,22 +473,38 @@ async fn request(session: &Session, method: &str, params: &Value) -> Result<Valu
         method = json!(method),
         path = method,
     );
-    let evaluation = session.send("Runtime.evaluate", json!({ "expression": expression, "awaitPromise": true, "returnByValue": true })).await?;
+    let evaluation = session
+        .send(
+            "Runtime.evaluate",
+            json!({ "expression": expression, "awaitPromise": true, "returnByValue": true }),
+        )
+        .await?;
     if let Some(description) = crate::cdp::exception(&evaluation) {
-        bail!(if description.is_empty() { "Codex automation request failed".to_owned() } else { description });
+        bail!(if description.is_empty() {
+            "Codex automation request failed".to_owned()
+        } else {
+            description
+        });
     }
     let response = &evaluation["result"]["value"];
     if response["ok"] != true {
-        let error = response["error"].as_str().filter(|error| !error.is_empty()).unwrap_or("Codex automation request failed");
+        let error = response["error"]
+            .as_str()
+            .filter(|error| !error.is_empty())
+            .unwrap_or("Codex automation request failed");
         return Err(anyhow!(error.to_owned()));
     }
     let status = response.get("status");
-    if !status.and_then(Value::as_f64).is_some_and(|status| status.fract() == 0.0 && (200.0..300.0).contains(&status)) {
+    if !status
+        .and_then(Value::as_f64)
+        .is_some_and(|status| status.fract() == 0.0 && (200.0..300.0).contains(&status))
+    {
         bail!("Codex automation request returned HTTP {}", display(status));
     }
     match response["bodyJsonString"].as_str() {
         None | Some("") => Ok(json!({})),
-        Some(body) => serde_json::from_str(body).map_err(|_| anyhow!("Codex automation request returned invalid JSON")),
+        Some(body) => serde_json::from_str(body)
+            .map_err(|_| anyhow!("Codex automation request returned invalid JSON")),
     }
 }
 
@@ -452,7 +513,17 @@ pub fn display(value: Option<&Value>) -> String {
     match value {
         None => "undefined".to_owned(),
         Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(items)) => items.iter().map(|item| if item.is_null() { String::new() } else { display(Some(item)) }).collect::<Vec<_>>().join(","),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                if item.is_null() {
+                    String::new()
+                } else {
+                    display(Some(item))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(","),
         Some(Value::Object(_)) => "[object Object]".to_owned(),
         Some(value) => value.to_string(),
     }
@@ -463,7 +534,9 @@ pub fn truthy(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
         Some(Value::Bool(flag)) => *flag,
-        Some(Value::Number(number)) => number.as_f64().is_some_and(|number| number != 0.0 && !number.is_nan()),
+        Some(Value::Number(number)) => number
+            .as_f64()
+            .is_some_and(|number| number != 0.0 && !number.is_nan()),
         Some(Value::String(text)) => !text.is_empty(),
         Some(Value::Array(_) | Value::Object(_)) => true,
     }
@@ -482,7 +555,12 @@ pub fn number(value: Option<&Value>) -> f64 {
                 "" => 0.0,
                 "Infinity" | "+Infinity" => f64::INFINITY,
                 "-Infinity" => f64::NEG_INFINITY,
-                text if text.bytes().all(|byte| byte.is_ascii_digit() || b"+-.eE".contains(&byte)) => text.parse().unwrap_or(f64::NAN),
+                text if text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || b"+-.eE".contains(&byte)) =>
+                {
+                    text.parse().unwrap_or(f64::NAN)
+                }
                 _ => f64::NAN,
             }
         }
@@ -491,28 +569,51 @@ pub fn number(value: Option<&Value>) -> f64 {
 
 /// A number as JavaScript's `JSON.stringify` writes it: integral values without a fraction.
 pub fn js_number(value: f64) -> Value {
-    if value.fract() == 0.0 && value.abs() < 9_007_199_254_740_992.0 { json!(value as i64) } else { json!(value) }
+    if value.fract() == 0.0 && value.abs() < 9_007_199_254_740_992.0 {
+        json!(value as i64)
+    } else {
+        json!(value)
+    }
 }
 
 /// JavaScript's `WhiteSpace` and `LineTerminator`, which `String.prototype.trim` removes.
 pub fn js_space(character: char) -> bool {
     matches!(
         character,
-        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
 fn identifier(value: &Value, max: usize) -> Option<String> {
     value
         .as_str()
-        .filter(|value| !value.is_empty() && value.len() <= max && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= max
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
         .map(str::to_owned)
 }
 
 fn project_id(value: &Value) -> Option<String> {
     value
         .as_str()
-        .filter(|value| !value.is_empty() && value.len() <= 128 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte)))
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 128
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+        })
         .map(str::to_owned)
 }
 
@@ -520,7 +621,9 @@ fn project_id(value: &Value) -> Option<String> {
 pub fn text(value: &Value, max: usize) -> Option<String> {
     value
         .as_str()
-        .filter(|value| value.trim_matches(js_space).len() == value.len() && host::bounded_text(value, max))
+        .filter(|value| {
+            value.trim_matches(js_space).len() == value.len() && host::bounded_text(value, max)
+        })
         .map(str::to_owned)
 }
 
@@ -529,6 +632,9 @@ fn absolute_path(value: &Value) -> Option<String> {
     text(value, 2_048).filter(|path| {
         let bytes = path.as_bytes();
         matches!(bytes.first(), Some(b'/' | b'\\'))
-            || (bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && matches!(bytes[2], b'/' | b'\\'))
+            || (bytes.len() > 2
+                && bytes[0].is_ascii_alphabetic()
+                && bytes[1] == b':'
+                && matches!(bytes[2], b'/' | b'\\'))
     })
 }

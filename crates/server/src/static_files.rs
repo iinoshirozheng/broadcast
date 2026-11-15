@@ -15,12 +15,18 @@ pub async fn serve(root: &Path, method: &Method, path: &str) -> Result<Option<Re
         return Ok(None);
     }
     let invalid = |message: &str| ApiError::new(400, "INVALID_PATH", message);
-    let decoded = decode_uri_component(path).ok_or_else(|| invalid("URL path contains invalid encoding"))?;
+    let decoded =
+        decode_uri_component(path).ok_or_else(|| invalid("URL path contains invalid encoding"))?;
     if decoded.contains('\0') {
         return Err(invalid("URL path is invalid").into());
     }
-    let relative = if decoded == "/" { "index.html" } else { decoded.trim_start_matches('/') };
-    let mut filename = resolve(root, relative).ok_or_else(|| invalid("URL path is outside the static directory"))?;
+    let relative = if decoded == "/" {
+        "index.html"
+    } else {
+        decoded.trim_start_matches('/')
+    };
+    let mut filename = resolve(root, relative)
+        .ok_or_else(|| invalid("URL path is outside the static directory"))?;
 
     let mut found = is_file(&filename).await?;
     if !found && extname(relative).is_empty() {
@@ -32,16 +38,28 @@ pub async fn serve(root: &Path, method: &Method, path: &str) -> Result<Option<Re
     }
 
     let body = tokio::fs::read(&filename).await?;
-    let cache_control = if filename.file_name().is_some_and(|name| name == "index.html") {
+    let cache_control = if filename
+        .file_name()
+        .is_some_and(|name| name == "index.html")
+    {
         "no-cache"
     } else {
         "public, max-age=31536000, immutable"
     };
-    let extension = filename.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
+    let extension = filename
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default();
     let mut response = (StatusCode::OK, body).into_response();
     let headers = response.headers_mut();
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control));
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type(&extension.to_lowercase())));
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(cache_control),
+    );
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(content_type(&extension.to_lowercase())),
+    );
     Ok(Some(response))
 }
 
@@ -72,7 +90,11 @@ async fn is_file(filename: &Path) -> Result<bool> {
 
 /// Node's `path.posix.extname`.
 fn extname(path: &str) -> &str {
-    let base = path.trim_end_matches('/').rsplit('/').next().unwrap_or_default();
+    let base = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
     let name = base.trim_start_matches('.');
     match name.rfind('.') {
         Some(index) => &name[index..],

@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use broadcast_domain::input::{Archived, Attribution, Move, TaskCreate, TaskFilters};
 use broadcast_domain::records::{
-    Actor, AgentSession, Attachment, ConversationRef, ConversationTarget, DevelopmentContext, FieldChange, Task,
-    TaskChanges, TaskRelations, ThreadBinding, comment_conversation_title,
+    Actor, AgentSession, Attachment, ConversationRef, ConversationTarget, DevelopmentContext,
+    FieldChange, Task, TaskChanges, TaskRelations, ThreadBinding, comment_conversation_title,
 };
 use broadcast_domain::{ApiError, Result, sql};
 use rusqlite::types::Value as SqlValue;
@@ -35,7 +35,11 @@ impl Store {
             clauses.push("project_id = ?");
             values.push(project_id);
         }
-        if let Some(status) = filters.status.as_deref().filter(|status| !status.is_empty()) {
+        if let Some(status) = filters
+            .status
+            .as_deref()
+            .filter(|status| !status.is_empty())
+        {
             clauses.push("status = ?");
             values.push(status);
         }
@@ -44,7 +48,11 @@ impl Store {
             Archived::Only => clauses.push("archived_at IS NOT NULL"),
             Archived::All => {}
         }
-        let filter = if clauses.is_empty() { String::new() } else { format!("WHERE {}", clauses.join(" AND ")) };
+        let filter = if clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", clauses.join(" AND "))
+        };
         let sql = format!(
             "SELECT * FROM tasks {filter}
              ORDER BY
@@ -79,9 +87,19 @@ impl Store {
     pub fn get_task_source(&self, id: &str) -> Result<Option<&'static str>> {
         let source: Option<Option<String>> = self
             .connection()
-            .query_row("SELECT external_source FROM tasks WHERE id = ?1 OR identifier = ?1", [id], |row| row.get(0))
+            .query_row(
+                "SELECT external_source FROM tasks WHERE id = ?1 OR identifier = ?1",
+                [id],
+                |row| row.get(0),
+            )
             .optional()?;
-        Ok(source.map(|source| if source.as_deref() == Some("jira") { "jira" } else { "local" }))
+        Ok(source.map(|source| {
+            if source.as_deref() == Some("jira") {
+                "jira"
+            } else {
+                "local"
+            }
+        }))
     }
 
     pub fn create_task(&self, input: &TaskCreate, actor: &Actor, assignee: &Actor) -> Result<Task> {
@@ -106,7 +124,8 @@ impl Store {
                 },
             )
             .optional()?;
-        let Some((project_id, name, project_labels, next_task_number, first_identifier)) = project else {
+        let Some((project_id, name, project_labels, next_task_number, first_identifier)) = project
+        else {
             return Err(project_not_found(&input.project_id).into());
         };
 
@@ -125,15 +144,32 @@ impl Store {
             None => top_sort_order(&transaction, &input.project_id, input.status, None)?,
         };
 
-        let labels = merged_labels(&serde_json::from_str::<Vec<String>>(&project_labels)?, &input.labels);
+        let labels = merged_labels(
+            &serde_json::from_str::<Vec<String>>(&project_labels)?,
+            &input.labels,
+        );
         transaction.execute(
             "UPDATE projects SET next_task_number = ?, labels = ?, updated_at = ? WHERE id = ?",
-            params![number + 1, serde_json::to_string(&labels)?, timestamp, input.project_id],
+            params![
+                number + 1,
+                serde_json::to_string(&labels)?,
+                timestamp,
+                input.project_id
+            ],
         )?;
-        let [thread_id, codex_project_id, codex_project_kind, codex_host_id, workspace_path] =
-            stored_thread_binding(&input.attribution.thread_binding, input.attribution.thread_id.as_deref())
-                .unwrap_or_default();
-        let [git_branch, worktree_path, worktree_branch] = context_values(input.development_context.as_ref());
+        let [
+            thread_id,
+            codex_project_id,
+            codex_project_kind,
+            codex_host_id,
+            workspace_path,
+        ] = stored_thread_binding(
+            &input.attribution.thread_binding,
+            input.attribution.thread_id.as_deref(),
+        )
+        .unwrap_or_default();
+        let [git_branch, worktree_path, worktree_branch] =
+            context_values(input.development_context.as_ref());
         let recurrence = input.recurrence.as_ref();
         let agent_session = input.attribution.agent_session.clone().flatten();
         transaction.execute(
@@ -203,7 +239,11 @@ impl Store {
         let target_project = match &changes.project_id {
             Some(project_id) => Some(
                 transaction
-                    .query_row("SELECT id FROM projects WHERE id = ?", [project_id], |row| row.get::<_, String>(0))
+                    .query_row(
+                        "SELECT id FROM projects WHERE id = ?",
+                        [project_id],
+                        |row| row.get::<_, String>(0),
+                    )
                     .optional()?
                     .ok_or_else(|| project_not_found(project_id))?,
             ),
@@ -240,7 +280,11 @@ impl Store {
             }
         }
         let due_date = changes.due_date.as_ref().unwrap_or(&current.due_date);
-        let recurring = changes.recurrence.as_ref().unwrap_or(&current.recurrence).is_some();
+        let recurring = changes
+            .recurrence
+            .as_ref()
+            .unwrap_or(&current.recurrence)
+            .is_some();
         if recurring && due_date.is_none() {
             return Err(ApiError::invalid_field("A recurring issue requires a due date").into());
         }
@@ -253,7 +297,11 @@ impl Store {
             let sort_order = top_sort_order(&transaction, placement, status, Some(&current.id))?;
             columns.push(("sort_order", sort_order.into()));
         }
-        columns.extend(attribution_columns(&current, attribution, changes.project_id.is_none())?);
+        columns.extend(attribution_columns(
+            &current,
+            attribution,
+            changes.project_id.is_none(),
+        )?);
         let timestamp = now();
         update_columns(&transaction, &current.id, columns, &timestamp)?;
         if changes.description.is_some() {
@@ -271,7 +319,10 @@ impl Store {
             [destination],
             |row| row.get::<_, String>(0),
         )?)?;
-        let merged = merged_labels(&project_labels, changes.labels.as_ref().unwrap_or(&current.labels));
+        let merged = merged_labels(
+            &project_labels,
+            changes.labels.as_ref().unwrap_or(&current.labels),
+        );
         if merged.len() != project_labels.len() {
             transaction.execute(
                 "UPDATE projects SET labels = ?, updated_at = ? WHERE id = ?",
@@ -289,13 +340,18 @@ impl Store {
         let current = require_task(&transaction, id)?;
         require_version(&current, input.version)?;
         if current.archived_at.is_some() {
-            return Err(ApiError::new(409, "TASK_ARCHIVED", "Archived tasks cannot be moved").into());
+            return Err(
+                ApiError::new(409, "TASK_ARCHIVED", "Archived tasks cannot be moved").into(),
+            );
         }
         let sort_order = match input.sort_order {
             Some(sort_order) => sort_order,
-            None if input.status != current.status => {
-                top_sort_order(&transaction, &current.project_id, input.status, Some(&current.id))?
-            }
+            None if input.status != current.status => top_sort_order(
+                &transaction,
+                &current.project_id,
+                input.status,
+                Some(&current.id),
+            )?,
             None => transaction.query_row(
                 "SELECT COALESCE(MAX(sort_order), 0) + 1000 FROM tasks
                  WHERE project_id = ? AND status = ? AND archived_at IS NULL AND id != ?",
@@ -303,21 +359,40 @@ impl Store {
                 |row| row.get(0),
             )?,
         };
-        let mut columns: Columns = vec![("status", input.status.to_owned().into()), ("sort_order", sort_order.into())];
+        let mut columns: Columns = vec![
+            ("status", input.status.to_owned().into()),
+            ("sort_order", sort_order.into()),
+        ];
         columns.extend(attribution_columns(&current, &input.attribution, true)?);
         let timestamp = now();
         update_columns(&transaction, &current.id, columns, &timestamp)?;
-        let activity = TaskChanges { status: Some(input.status), ..TaskChanges::default() }.diff(&current);
+        let activity = TaskChanges {
+            status: Some(input.status),
+            ..TaskChanges::default()
+        }
+        .diff(&current);
         record_activity(&transaction, &current.id, actor, &activity, &timestamp)?;
         transaction.commit()?;
         require_task(&connection, &current.id)
     }
 
-    pub fn archive_task(&self, id: &str, version: i64, attribution: &Attribution, actor: &Actor) -> Result<Task> {
+    pub fn archive_task(
+        &self,
+        id: &str,
+        version: i64,
+        attribution: &Attribution,
+        actor: &Actor,
+    ) -> Result<Task> {
         self.set_archived(id, version, attribution, actor, true)
     }
 
-    pub fn restore_task(&self, id: &str, version: i64, attribution: &Attribution, actor: &Actor) -> Result<Task> {
+    pub fn restore_task(
+        &self,
+        id: &str,
+        version: i64,
+        attribution: &Attribution,
+        actor: &Actor,
+    ) -> Result<Task> {
         self.set_archived(id, version, attribution, actor, false)
     }
 
@@ -334,7 +409,12 @@ impl Store {
         let current = require_task(&transaction, id)?;
         require_version(&current, version)?;
         if !archive && current.archived_at.is_none() {
-            return Err(ApiError::new(409, "TASK_NOT_ARCHIVED", "Only archived tasks can be restored").into());
+            return Err(ApiError::new(
+                409,
+                "TASK_NOT_ARCHIVED",
+                "Only archived tasks can be restored",
+            )
+            .into());
         }
         let timestamp = now();
         let archived_at = archive.then(|| timestamp.clone());
@@ -343,7 +423,10 @@ impl Store {
         update_columns(&transaction, &current.id, columns, &timestamp)?;
         let change = FieldChange {
             field: "archivedAt",
-            before: current.archived_at.clone().map_or(Value::Null, Value::String),
+            before: current
+                .archived_at
+                .clone()
+                .map_or(Value::Null, Value::String),
             after: archived_at.map_or(Value::Null, Value::String),
         };
         record_activity(&transaction, &current.id, actor, &[change], &timestamp)?;
@@ -358,7 +441,12 @@ impl Store {
         let task = require_task(&transaction, id)?;
         require_version(&task, version)?;
         if task.archived_at.is_none() {
-            return Err(ApiError::new(409, "TASK_NOT_ARCHIVED", "Only archived tasks can be deleted").into());
+            return Err(ApiError::new(
+                409,
+                "TASK_NOT_ARCHIVED",
+                "Only archived tasks can be deleted",
+            )
+            .into());
         }
         let attachment_ids = transaction
             .prepare("SELECT id FROM attachments WHERE task_id = ? ORDER BY created_at, id")?
@@ -366,46 +454,67 @@ impl Store {
             .collect::<rusqlite::Result<Vec<String>>>()?;
         transaction.execute("DELETE FROM tasks WHERE id = ?", [&task.id])?;
         transaction.commit()?;
-        Ok(DeletedTask { task, attachment_ids })
+        Ok(DeletedTask {
+            task,
+            attachment_ids,
+        })
     }
 }
 
 pub(crate) fn get_task(connection: &Connection, id: &str) -> Result<Option<Task>> {
     let task = connection
-        .query_row("SELECT * FROM tasks WHERE id = ?1 OR identifier = ?1", [id], rows::task)
+        .query_row(
+            "SELECT * FROM tasks WHERE id = ?1 OR identifier = ?1",
+            [id],
+            rows::task,
+        )
         .optional()?;
     let Some(task) = task else { return Ok(None) };
     Ok(enrich(connection, vec![task])?.pop())
 }
 
 pub(crate) fn require_task(connection: &Connection, id: &str) -> Result<Task> {
-    get_task(connection, id)?
-        .ok_or_else(|| ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into())
+    get_task(connection, id)?.ok_or_else(|| {
+        ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into()
+    })
 }
 
 pub(crate) fn require_version(task: &Task, expected: i64) -> Result<()> {
     if task.version == expected {
         return Ok(());
     }
-    Err(ApiError::new(409, "VERSION_CONFLICT", "Task was changed by another client")
-        .with_details(json!({ "expectedVersion": expected, "actualVersion": task.version }))
-        .into())
+    Err(ApiError::new(
+        409,
+        "VERSION_CONFLICT",
+        "Task was changed by another client",
+    )
+    .with_details(json!({ "expectedVersion": expected, "actualVersion": task.version }))
+    .into())
 }
 
 /// `projectPrefix`: the identifier prefix for a project's next task.
 fn project_prefix(id: &str, name: &str, first_identifier: Option<&str>) -> String {
     let alphanumeric = |value: &str| {
-        value.to_uppercase().chars().filter(|c| c.is_ascii_uppercase() || c.is_ascii_digit()).collect::<String>()
+        value
+            .to_uppercase()
+            .chars()
+            .filter(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            .collect::<String>()
     };
-    let id_prefix = Some(alphanumeric(id)).filter(|prefix| !prefix.is_empty()).map_or_else(
-        || "TASK".to_owned(),
-        |mut prefix| {
-            prefix.truncate(12);
-            prefix
-        },
-    );
+    let id_prefix = Some(alphanumeric(id))
+        .filter(|prefix| !prefix.is_empty())
+        .map_or_else(
+            || "TASK".to_owned(),
+            |mut prefix| {
+                prefix.truncate(12);
+                prefix
+            },
+        );
     let existing = first_identifier.map(|identifier| match identifier.rfind('-') {
-        Some(dash) if dash + 1 < identifier.len() && identifier[dash + 1..].bytes().all(|b| b.is_ascii_digit()) => {
+        Some(dash)
+            if dash + 1 < identifier.len()
+                && identifier[dash + 1..].bytes().all(|b| b.is_ascii_digit()) =>
+        {
             &identifier[..dash]
         }
         _ => identifier,
@@ -422,11 +531,20 @@ fn project_prefix(id: &str, name: &str, first_identifier: Option<&str>) -> Strin
     }
     let mut name_prefix = alphanumeric(name);
     name_prefix.truncate(3);
-    if name_prefix.is_empty() { id_prefix[..3].to_owned() } else { name_prefix }
+    if name_prefix.is_empty() {
+        id_prefix[..3].to_owned()
+    } else {
+        name_prefix
+    }
 }
 
 /// `MIN(sort_order) - 1000` among active tasks in a column, or 1000 for an empty column.
-fn top_sort_order(connection: &Connection, project_id: &str, status: &str, exclude: Option<&str>) -> Result<f64> {
+fn top_sort_order(
+    connection: &Connection,
+    project_id: &str,
+    status: &str,
+    exclude: Option<&str>,
+) -> Result<f64> {
     let minimum: Option<f64> = connection.query_row(
         "SELECT MIN(sort_order) FROM tasks
          WHERE project_id = ? AND status = ? AND archived_at IS NULL AND id IS NOT ?",
@@ -468,7 +586,10 @@ pub(crate) fn thread_values(binding: &ThreadBinding) -> ThreadValues {
 }
 
 /// `storedThreadBinding`: `None` leaves the thread columns untouched.
-pub(crate) fn stored_thread_binding(binding: &Option<Option<ThreadBinding>>, thread_id: Option<&str>) -> Option<ThreadValues> {
+pub(crate) fn stored_thread_binding(
+    binding: &Option<Option<ThreadBinding>>,
+    thread_id: Option<&str>,
+) -> Option<ThreadValues> {
     match binding {
         None => thread_id.map(|thread_id| [Some(thread_id.to_owned()), None, None, None, None]),
         Some(None) => Some(ThreadValues::default()),
@@ -477,18 +598,28 @@ pub(crate) fn stored_thread_binding(binding: &Option<Option<ThreadBinding>>, thr
 }
 
 /// `storedThreadBindingForExisting`: the same thread id keeps its stored identity.
-pub(crate) fn stored_thread_binding_for_existing(current: &Task, attribution: &Attribution) -> Option<ThreadValues> {
+pub(crate) fn stored_thread_binding_for_existing(
+    current: &Task,
+    attribution: &Attribution,
+) -> Option<ThreadValues> {
     if attribution.thread_binding.is_none()
         && let Some(binding) = &current.thread_binding
         && attribution.thread_id.as_deref() == Some(binding.thread_id.as_str())
     {
         return Some(thread_values(binding));
     }
-    stored_thread_binding(&attribution.thread_binding, attribution.thread_id.as_deref())
+    stored_thread_binding(
+        &attribution.thread_binding,
+        attribution.thread_id.as_deref(),
+    )
 }
 
 /// Thread and agent-session columns written by an attributed mutation.
-pub(crate) fn attribution_columns(current: &Task, attribution: &Attribution, with_thread: bool) -> Result<Columns> {
+pub(crate) fn attribution_columns(
+    current: &Task,
+    attribution: &Attribution,
+    with_thread: bool,
+) -> Result<Columns> {
     let mut columns = Columns::new();
     if with_thread && let Some(values) = stored_thread_binding_for_existing(current, attribution) {
         let names = [
@@ -501,7 +632,14 @@ pub(crate) fn attribution_columns(current: &Task, attribution: &Attribution, wit
         columns.extend(names.into_iter().zip(values.map(SqlValue::from)));
     }
     if let Some(session) = &attribution.agent_session {
-        columns.push(("agent_session", session.as_ref().map(serde_json::to_string).transpose()?.into()));
+        columns.push((
+            "agent_session",
+            session
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?
+                .into(),
+        ));
     }
     Ok(columns)
 }
@@ -530,7 +668,11 @@ fn change_columns(changes: &TaskChanges) -> Result<Columns> {
     }
     if let Some(context) = &changes.development_context {
         let names = ["git_branch", "worktree_path", "worktree_branch"];
-        columns.extend(names.into_iter().zip(context_values(context.as_ref()).map(SqlValue::from)));
+        columns.extend(
+            names
+                .into_iter()
+                .zip(context_values(context.as_ref()).map(SqlValue::from)),
+        );
     }
     if let Some(start_date) = &changes.start_date {
         columns.push(("start_date", start_date.clone().into()));
@@ -540,8 +682,14 @@ fn change_columns(changes: &TaskChanges) -> Result<Columns> {
     }
     if let Some(recurrence) = &changes.recurrence {
         let recurrence = recurrence.as_ref();
-        columns.push(("recurrence_interval", recurrence.map(|recurrence| recurrence.interval).into()));
-        columns.push(("recurrence_unit", recurrence.map(|recurrence| recurrence.unit.clone()).into()));
+        columns.push((
+            "recurrence_interval",
+            recurrence.map(|recurrence| recurrence.interval).into(),
+        ));
+        columns.push((
+            "recurrence_unit",
+            recurrence.map(|recurrence| recurrence.unit.clone()).into(),
+        ));
     }
     if let Some(assignee) = &changes.assignee {
         columns.push(("assignee_type", text(&assignee.kind)));
@@ -553,7 +701,12 @@ fn change_columns(changes: &TaskChanges) -> Result<Columns> {
 }
 
 /// `UPDATE tasks SET <columns>, version = version + 1, updated_at = ? WHERE id = ?`.
-pub(crate) fn update_columns(connection: &Connection, id: &str, columns: Columns, timestamp: &str) -> Result<()> {
+pub(crate) fn update_columns(
+    connection: &Connection,
+    id: &str,
+    columns: Columns,
+    timestamp: &str,
+) -> Result<()> {
     let mut sql = String::from("UPDATE tasks SET ");
     let mut values = Vec::with_capacity(columns.len() + 2);
     for (column, value) in columns {
@@ -569,15 +722,21 @@ pub(crate) fn update_columns(connection: &Connection, id: &str, columns: Columns
 }
 
 /// `#consumeAttachmentBodyFallback`.
-pub(crate) fn consume_attachment_body_fallback(connection: &Connection, task_id: &str, comment_id: Option<&str>) -> Result<()> {
+pub(crate) fn consume_attachment_body_fallback(
+    connection: &Connection,
+    task_id: &str,
+    comment_id: Option<&str>,
+) -> Result<()> {
     let ids = connection
         .prepare("SELECT id FROM attachments WHERE task_id = ? AND comment_id IS ? AND body_fallback = 1")?
         .query_map(params![task_id, comment_id], |row| row.get(0))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
     for id in ids {
         let revision = crate::next_revision(connection)?;
-        connection
-            .execute("UPDATE attachments SET body_fallback = 0, change_revision = ? WHERE id = ?", params![revision, id])?;
+        connection.execute(
+            "UPDATE attachments SET body_fallback = 0, change_revision = ? WHERE id = ?",
+            params![revision, id],
+        )?;
     }
     Ok(())
 }
@@ -662,15 +821,18 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
         ))?;
         let mut rows = statement.query(params_from_iter(chunk))?;
         while let Some(row) = rows.next()? {
-            comments.entry(row.get("task_id")?).or_default().push(CommentActivity {
-                id: row.get("id")?,
-                body: row.get("body")?,
-                thread: ThreadColumns::read(row)?,
-                agent_session: rows::optional_json(row, "agent_session")?,
-                author: rows::actor(row, "author")?,
-                version: row.get("version")?,
-                updated_at: row.get("updated_at")?,
-            });
+            comments
+                .entry(row.get("task_id")?)
+                .or_default()
+                .push(CommentActivity {
+                    id: row.get("id")?,
+                    body: row.get("body")?,
+                    thread: ThreadColumns::read(row)?,
+                    agent_session: rows::optional_json(row, "agent_session")?,
+                    author: rows::actor(row, "author")?,
+                    version: row.get("version")?,
+                    updated_at: row.get("updated_at")?,
+                });
         }
 
         let mut statement = connection.prepare(&format!(
@@ -679,11 +841,14 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
         ))?;
         let mut rows = statement.query(params_from_iter(chunk))?;
         while let Some(row) = rows.next()? {
-            changes.entry(row.get("task_id")?).or_default().push(ChangeActivity {
-                id: row.get("id")?,
-                actor: rows::actor(row, "actor")?,
-                created_at: row.get("created_at")?,
-            });
+            changes
+                .entry(row.get("task_id")?)
+                .or_default()
+                .push(ChangeActivity {
+                    id: row.get("id")?,
+                    actor: rows::actor(row, "actor")?,
+                    created_at: row.get("created_at")?,
+                });
         }
 
         let mut statement = connection.prepare(&format!(
@@ -698,7 +863,9 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
         let mut rows = statement.query(params_from_iter(chunk))?;
         while let Some(row) = rows.next()? {
             let attachment = rows::attachment(row)?;
-            previews.entry(attachment.task_id.clone()).or_insert(attachment);
+            previews
+                .entry(attachment.task_id.clone())
+                .or_insert(attachment);
         }
     }
     for task in &mut tasks {
@@ -741,12 +908,17 @@ fn attach_activity(
         updated_at: task.updated_at.clone(),
     };
     if let Some(agent_session) = &task.agent_session {
-        refs.push(task_ref(ConversationTarget::AgentSession { agent_session: agent_session.clone() }));
+        refs.push(task_ref(ConversationTarget::AgentSession {
+            agent_session: agent_session.clone(),
+        }));
     }
     if let Some(binding) = &task.thread_binding {
         refs.push(task_ref(ConversationTarget::Thread(binding.clone())));
     } else if let Some(thread_id) = &task.legacy_local_thread_id {
-        refs.push(task_ref(ConversationTarget::LegacyLocal { thread_id: thread_id.clone(), legacy_local: true }));
+        refs.push(task_ref(ConversationTarget::LegacyLocal {
+            thread_id: thread_id.clone(),
+            legacy_local: true,
+        }));
     }
     for comment in &comments {
         let comment_ref = |target| ConversationRef {
@@ -757,11 +929,23 @@ fn attach_activity(
             updated_at: comment.updated_at.clone(),
         };
         if let Some(agent_session) = &comment.agent_session {
-            refs.push(comment_ref(ConversationTarget::AgentSession { agent_session: agent_session.clone() }));
+            refs.push(comment_ref(ConversationTarget::AgentSession {
+                agent_session: agent_session.clone(),
+            }));
         }
-        let thread = comment.thread.binding().map(ConversationTarget::Thread).or_else(|| {
-            comment.thread.legacy_local().map(|thread_id| ConversationTarget::LegacyLocal { thread_id, legacy_local: true })
-        });
+        let thread = comment
+            .thread
+            .binding()
+            .map(ConversationTarget::Thread)
+            .or_else(|| {
+                comment
+                    .thread
+                    .legacy_local()
+                    .map(|thread_id| ConversationTarget::LegacyLocal {
+                        thread_id,
+                        legacy_local: true,
+                    })
+            });
         if let Some(thread) = thread {
             refs.push(comment_ref(thread));
         }
@@ -778,7 +962,13 @@ fn attach_activity(
         .iter()
         .map(|comment| &comment.updated_at)
         .chain(changes.iter().map(|change| &change.created_at))
-        .fold(&task.updated_at, |latest, timestamp| if timestamp > latest { timestamp } else { latest })
+        .fold(&task.updated_at, |latest, timestamp| {
+            if timestamp > latest {
+                timestamp
+            } else {
+                latest
+            }
+        })
         .clone();
 
     task.conversation_refs = refs;

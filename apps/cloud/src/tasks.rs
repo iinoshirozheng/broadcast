@@ -7,7 +7,9 @@ use serde_json::{Value, json};
 use worker::wasm_bindgen::JsValue;
 
 use crate::auth::resolve_assignee;
-use crate::board::{Board, THREAD_ASSIGNMENTS, assert_task_version, attribution_assignments, now, uuid};
+use crate::board::{
+    Board, THREAD_ASSIGNMENTS, assert_task_version, attribution_assignments, now, uuid,
+};
 use crate::db::{self, NEXT_REVISION, Row, args, text, value};
 use crate::error::Result;
 use crate::records;
@@ -32,11 +34,19 @@ const MERGED_LABELS: &str = "(
 )";
 
 fn project_not_found(id: &str) -> ApiError {
-    ApiError::new(404, "PROJECT_NOT_FOUND", format!("Project '{id}' does not exist"))
+    ApiError::new(
+        404,
+        "PROJECT_NOT_FOUND",
+        format!("Project '{id}' does not exist"),
+    )
 }
 
 fn cross_project_relation() -> ApiError {
-    ApiError::new(409, "CROSS_PROJECT_RELATION", "Remove issue relations before moving the issue to another project")
+    ApiError::new(
+        409,
+        "CROSS_PROJECT_RELATION",
+        "Remove issue relations before moving the issue to another project",
+    )
 }
 
 fn development_columns(context: Option<&DevelopmentContext>) -> [Value; 2] {
@@ -48,14 +58,31 @@ fn development_columns(context: Option<&DevelopmentContext>) -> [Value; 2] {
 }
 
 fn assignee_columns(assignee: &Value) -> Vec<JsValue> {
-    ["type", "id", "name", "avatarUrl"].iter().map(|field| db::arg(&assignee[*field])).collect()
+    ["type", "id", "name", "avatarUrl"]
+        .iter()
+        .map(|field| db::arg(&assignee[*field]))
+        .collect()
 }
 
 impl Board {
     /// The sort order that puts a task first (`MIN`) or last (`MAX`) in a column.
-    async fn column_edge(&self, project_id: &str, status: &str, exclude: Option<&str>, first: bool) -> Result<f64> {
-        let exclude_sql = if exclude.is_some() { " AND id != ?" } else { "" };
-        let aggregate = if first { "MIN(sort_order)" } else { "COALESCE(MAX(sort_order), 0)" };
+    async fn column_edge(
+        &self,
+        project_id: &str,
+        status: &str,
+        exclude: Option<&str>,
+        first: bool,
+    ) -> Result<f64> {
+        let exclude_sql = if exclude.is_some() {
+            " AND id != ?"
+        } else {
+            ""
+        };
+        let aggregate = if first {
+            "MIN(sort_order)"
+        } else {
+            "COALESCE(MAX(sort_order), 0)"
+        };
         let mut bound = args![project_id, status];
         if let Some(id) = exclude {
             bound.push(db::arg(id));
@@ -69,7 +96,10 @@ impl Board {
             bound,
         )
         .await?;
-        let edge = row.as_ref().and_then(|row| row.get("edge")).and_then(Value::as_f64);
+        let edge = row
+            .as_ref()
+            .and_then(|row| row.get("edge"))
+            .and_then(Value::as_f64);
         Ok(match (first, edge) {
             (true, None) => 1000.0,
             (true, Some(minimum)) => minimum - 1000.0,
@@ -104,15 +134,20 @@ impl Board {
         let suffix_start = prefix.len() + 2;
         let sort_order = match input.sort_order {
             Some(sort_order) => sort_order,
-            None => self.column_edge(&input.project_id, input.status, None, false).await?,
+            None => {
+                self.column_edge(&input.project_id, input.status, None, false)
+                    .await?
+            }
         };
         let id = uuid();
         let timestamp = now();
         let assignee = resolve_assignee(input.assignee_target, &self.actor);
         let labels = json!(input.labels).to_string();
-        let binding = records::stored_thread_binding(&input.attribution).unwrap_or_else(|| vec![Value::Null; 5]);
+        let binding = records::stored_thread_binding(&input.attribution)
+            .unwrap_or_else(|| vec![Value::Null; 5]);
         let session = records::stored_agent_session(&input.attribution).unwrap_or(Value::Null);
-        let [context_type, context_branch] = development_columns(input.development_context.as_ref());
+        let [context_type, context_branch] =
+            development_columns(input.development_context.as_ref());
         let recurrence = input.recurrence.as_ref();
 
         let mut bound = args![
@@ -128,7 +163,12 @@ impl Board {
             js::number(sort_order)
         ];
         bound.extend(binding.iter().map(db::arg));
-        bound.extend(args![self.actor.kind, self.actor.id, self.actor.name, Value::Null]);
+        bound.extend(args![
+            self.actor.kind,
+            self.actor.id,
+            self.actor.name,
+            Value::Null
+        ]);
         bound.extend(assignee_columns(&assignee));
         bound.extend(args![
             context_type,
@@ -236,7 +276,10 @@ impl Board {
             match *key {
                 "developmentContext" => {
                     assignments.push("development_context_type = ?, development_branch = ?".into());
-                    let context = changes.development_context.as_ref().and_then(Option::as_ref);
+                    let context = changes
+                        .development_context
+                        .as_ref()
+                        .and_then(Option::as_ref);
                     values.extend(development_columns(context).iter().map(db::arg));
                 }
                 "recurrence" => {
@@ -255,18 +298,32 @@ impl Board {
                 }
             }
         }
-        if let Some(status) = changes.status.filter(|status| current_task["status"] != *status) {
-            let placement = if project_changed { destination } else { current_project };
+        if let Some(status) = changes
+            .status
+            .filter(|status| current_task["status"] != *status)
+        {
+            let placement = if project_changed {
+                destination
+            } else {
+                current_project
+            };
             assignments.push("sort_order = ?".into());
-            values.push(db::arg(&js::number(self.column_edge(placement, status, Some(current_id), true).await?)));
+            values.push(db::arg(&js::number(
+                self.column_edge(placement, status, Some(current_id), true)
+                    .await?,
+            )));
         }
         if input.assignee_target.is_some() {
             let assignee = resolve_assignee(input.assignee_target, &self.actor);
-            assignments.push("assignee_type = ?, assignee_id = ?, assignee_name = ?, assignee_avatar_url = ?".into());
+            assignments.push(
+                "assignee_type = ?, assignee_id = ?, assignee_name = ?, assignee_avatar_url = ?"
+                    .into(),
+            );
             values.extend(assignee_columns(&assignee));
             activity_values.push(("assignee", assignee));
         }
-        if let Some(binding) = records::stored_thread_binding_for_existing(&current, &input.attribution)
+        if let Some(binding) =
+            records::stored_thread_binding_for_existing(&current, &input.attribution)
             && changes.project_id.is_none()
         {
             assignments.push(THREAD_ASSIGNMENTS.trim_end_matches(", ").into());
@@ -287,7 +344,10 @@ impl Board {
         };
         let mut statements = vec![db::statement(
             &self.db,
-            format!("UPDATE tasks SET {} WHERE id = ? AND version = ?{relation_guard}", assignments.join(", ")),
+            format!(
+                "UPDATE tasks SET {} WHERE id = ? AND version = ?{relation_guard}",
+                assignments.join(", ")
+            ),
             values,
         )?];
         if changes.description.is_some() {
@@ -303,7 +363,12 @@ impl Board {
         }
         let activity = records::field_changes(&current_task, &activity_values);
         if !activity.is_empty() {
-            statements.push(self.task_activity_statement(current_id, &activity, &timestamp, input.version + 1)?);
+            statements.push(self.task_activity_statement(
+                current_id,
+                &activity,
+                &timestamp,
+                input.version + 1,
+            )?);
         }
         if project_changed {
             statements.push(db::statement(
@@ -314,7 +379,10 @@ impl Board {
                 args![timestamp, current_project, destination, current_id, input.version + 1, timestamp],
             )?);
         }
-        if task_labels.as_array().is_some_and(|labels| !labels.is_empty()) {
+        if task_labels
+            .as_array()
+            .is_some_and(|labels| !labels.is_empty())
+        {
             let labels = task_labels.to_string();
             statements.push(db::statement(
                 &self.db,
@@ -345,7 +413,14 @@ impl Board {
     }
 
     /// Runs a guarded task write with its activity, then returns the task.
-    async fn guarded_write(&self, current: &Row, version: i64, update: (String, Vec<JsValue>), activity: Vec<Value>, timestamp: &str) -> Result<Value> {
+    async fn guarded_write(
+        &self,
+        current: &Row,
+        version: i64,
+        update: (String, Vec<JsValue>),
+        activity: Vec<Value>,
+        timestamp: &str,
+    ) -> Result<Value> {
         let id = text(current, "id");
         let mut statements = vec![db::statement(&self.db, update.0, update.1)?];
         if !activity.is_empty() {
@@ -362,16 +437,22 @@ impl Board {
         let current = self.require_task_row(id).await?;
         assert_task_version(&current, input.version)?;
         if !value(&current, "archived_at").is_null() {
-            return Err(ApiError::new(409, "TASK_ARCHIVED", "Archived tasks cannot be moved").into());
+            return Err(
+                ApiError::new(409, "TASK_ARCHIVED", "Archived tasks cannot be moved").into(),
+            );
         }
         let current_id = text(&current, "id");
         let project_id = text(&current, "project_id");
         let sort_order = match input.sort_order {
             Some(sort_order) => sort_order,
             None if input.status != text(&current, "status") => {
-                self.column_edge(project_id, input.status, Some(current_id), true).await?
+                self.column_edge(project_id, input.status, Some(current_id), true)
+                    .await?
             }
-            None => self.column_edge(project_id, input.status, Some(current_id), false).await?,
+            None => {
+                self.column_edge(project_id, input.status, Some(current_id), false)
+                    .await?
+            }
         };
         let (attributed, attributed_values) = attribution_assignments(&current, &input.attribution);
         let timestamp = now();
@@ -382,8 +463,10 @@ impl Board {
             "UPDATE tasks SET status = ?, sort_order = ?, {attributed}version = version + 1, updated_at = ?
              WHERE id = ? AND version = ?"
         );
-        let activity = records::field_changes(&records::task(&current), &[("status", json!(input.status))]);
-        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp).await
+        let activity =
+            records::field_changes(&records::task(&current), &[("status", json!(input.status))]);
+        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp)
+            .await
     }
 
     pub async fn archive_task(&self, id: &str, input: &VersionMutation) -> Result<Value> {
@@ -398,15 +481,23 @@ impl Board {
             "UPDATE tasks SET archived_at = ?, {attributed}version = version + 1, updated_at = ?
              WHERE id = ? AND version = ?"
         );
-        let activity = vec![json!({ "field": "archivedAt", "before": value(&current, "archived_at"), "after": timestamp })];
-        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp).await
+        let activity = vec![
+            json!({ "field": "archivedAt", "before": value(&current, "archived_at"), "after": timestamp }),
+        ];
+        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp)
+            .await
     }
 
     pub async fn restore_task(&self, id: &str, input: &VersionMutation) -> Result<Value> {
         let current = self.require_task_row(id).await?;
         assert_task_version(&current, input.version)?;
         if value(&current, "archived_at").is_null() {
-            return Err(ApiError::new(409, "TASK_NOT_ARCHIVED", "Only archived tasks can be restored").into());
+            return Err(ApiError::new(
+                409,
+                "TASK_NOT_ARCHIVED",
+                "Only archived tasks can be restored",
+            )
+            .into());
         }
         let (attributed, attributed_values) = attribution_assignments(&current, &input.attribution);
         let timestamp = now();
@@ -416,14 +507,23 @@ impl Board {
             "UPDATE tasks SET archived_at = NULL, {attributed}version = version + 1, updated_at = ?
              WHERE id = ? AND version = ?"
         );
-        let activity = vec![json!({ "field": "archivedAt", "before": value(&current, "archived_at"), "after": null })];
-        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp).await
+        let activity = vec![
+            json!({ "field": "archivedAt", "before": value(&current, "archived_at"), "after": null }),
+        ];
+        self.guarded_write(&current, input.version, (sql, values), activity, &timestamp)
+            .await
     }
 
     pub async fn delete_archived_task(&self, id: &str, version: i64) -> Result<()> {
         let current = self.require_task_row(id).await?;
         assert_task_version(&current, version)?;
-        let not_archived = || ApiError::new(409, "TASK_NOT_ARCHIVED", "Only archived tasks can be deleted");
+        let not_archived = || {
+            ApiError::new(
+                409,
+                "TASK_NOT_ARCHIVED",
+                "Only archived tasks can be deleted",
+            )
+        };
         if value(&current, "archived_at").is_null() {
             return Err(not_archived().into());
         }
@@ -431,7 +531,11 @@ impl Board {
         let results = self
             .db
             .batch(vec![
-                db::statement(&self.db, "SELECT id FROM attachments WHERE task_id = ?", args![current_id])?,
+                db::statement(
+                    &self.db,
+                    "SELECT id FROM attachments WHERE task_id = ?",
+                    args![current_id],
+                )?,
                 db::statement(
                     &self.db,
                     "DELETE FROM tasks WHERE id = ? AND version = ? AND archived_at IS NOT NULL",
@@ -444,8 +548,11 @@ impl Board {
             assert_task_version(&latest, version)?;
             return Err(not_archived().into());
         }
-        let ids: Vec<String> =
-            results[0].results::<Row>()?.iter().map(|row| text(row, "id").to_owned()).collect();
+        let ids: Vec<String> = results[0]
+            .results::<Row>()?
+            .iter()
+            .map(|row| text(row, "id").to_owned())
+            .collect();
         self.delete_objects(&ids).await
     }
 }

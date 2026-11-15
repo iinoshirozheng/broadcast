@@ -42,7 +42,14 @@ struct Record {
 
 impl Record {
     fn new(version: u64, request: Request) -> Self {
-        Self { version, request, quota: None, todo_gate: None, next_run_at: None, checking: Arc::default() }
+        Self {
+            version,
+            request,
+            quota: None,
+            todo_gate: None,
+            next_run_at: None,
+            checking: Arc::default(),
+        }
     }
 
     fn key(&self) -> &str {
@@ -59,11 +66,17 @@ struct Evaluated {
 
 impl Policies {
     pub fn version(&self, key: &str) -> Option<u64> {
-        lock(&self.records).iter().find(|record| record.key() == key).map(|record| record.version)
+        lock(&self.records)
+            .iter()
+            .find(|record| record.key() == key)
+            .map(|record| record.version)
     }
 
     fn get(&self, key: &str) -> Option<Record> {
-        lock(&self.records).iter().find(|record| record.key() == key).cloned()
+        lock(&self.records)
+            .iter()
+            .find(|record| record.key() == key)
+            .cloned()
     }
 
     fn set(&self, record: Record) {
@@ -80,35 +93,65 @@ impl Policies {
 
     /// Writes back a record taken at `version`, unless another policy replaced it meanwhile.
     fn replace(&self, version: u64, record: Record) {
-        if let Some(known) = lock(&self.records).iter_mut().find(|known| known.key() == record.key() && known.version == version) {
+        if let Some(known) = lock(&self.records)
+            .iter_mut()
+            .find(|known| known.key() == record.key() && known.version == version)
+        {
             *known = record;
         }
     }
 }
 
 fn stale(quota: Option<Value>) -> Map<String, Value> {
-    Map::from_iter([("quota".to_owned(), quota.unwrap_or(Value::Null)), ("stale".to_owned(), true.into())])
+    Map::from_iter([
+        ("quota".to_owned(), quota.unwrap_or(Value::Null)),
+        ("stale".to_owned(), true.into()),
+    ])
 }
 
 /// `storedAutomationPolicy`.
 fn stored(request: &Request) -> Map<String, Value> {
     let mut policy = Map::new();
-    policy.insert("broadcastProjectId".to_owned(), request.broadcast_project_id.clone().into());
-    policy.insert("codexProjectId".to_owned(), request.codex_project_id.clone().into());
+    policy.insert(
+        "broadcastProjectId".to_owned(),
+        request.broadcast_project_id.clone().into(),
+    );
+    policy.insert(
+        "codexProjectId".to_owned(),
+        request.codex_project_id.clone().into(),
+    );
     policy.insert("codexProjectKind".to_owned(), request.kind().into());
-    policy.insert("codexHostId".to_owned(), request.codex_host_id.clone().into());
-    policy.insert("projectName".to_owned(), request.project_name.clone().into());
-    policy.insert("workspacePath".to_owned(), request.workspace_path.clone().into());
-    policy.insert("remoteProjects".to_owned(), Value::Array(request.remote_projects.clone()));
+    policy.insert(
+        "codexHostId".to_owned(),
+        request.codex_host_id.clone().into(),
+    );
+    policy.insert(
+        "projectName".to_owned(),
+        request.project_name.clone().into(),
+    );
+    policy.insert(
+        "workspacePath".to_owned(),
+        request.workspace_path.clone().into(),
+    );
+    policy.insert(
+        "remoteProjects".to_owned(),
+        Value::Array(request.remote_projects.clone()),
+    );
     policy.insert("skillPath".to_owned(), request.skill_path.clone().into());
     if let Some(automation_id) = &request.automation_id {
         policy.insert("automationId".to_owned(), automation_id.clone().into());
     }
     policy.insert("enabledByUser".to_owned(), request.enabled_by_user.into());
     policy.insert("quotaAware".to_owned(), request.quota_aware.into());
-    policy.insert("intervalMinutes".to_owned(), request.interval_minutes.into());
+    policy.insert(
+        "intervalMinutes".to_owned(),
+        request.interval_minutes.into(),
+    );
     policy.insert("model".to_owned(), request.model.clone().into());
-    policy.insert("reasoningEffort".to_owned(), request.reasoning_effort.clone().into());
+    policy.insert(
+        "reasoningEffort".to_owned(),
+        request.reasoning_effort.clone().into(),
+    );
     policy
 }
 
@@ -118,13 +161,26 @@ fn restored(value: &Value) -> Option<Record> {
     let next_run_at = fields.remove("nextRunAt");
     let quota = fields.remove("quota");
     let todo_gate = fields.remove("todoGate");
-    for (field, text) in [("id", "restored-policy"), ("action", "automation"), ("requestId", "restored-policy"), ("operation", "apply-policy")] {
+    for (field, text) in [
+        ("id", "restored-policy"),
+        ("action", "automation"),
+        ("requestId", "restored-policy"),
+        ("operation", "apply-policy"),
+    ] {
         fields.insert(field.to_owned(), text.into());
     }
     let mut record = Record::new(1, automation::parse(&Value::Object(fields))?);
     record.quota = quota.filter(|quota| truthy(Some(quota)));
-    record.todo_gate = todo_gate.filter(|gate| gate["snapshot"].is_string() && ["checking", "wait", "start"].iter().any(|state| gate["state"] == *state));
-    record.next_run_at = next_run_at.as_ref().and_then(Value::as_f64).filter(|next| next.is_finite());
+    record.todo_gate = todo_gate.filter(|gate| {
+        gate["snapshot"].is_string()
+            && ["checking", "wait", "start"]
+                .iter()
+                .any(|state| gate["state"] == *state)
+    });
+    record.next_run_at = next_run_at
+        .as_ref()
+        .and_then(Value::as_f64)
+        .filter(|next| next.is_finite());
     Some(record)
 }
 
@@ -140,7 +196,12 @@ async fn ensure_loaded(context: &Context) -> Result<()> {
                 Err(error) => return Err(anyhow::Error::from(error)),
             };
             let stored: Value = serde_json::from_str(&text)?;
-            for record in stored.as_object().into_iter().flat_map(Map::values).filter_map(restored) {
+            for record in stored
+                .as_object()
+                .into_iter()
+                .flat_map(Map::values)
+                .filter_map(restored)
+            {
                 context.policies.set(record);
             }
             Ok(())
@@ -169,7 +230,12 @@ async fn persist(context: &Context) -> Result<()> {
         })
         .collect();
     let text = format!("{}\n", serde_json::to_string_pretty(&data)?);
-    host::write_private(&context.data_dir, &context.data_dir.join(FILE), text.as_bytes()).await
+    host::write_private(
+        &context.data_dir,
+        &context.data_dir.join(FILE),
+        text.as_bytes(),
+    )
+    .await
 }
 
 /// `scheduleQuotaPolicyCheck`: the next check comes at the next cron run (a remote policy's own
@@ -186,7 +252,8 @@ fn schedule(context: &Arc<Context>, record: &Record, result: &Value) {
     let now = chrono_millis() as f64;
     let next_run_at = number(result.get("item").and_then(|item| item.get("nextRunAt")));
     let quota_state = result["quota"]["state"].as_str();
-    let check_todos = result["todoGate"]["state"] == "checking" && (!request.quota_aware || quota_state == Some("available"));
+    let check_todos = result["todoGate"]["state"] == "checking"
+        && (!request.quota_aware || quota_state == Some("available"));
     let next_run_delay = if check_todos {
         1_000.0
     } else if next_run_at.is_finite() && next_run_at > now {
@@ -194,9 +261,13 @@ fn schedule(context: &Arc<Context>, record: &Record, result: &Value) {
     } else {
         60_000.0
     };
-    let resets_at = result["quota"]["resetsAt"].as_f64().filter(|resets_at| resets_at.is_finite());
+    let resets_at = result["quota"]["resetsAt"]
+        .as_f64()
+        .filter(|resets_at| resets_at.is_finite());
     let reset_delay = match resets_at {
-        Some(resets_at) if quota_state == Some("blocked") => (resets_at * 1_000.0 - now + 1_000.0).max(1_000.0),
+        Some(resets_at) if quota_state == Some("blocked") => {
+            (resets_at * 1_000.0 - now + 1_000.0).max(1_000.0)
+        }
         _ => next_run_delay,
     };
     let delay = Duration::from_secs_f64(next_run_delay.min(reset_delay) / 1_000.0);
@@ -215,8 +286,20 @@ fn schedule(context: &Arc<Context>, record: &Record, result: &Value) {
     lock(&context.policies.timers).insert(key, timer);
 }
 
-async fn fire(context: Arc<Context>, key: String, version: u64, remote_active: bool, local_check: bool) {
-    let Some(record) = context.policies.get(&key).filter(|record| record.version == version) else { return };
+async fn fire(
+    context: Arc<Context>,
+    key: String,
+    version: u64,
+    remote_active: bool,
+    local_check: bool,
+) {
+    let Some(record) = context
+        .policies
+        .get(&key)
+        .filter(|record| record.version == version)
+    else {
+        return;
+    };
     let outcome = async {
         if remote_active {
             remote::run(&context, &record.request, version).await?;
@@ -241,8 +324,16 @@ async fn fire(context: Arc<Context>, key: String, version: u64, remote_active: b
     .await;
     if let Err(error) = outcome {
         eprintln!("Broadcast quota policy check failed: {error}");
-        if let Some(current) = context.policies.get(&key).filter(|record| record.version == version) {
-            schedule(&context, &current, &json!({ "quota": { "state": "unknown" } }));
+        if let Some(current) = context
+            .policies
+            .get(&key)
+            .filter(|record| record.version == version)
+        {
+            schedule(
+                &context,
+                &current,
+                &json!({ "quota": { "state": "unknown" } }),
+            );
         }
     }
 }
@@ -261,9 +352,14 @@ async fn local_gate(
         return Ok(None);
     }
     if let Some(evaluated) = evaluated.filter(|evaluated| evaluated.snapshot == snapshot) {
-        return Ok(Some(json!({ "snapshot": snapshot, "state": evaluated.state })));
+        return Ok(Some(
+            json!({ "snapshot": snapshot, "state": evaluated.state }),
+        ));
     }
-    if previous.as_ref().is_some_and(|gate| gate["snapshot"] == snapshot.as_str()) {
+    if previous
+        .as_ref()
+        .is_some_and(|gate| gate["snapshot"] == snapshot.as_str())
+    {
         return Ok(previous);
     }
     Ok(Some(json!({ "snapshot": snapshot, "state": "checking" })))
@@ -274,9 +370,13 @@ async fn evaluate_local(context: &Context, record: &Record) -> Result<Option<Eva
     let request = &record.request;
     let still_current = || context.policies.version(record.key()) == Some(record.version);
     let listed = remote::get(context, &remote::todo_path(request)).await?;
-    let (candidates, snapshot) = remote::todo_inputs(context, request, &remote::list(&listed, "tasks")).await?;
+    let (candidates, snapshot) =
+        remote::todo_inputs(context, request, &remote::list(&listed, "tasks")).await?;
     let gate = record.todo_gate.as_ref();
-    if !still_current() || gate.is_none_or(|gate| gate["snapshot"] != snapshot.as_str() || gate["state"] != "checking") {
+    if !still_current()
+        || gate
+            .is_none_or(|gate| gate["snapshot"] != snapshot.as_str() || gate["state"] != "checking")
+    {
         return Ok(None);
     }
     let mut state = "wait";
@@ -289,7 +389,11 @@ async fn evaluate_local(context: &Context, record: &Record) -> Result<Option<Eva
             break;
         }
     }
-    Ok(still_current().then_some(Evaluated { version: record.version, snapshot, state }))
+    Ok(still_current().then_some(Evaluated {
+        version: record.version,
+        snapshot,
+        state,
+    }))
 }
 
 struct Previous {
@@ -302,20 +406,43 @@ struct Previous {
 
 /// `applyBroadcastAutomationPolicy`: reads todos and quota, then pauses, keeps or activates the
 /// project's automation.
-async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: impl Fn() -> bool, previous: Previous) -> Result<Map<String, Value>> {
+async fn apply(
+    context: &Context,
+    request: &Request,
+    rpc: &Rpc,
+    still_current: impl Fn() -> bool,
+    previous: Previous,
+) -> Result<Map<String, Value>> {
     let tasks = if request.enabled_by_user {
-        let response = context.http.get(format!("{}{}", context.base_url, remote::todo_path(request))).send().await?;
+        let response = context
+            .http
+            .get(format!(
+                "{}{}",
+                context.base_url,
+                remote::todo_path(request)
+            ))
+            .send()
+            .await?;
         let status = response.status();
         if !status.is_success() {
             bail!("Broadcast todo check returned HTTP {}", status.as_u16());
         }
         let payload: Value = serde_json::from_str(&response.text().await?).unwrap_or(Value::Null);
-        Some(payload["tasks"].as_array().cloned().ok_or_else(|| anyhow!("Broadcast todo check returned invalid JSON"))?)
+        Some(
+            payload["tasks"]
+                .as_array()
+                .cloned()
+                .ok_or_else(|| anyhow!("Broadcast todo check returned invalid JSON"))?,
+        )
     } else {
         None
     };
     let has_todo = tasks.as_ref().map(|tasks| !tasks.is_empty());
-    let quota = if request.quota_aware && has_todo != Some(false) { Some(quota::read(&context.codex, &request.model).await) } else { None };
+    let quota = if request.quota_aware && has_todo != Some(false) {
+        Some(quota::read(&context.codex, &request.model).await)
+    } else {
+        None
+    };
     if !still_current() {
         return Ok(stale(quota));
     }
@@ -324,9 +451,18 @@ async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: i
     let has_todo_value = has_todo.map_or(Value::Null, Value::Bool);
 
     if request.remote {
-        let current_status =
-            if request.enabled_by_user && (!request.quota_aware || previous_quota == Some("available")) { "ACTIVE" } else { "PAUSED" };
-        let current_item = remote::item(request, current_status, previous.remote_next_run_at.map(js_number));
+        let current_status = if request.enabled_by_user
+            && (!request.quota_aware || previous_quota == Some("available"))
+        {
+            "ACTIVE"
+        } else {
+            "PAUSED"
+        };
+        let current_item = remote::item(
+            request,
+            current_status,
+            previous.remote_next_run_at.map(js_number),
+        );
         let state = PolicyState {
             explicit: previous.explicit,
             has_todo,
@@ -336,14 +472,30 @@ async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: i
             idle_paused: false,
         };
         let operation = automation::policy_operation(request, &state);
-        let status = if operation == Operation::Pause { "PAUSED" } else { "ACTIVE" };
+        let status = if operation == Operation::Pause {
+            "PAUSED"
+        } else {
+            "ACTIVE"
+        };
         let now = chrono_millis() as f64;
         let existing = previous.remote_next_run_at.unwrap_or(f64::NAN);
-        let next_run_at = if existing.is_finite() && existing > now { existing } else { now + request.interval_minutes as f64 * 60_000.0 };
+        let next_run_at = if existing.is_finite() && existing > now {
+            existing
+        } else {
+            now + request.interval_minutes as f64 * 60_000.0
+        };
         let item = if operation == Operation::List {
             current_item
         } else {
-            remote::item(request, status, Some(if status == "ACTIVE" { js_number(next_run_at) } else { Value::Null }))
+            remote::item(
+                request,
+                status,
+                Some(if status == "ACTIVE" {
+                    js_number(next_run_at)
+                } else {
+                    Value::Null
+                }),
+            )
         };
         let mut result = Map::new();
         result.insert("item".to_owned(), item.clone());
@@ -359,31 +511,56 @@ async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: i
     let mut listed = None;
     let mut current_item = None;
     if !previous.explicit && request.enabled_by_user {
-        let items = automation::reconcile(&request.with_operation(Operation::List), &context.cli_command, rpc).await?;
+        let items = automation::reconcile(
+            &request.with_operation(Operation::List),
+            &context.cli_command,
+            rpc,
+        )
+        .await?;
         let found = items["items"].as_array().and_then(|items| {
             request
                 .automation_id
                 .as_ref()
-                .and_then(|automation_id| items.iter().find(|item| item["id"] == automation_id.as_str()))
+                .and_then(|automation_id| {
+                    items
+                        .iter()
+                        .find(|item| item["id"] == automation_id.as_str())
+                })
                 .or(items.first())
                 .cloned()
         });
         current_item = found;
         listed = Some(items);
     }
-    let mut todo_gate = if request.enabled_by_user && has_todo == Some(true) { previous.todo_gate } else { None };
-    let gate_state = |gate: &Option<Value>| gate.as_ref().and_then(|gate| gate["state"].as_str().map(str::to_owned));
+    let mut todo_gate = if request.enabled_by_user && has_todo == Some(true) {
+        previous.todo_gate
+    } else {
+        None
+    };
+    let gate_state = |gate: &Option<Value>| {
+        gate.as_ref()
+            .and_then(|gate| gate["state"].as_str().map(str::to_owned))
+    };
     let state = PolicyState {
         explicit: previous.explicit,
         has_todo,
         previous_quota,
         quota: quota_state,
-        current_status: current_item.as_ref().and_then(|item| item["status"].as_str()),
+        current_status: current_item
+            .as_ref()
+            .and_then(|item| item["status"].as_str()),
         idle_paused: matches!(gate_state(&todo_gate).as_deref(), Some("checking" | "wait")),
     };
     let mut operation = automation::policy_operation(request, &state);
     if operation == Operation::EnsureActive {
-        todo_gate = local_gate(context, request, tasks.as_deref().unwrap_or_default(), todo_gate, previous.evaluated).await?;
+        todo_gate = local_gate(
+            context,
+            request,
+            tasks.as_deref().unwrap_or_default(),
+            todo_gate,
+            previous.evaluated,
+        )
+        .await?;
         if todo_gate.is_some() && gate_state(&todo_gate).as_deref() != Some("start") {
             operation = Operation::Pause;
         }
@@ -404,12 +581,25 @@ async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: i
         if let Some(item) = current_item {
             result.insert("item".to_owned(), item);
         }
-        result.insert("items".to_owned(), listed.and_then(|mut listed| listed.remove("items")).unwrap_or(Value::Null));
+        result.insert(
+            "items".to_owned(),
+            listed
+                .and_then(|mut listed| listed.remove("items"))
+                .unwrap_or(Value::Null),
+        );
         result
     } else {
-        automation::reconcile(&request.with_operation(operation), &context.cli_command, rpc).await?
+        automation::reconcile(
+            &request.with_operation(operation),
+            &context.cli_command,
+            rpc,
+        )
+        .await?
     };
-    if result.get("error").is_some_and(|error| error == "not-found") {
+    if result
+        .get("error")
+        .is_some_and(|error| error == "not-found")
+    {
         result = Map::new();
     }
     result.insert("operation".to_owned(), operation.as_str().into());
@@ -428,15 +618,34 @@ async fn apply(context: &Context, request: &Request, rpc: &Rpc, still_current: i
 
 /// `enqueueQuotaPolicyMutation`: one apply at a time per project, each against the record
 /// current when it runs, then saved and rescheduled.
-async fn enqueue(context: &Arc<Context>, key: &str, version: u64, rpc: Rpc, explicit: bool, evaluated: Option<Evaluated>) -> Result<Map<String, Value>> {
-    let queue = Arc::clone(lock(&context.policies.queues).entry(key.to_owned()).or_default());
+async fn enqueue(
+    context: &Arc<Context>,
+    key: &str,
+    version: u64,
+    rpc: Rpc,
+    explicit: bool,
+    evaluated: Option<Evaluated>,
+) -> Result<Map<String, Value>> {
+    let queue = Arc::clone(
+        lock(&context.policies.queues)
+            .entry(key.to_owned())
+            .or_default(),
+    );
     let _turn = queue.lock().await;
-    let Some(mut current) = context.policies.get(key).filter(|record| record.version == version) else {
+    let Some(mut current) = context
+        .policies
+        .get(key)
+        .filter(|record| record.version == version)
+    else {
         return Ok(Map::from_iter([("stale".to_owned(), true.into())]));
     };
     let previous = Previous {
         explicit,
-        quota: current.quota.as_ref().and_then(|quota| quota["state"].as_str()).map(str::to_owned),
+        quota: current
+            .quota
+            .as_ref()
+            .and_then(|quota| quota["state"].as_str())
+            .map(str::to_owned),
         remote_next_run_at: current.next_run_at,
         todo_gate: current.todo_gate.clone(),
         evaluated: evaluated.filter(|evaluated| evaluated.version == version),
@@ -448,21 +657,31 @@ async fn enqueue(context: &Arc<Context>, key: &str, version: u64, rpc: Rpc, expl
     }
     let operation = result.get("operation").and_then(Value::as_str);
     let item = result.get("item");
-    let item_status = item.and_then(|item| item.get("status")).and_then(Value::as_str);
+    let item_status = item
+        .and_then(|item| item.get("status"))
+        .and_then(Value::as_str);
     if (result.get("hasTodo") == Some(&Value::Bool(false)) && operation == Some("pause"))
         || (!explicit && operation == Some("list") && item_status == Some("PAUSED"))
     {
         current.version += 1;
         current.request.enabled_by_user = false;
     }
-    if let Some(id) = item.and_then(|item| item.get("id")).and_then(Value::as_str).filter(|id| !id.is_empty()) {
+    if let Some(id) = item
+        .and_then(|item| item.get("id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+    {
         current.request.automation_id = Some(id.to_owned());
     }
     if current.request.remote {
         let next_run_at = number(item.and_then(|item| item.get("nextRunAt")));
-        current.next_run_at = (item_status == Some("ACTIVE") && next_run_at.is_finite()).then_some(next_run_at);
+        current.next_run_at =
+            (item_status == Some("ACTIVE") && next_run_at.is_finite()).then_some(next_run_at);
     }
-    current.todo_gate = result.get("todoGate").filter(|gate| truthy(Some(gate))).cloned();
+    current.todo_gate = result
+        .get("todoGate")
+        .filter(|gate| truthy(Some(gate)))
+        .cloned();
     if !current.request.quota_aware {
         current.quota = None;
     } else if let Some(quota) = result.get("quota").filter(|quota| truthy(Some(quota))) {
@@ -487,13 +706,22 @@ fn with_policy(context: &Context, key: &str, mut result: Map<String, Value>) -> 
 
 /// `updateAndApplyQuotaPolicy`: saves the frame's settings as a new policy version and applies
 /// them; a failed apply restores the previous policy.
-async fn update_and_apply(context: &Arc<Context>, request: Request, rpc: Rpc) -> Result<Map<String, Value>> {
+async fn update_and_apply(
+    context: &Arc<Context>,
+    request: Request,
+    rpc: Rpc,
+) -> Result<Map<String, Value>> {
     ensure_loaded(context).await?;
     let key = request.broadcast_project_id.clone();
     let previous = context.policies.get(&key);
-    let mut record = Record::new(previous.as_ref().map_or(0, |previous| previous.version) + 1, request);
+    let mut record = Record::new(
+        previous.as_ref().map_or(0, |previous| previous.version) + 1,
+        request,
+    );
     if record.request.quota_aware {
-        record.quota = previous.as_ref().and_then(|previous| previous.quota.clone());
+        record.quota = previous
+            .as_ref()
+            .and_then(|previous| previous.quota.clone());
     }
     let version = record.version;
     context.policies.set(record);
@@ -515,16 +743,23 @@ async fn update_and_apply(context: &Arc<Context>, request: Request, rpc: Rpc) ->
 
 /// `reconcileStoredAutomationPolicy`: the saved policy for this project, moved to the frame's
 /// project identity when that changed.
-async fn reconcile_stored(context: &Arc<Context>, request: &Request, rpc: Rpc) -> Result<Option<Map<String, Value>>> {
+async fn reconcile_stored(
+    context: &Arc<Context>,
+    request: &Request,
+    rpc: Rpc,
+) -> Result<Option<Map<String, Value>>> {
     ensure_loaded(context).await?;
     let key = &request.broadcast_project_id;
-    let Some(record) = context.policies.get(key) else { return Ok(None) };
+    let Some(record) = context.policies.get(key) else {
+        return Ok(None);
+    };
     let saved = &record.request;
     if saved.codex_project_id != request.codex_project_id
         || saved.remote != request.remote
         || saved.codex_host_id != request.codex_host_id
         || saved.workspace_path != request.workspace_path
-        || serde_json::to_string(&saved.remote_projects).ok() != serde_json::to_string(&request.remote_projects).ok()
+        || serde_json::to_string(&saved.remote_projects).ok()
+            != serde_json::to_string(&request.remote_projects).ok()
     {
         let merged = Request {
             automation_id: saved.automation_id.clone(),
@@ -542,18 +777,39 @@ async fn reconcile_stored(context: &Arc<Context>, request: &Request, rpc: Rpc) -
 }
 
 /// `enqueueCurrentQuotaPolicy`: a re-check through the latest live window.
-async fn enqueue_current(context: &Arc<Context>, key: &str, evaluated: Option<Evaluated>) -> Result<Map<String, Value>> {
+async fn enqueue_current(
+    context: &Arc<Context>,
+    key: &str,
+    evaluated: Option<Evaluated>,
+) -> Result<Map<String, Value>> {
     ensure_loaded(context).await?;
-    let Some(version) = context.policies.version(key) else { return Ok(Map::from_iter([("stale".to_owned(), true.into())])) };
-    enqueue(context, key, version, Rpc::Latest(Arc::clone(context)), false, evaluated).await
+    let Some(version) = context.policies.version(key) else {
+        return Ok(Map::from_iter([("stale".to_owned(), true.into())]));
+    };
+    enqueue(
+        context,
+        key,
+        version,
+        Rpc::Latest(Arc::clone(context)),
+        false,
+        evaluated,
+    )
+    .await
 }
 
 /// `restoreQuotaPolicies`: re-applies every enabled saved policy once a window can carry it.
 pub async fn restore(context: &Arc<Context>) -> Result<()> {
     ensure_loaded(context).await?;
-    let keys: Vec<String> = lock(&context.policies.records).iter().map(|record| record.key().to_owned()).collect();
+    let keys: Vec<String> = lock(&context.policies.records)
+        .iter()
+        .map(|record| record.key().to_owned())
+        .collect();
     for key in keys {
-        if context.policies.get(&key).is_some_and(|record| record.request.enabled_by_user) {
+        if context
+            .policies
+            .get(&key)
+            .is_some_and(|record| record.request.enabled_by_user)
+        {
             enqueue_current(context, &key, None).await?;
         }
     }
@@ -561,7 +817,11 @@ pub async fn restore(context: &Arc<Context>) -> Result<()> {
 }
 
 /// The `automation` host action.
-pub async fn run_automation(context: &Arc<Context>, session: &Session, request: Request) -> Result<Map<String, Value>> {
+pub async fn run_automation(
+    context: &Arc<Context>,
+    session: &Session,
+    request: Request,
+) -> Result<Map<String, Value>> {
     let rpc = Rpc::Window(session.clone());
     match request.operation {
         Operation::List => {
@@ -577,4 +837,3 @@ pub async fn run_automation(context: &Arc<Context>, session: &Session, request: 
         _ => automation::reconcile(&request, &context.cli_command, &rpc).await,
     }
 }
-

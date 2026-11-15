@@ -27,13 +27,19 @@ pub fn plain_object(value: &Value) -> Result<&Object> {
 }
 
 pub fn assert_allowed_keys(object: &Object, allowed: &[&str]) -> Result<()> {
-    let unknown: Vec<&str> =
-        js::object_keys(object).into_iter().filter(|key| !allowed.contains(key)).collect();
+    let unknown: Vec<&str> = js::object_keys(object)
+        .into_iter()
+        .filter(|key| !allowed.contains(key))
+        .collect();
     if unknown.is_empty() {
         return Ok(());
     }
     let plural = if unknown.len() == 1 { "" } else { "s" };
-    Err(ApiError::new(400, "UNKNOWN_FIELD", format!("Unknown field{plural}: {}", unknown.join(", "))))
+    Err(ApiError::new(
+        400,
+        "UNKNOWN_FIELD",
+        format!("Unknown field{plural}: {}", unknown.join(", ")),
+    ))
 }
 
 /// A plain object restricted to `allowed` keys.
@@ -51,7 +57,11 @@ pub struct StringRules {
 }
 
 /// `stringField`: trimmed, length-checked string.
-pub fn string_field(value: Option<&Value>, name: &str, rules: StringRules) -> Result<Option<Option<String>>> {
+pub fn string_field(
+    value: Option<&Value>,
+    name: &str,
+    rules: StringRules,
+) -> Result<Option<Option<String>>> {
     let Some(value) = value else {
         if rules.required {
             return Err(ApiError::invalid_field(format!("'{name}' is required")));
@@ -63,7 +73,9 @@ pub fn string_field(value: Option<&Value>, name: &str, rules: StringRules) -> Re
     }
     let Some(text) = value.as_str() else {
         let suffix = if rules.nullable { " or null" } else { "" };
-        return Err(ApiError::invalid_field(format!("'{name}' must be a string{suffix}")));
+        return Err(ApiError::invalid_field(format!(
+            "'{name}' must be a string{suffix}"
+        )));
     };
     let normalized = js::trim(text);
     if rules.required && normalized.is_empty() {
@@ -72,26 +84,53 @@ pub fn string_field(value: Option<&Value>, name: &str, rules: StringRules) -> Re
     if let Some(max) = rules.max_length
         && js::len(normalized) > max
     {
-        return Err(ApiError::invalid_field(format!("'{name}' cannot exceed {max} characters")));
+        return Err(ApiError::invalid_field(format!(
+            "'{name}' cannot exceed {max} characters"
+        )));
     }
     Ok(Some(Some(normalized.to_owned())))
 }
 
 /// A required, non-nullable string.
 pub fn required_string(value: Option<&Value>, name: &str, max_length: usize) -> Result<String> {
-    let rules = StringRules { required: true, max_length: Some(max_length), ..StringRules::default() };
-    Ok(string_field(value, name, rules)?.flatten().unwrap_or_default())
+    let rules = StringRules {
+        required: true,
+        max_length: Some(max_length),
+        ..StringRules::default()
+    };
+    Ok(string_field(value, name, rules)?
+        .flatten()
+        .unwrap_or_default())
 }
 
 /// An optional, non-nullable string: `None` is undefined.
-pub fn optional_string(value: Option<&Value>, name: &str, max_length: usize) -> Result<Option<String>> {
-    let rules = StringRules { max_length: Some(max_length), ..StringRules::default() };
+pub fn optional_string(
+    value: Option<&Value>,
+    name: &str,
+    max_length: usize,
+) -> Result<Option<String>> {
+    let rules = StringRules {
+        max_length: Some(max_length),
+        ..StringRules::default()
+    };
     Ok(string_field(value, name, rules)?.flatten())
 }
 
 /// A nullable string.
-pub fn nullable_string(value: Option<&Value>, name: &str, max_length: usize) -> Result<Option<Option<String>>> {
-    string_field(value, name, StringRules { nullable: true, max_length: Some(max_length), ..StringRules::default() })
+pub fn nullable_string(
+    value: Option<&Value>,
+    name: &str,
+    max_length: usize,
+) -> Result<Option<Option<String>>> {
+    string_field(
+        value,
+        name,
+        StringRules {
+            nullable: true,
+            max_length: Some(max_length),
+            ..StringRules::default()
+        },
+    )
 }
 
 /// `pathField`: a nullable path that cannot be empty or contain null bytes.
@@ -101,7 +140,9 @@ pub fn path_field(value: Option<&Value>, name: &str) -> Result<Option<String>> {
         return Err(ApiError::invalid_field(format!("'{name}' cannot be empty")));
     }
     if path.as_deref().is_some_and(|path| path.contains('\0')) {
-        return Err(ApiError::invalid_field(format!("'{name}' cannot contain null bytes")));
+        return Err(ApiError::invalid_field(format!(
+            "'{name}' cannot contain null bytes"
+        )));
     }
     Ok(path)
 }
@@ -117,7 +158,9 @@ pub fn due_date(value: Option<&Value>, name: &str) -> Result<Option<Option<Strin
                 _ => byte.is_ascii_digit(),
             });
         if !valid {
-            return Err(ApiError::invalid_field(format!("'{name}' must use YYYY-MM-DD")));
+            return Err(ApiError::invalid_field(format!(
+                "'{name}' must use YYYY-MM-DD"
+            )));
         }
     }
     Ok(date)
@@ -129,30 +172,43 @@ pub fn recurrence(value: &Value) -> Result<Option<Recurrence>> {
         return Ok(None);
     }
     let object = object(value, &["interval", "unit"])?;
-    let interval = js::safe_integer(object.get("interval")).filter(|interval| (1..=365).contains(interval));
+    let interval =
+        js::safe_integer(object.get("interval")).filter(|interval| (1..=365).contains(interval));
     let Some(interval) = interval else {
-        return Err(ApiError::invalid_field("'recurrence.interval' must be an integer from 1 to 365"));
+        return Err(ApiError::invalid_field(
+            "'recurrence.interval' must be an integer from 1 to 365",
+        ));
     };
     let unit = object.get("unit").and_then(Value::as_str);
     let Some(unit) = unit.filter(|unit| ["day", "week", "month", "year"].contains(unit)) else {
-        return Err(ApiError::invalid_field("'recurrence.unit' must be day, week, month, or year"));
+        return Err(ApiError::invalid_field(
+            "'recurrence.unit' must be day, week, month, or year",
+        ));
     };
-    Ok(Some(Recurrence { interval, unit: unit.to_owned() }))
+    Ok(Some(Recurrence {
+        interval,
+        unit: unit.to_owned(),
+    }))
 }
 
 /// `parseSortOrder` for a defined value.
 pub fn sort_order(value: &Value) -> Result<f64> {
-    value.as_f64().filter(|order| order.is_finite() && order.abs() <= 1_000_000_000_000.0).ok_or_else(|| {
-        ApiError::invalid_field(
-            "'sortOrder' must be a finite number between -1000000000000 and 1000000000000",
-        )
-    })
+    value
+        .as_f64()
+        .filter(|order| order.is_finite() && order.abs() <= 1_000_000_000_000.0)
+        .ok_or_else(|| {
+            ApiError::invalid_field(
+                "'sortOrder' must be a finite number between -1000000000000 and 1000000000000",
+            )
+        })
 }
 
 /// `parseLabels` for a defined value.
 pub fn labels(value: &Value) -> Result<Vec<String>> {
     let Some(entries) = value.as_array().filter(|entries| entries.len() <= 20) else {
-        return Err(ApiError::invalid_field("'labels' must be an array with at most 20 entries"));
+        return Err(ApiError::invalid_field(
+            "'labels' must be an array with at most 20 entries",
+        ));
     };
     let mut labels: Vec<String> = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -161,7 +217,9 @@ pub fn labels(value: &Value) -> Result<Vec<String>> {
         };
         let normalized = js::trim(label);
         if normalized.is_empty() || js::len(normalized) > 64 {
-            return Err(ApiError::invalid_field("Labels must contain 1 to 64 characters"));
+            return Err(ApiError::invalid_field(
+                "Labels must contain 1 to 64 characters",
+            ));
         }
         labels.push(normalized.to_owned());
     }
@@ -179,9 +237,14 @@ pub fn status(value: Option<&Value>, fallback: Option<&'static str>) -> Result<&
         Some(value) => value.as_str(),
         None => fallback,
     };
-    candidate.and_then(|status| TASK_STATUSES.into_iter().find(|known| *known == status)).ok_or_else(|| {
-        ApiError::invalid_field(format!("'status' must be one of: {}", TASK_STATUSES.join(", ")))
-    })
+    candidate
+        .and_then(|status| TASK_STATUSES.into_iter().find(|known| *known == status))
+        .ok_or_else(|| {
+            ApiError::invalid_field(format!(
+                "'status' must be one of: {}",
+                TASK_STATUSES.join(", ")
+            ))
+        })
 }
 
 /// `parsePriority(value, fallback)`.
@@ -192,7 +255,9 @@ pub fn priority(value: Option<&Value>, fallback: Option<&'static str>) -> Result
     };
     candidate
         .and_then(|priority| TASK_PRIORITIES.into_iter().find(|known| *known == priority))
-        .ok_or_else(|| ApiError::invalid_field("'priority' must be none, urgent, high, medium, or low"))
+        .ok_or_else(|| {
+            ApiError::invalid_field("'priority' must be none, urgent, high, medium, or low")
+        })
 }
 
 pub fn slugify(value: &str) -> String {
@@ -214,7 +279,9 @@ pub fn project_label(body: &Value) -> Result<String> {
 
 /// `parseThreadId`.
 pub fn thread_id(value: Option<&Value>) -> Result<Option<String>> {
-    value.map(|value| required_string(Some(value), "threadId", 256)).transpose()
+    value
+        .map(|value| required_string(Some(value), "threadId", 256))
+        .transpose()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,17 +310,25 @@ pub fn relation_origin(value: Option<&Value>) -> Result<Option<&'static str>> {
     match value.as_str() {
         Some("manual") => Ok(Some("manual")),
         Some("mention") => Ok(Some("mention")),
-        _ => Err(ApiError::invalid_field("'origin' must be manual or mention")),
+        _ => Err(ApiError::invalid_field(
+            "'origin' must be manual or mention",
+        )),
     }
 }
 
 /// `parseVersion`.
 pub fn version(value: Option<&Value>, allow_zero: bool) -> Result<i64> {
     let minimum = if allow_zero { 0 } else { 1 };
-    js::safe_integer(value).filter(|version| *version >= minimum).ok_or_else(|| {
-        let kind = if allow_zero { "non-negative" } else { "positive" };
-        ApiError::invalid_field(format!("'version' must be a {kind} integer"))
-    })
+    js::safe_integer(value)
+        .filter(|version| *version >= minimum)
+        .ok_or_else(|| {
+            let kind = if allow_zero {
+                "non-negative"
+            } else {
+                "positive"
+            };
+            ApiError::invalid_field(format!("'version' must be a {kind} integer"))
+        })
 }
 
 /// `validateProjectId` (required).

@@ -52,17 +52,37 @@ pub fn string_to_number(value: &str) -> f64 {
         return 0.0;
     }
     for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
-        if let Some(digits) = text.get(..2).filter(|head| head.eq_ignore_ascii_case(prefix)).and(text.get(2..)).filter(|digits| !digits.is_empty()) {
-            return digits.chars().try_fold(0.0, |total, c| Some(total * f64::from(radix) + f64::from(c.to_digit(radix)?))).unwrap_or(f64::NAN);
+        if let Some(digits) = text
+            .get(..2)
+            .filter(|head| head.eq_ignore_ascii_case(prefix))
+            .and(text.get(2..))
+            .filter(|digits| !digits.is_empty())
+        {
+            return digits
+                .chars()
+                .try_fold(0.0, |total, c| {
+                    Some(total * f64::from(radix) + f64::from(c.to_digit(radix)?))
+                })
+                .unwrap_or(f64::NAN);
         }
     }
     let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
     if unsigned == "Infinity" {
-        return if text.starts_with('-') { f64::NEG_INFINITY } else { f64::INFINITY };
+        return if text.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
     }
     let literal = unsigned.starts_with(|c: char| c.is_ascii_digit() || c == '.')
-        && unsigned.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
-    if literal { text.parse().unwrap_or(f64::NAN) } else { f64::NAN }
+        && unsigned
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
+    if literal {
+        text.parse().unwrap_or(f64::NAN)
+    } else {
+        f64::NAN
+    }
 }
 
 /// `Number.isSafeInteger`.
@@ -94,7 +114,9 @@ pub fn decode_uri_component(value: &str) -> Option<String> {
     let mut index = 0;
     while index < bytes.len() {
         if bytes[index] == b'%' {
-            let hex = bytes.get(index + 1..index + 3).filter(|hex| hex.iter().all(u8::is_ascii_hexdigit))?;
+            let hex = bytes
+                .get(index + 1..index + 3)
+                .filter(|hex| hex.iter().all(u8::is_ascii_hexdigit))?;
             let text = std::str::from_utf8(hex).ok()?;
             decoded.push(u8::from_str_radix(text, 16).ok()?);
             index += 3;
@@ -125,13 +147,20 @@ pub fn object_keys(object: &Map<String, Value>) -> Vec<&str> {
         let parsed: u32 = key.parse().ok()?;
         (parsed != u32::MAX && parsed.to_string() == key).then_some(parsed)
     };
-    let mut indexed: Vec<(u32, &str)> =
-        object.keys().filter_map(|key| index(key).map(|i| (i, key.as_str()))).collect();
+    let mut indexed: Vec<(u32, &str)> = object
+        .keys()
+        .filter_map(|key| index(key).map(|i| (i, key.as_str())))
+        .collect();
     indexed.sort_unstable_by_key(|(i, _)| *i);
     indexed
         .into_iter()
         .map(|(_, key)| key)
-        .chain(object.keys().map(String::as_str).filter(|key| index(key).is_none()))
+        .chain(
+            object
+                .keys()
+                .map(String::as_str)
+                .filter(|key| index(key).is_none()),
+        )
         .collect()
 }
 
@@ -151,5 +180,9 @@ pub fn truthy(value: &Value) -> bool {
 pub fn locale_compare(left: &str, right: &str) -> std::cmp::Ordering {
     left.to_lowercase()
         .cmp(&right.to_lowercase())
-        .then_with(|| left.chars().map(char::is_uppercase).cmp(right.chars().map(char::is_uppercase)))
+        .then_with(|| {
+            left.chars()
+                .map(char::is_uppercase)
+                .cmp(right.chars().map(char::is_uppercase))
+        })
 }

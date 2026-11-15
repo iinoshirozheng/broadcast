@@ -9,7 +9,9 @@ use serde_json::json;
 
 use crate::App;
 use crate::actor;
-use crate::http::{Reply, json, method_not_allowed, path_id, query, read_json, reject_query, segment};
+use crate::http::{
+    Reply, json, method_not_allowed, path_id, query, read_json, reject_query, segment,
+};
 
 /// `parseIssueRelationType`.
 fn relation_kind(value: &str) -> Result<&'static str, ApiError> {
@@ -18,15 +20,22 @@ fn relation_kind(value: &str) -> Result<&'static str, ApiError> {
         "blocks" => Ok("blocks"),
         "blocked_by" => Ok("blocked_by"),
         "related" => Ok("related"),
-        _ => Err(ApiError::invalid_field("'relation type' must be parent, blocks, blocked_by, or related")),
+        _ => Err(ApiError::invalid_field(
+            "'relation type' must be parent, blocks, blocked_by, or related",
+        )),
     }
 }
 
 pub async fn relation(State(app): State<Arc<App>>, request: Request) -> Reply {
     let uri = request.uri();
     let decode = |n: usize| {
-        decode_uri_component(segment(uri, n))
-            .ok_or_else(|| ApiError::new(400, "INVALID_PATH", "Issue relation path contains invalid encoding"))
+        decode_uri_component(segment(uri, n)).ok_or_else(|| {
+            ApiError::new(
+                400,
+                "INVALID_PATH",
+                "Issue relation path contains invalid encoding",
+            )
+        })
     };
     let (task_id, kind, related_id) = (decode(3)?, decode(5)?, decode(6)?);
     let valid = |id: &str| !id.is_empty() && js::len(id) <= 128;
@@ -59,11 +68,16 @@ pub async fn relation(State(app): State<Arc<App>>, request: Request) -> Reply {
 
 pub async fn activities(State(app): State<Arc<App>>, request: Request) -> Reply {
     let task_id = path_id(request.uri(), 3, "Task")?;
-    reject_query(request.uri(), "Activity routes do not accept query parameters")?;
+    reject_query(
+        request.uri(),
+        "Activity routes do not accept query parameters",
+    )?;
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
-    let activities = app.store(move |store| store.list_task_activities(&task_id)).await?;
+    let activities = app
+        .store(move |store| store.list_task_activities(&task_id))
+        .await?;
     Ok(json(200, &json!({ "activities": activities })))
 }
 
@@ -73,6 +87,8 @@ pub async fn tree(State(app): State<Arc<App>>, request: Request) -> Reply {
         return method_not_allowed(&["GET"]);
     }
     let tree_query = input::task_tree_query(&query(request.uri()))?;
-    let tree = app.store(move |store| store.get_task_tree(&id, tree_query.direction, tree_query.depth)).await?;
+    let tree = app
+        .store(move |store| store.get_task_tree(&id, tree_query.direction, tree_query.depth))
+        .await?;
     Ok(json(200, &json!({ "tree": tree })))
 }

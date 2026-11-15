@@ -16,11 +16,17 @@ use tokio::sync::mpsc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_env()?;
-    let launcher = config.launcher.clone().context("BROADCAST_INSTANCE_TOKEN is required")?;
+    let launcher = config
+        .launcher
+        .clone()
+        .context("BROADCAST_INSTANCE_TOKEN is required")?;
     let variable = |name: &str| std::env::var(name).with_context(|| format!("{name} is required"));
     let cdp = match variable("BROADCAST_CODEX_CDP")?.as_str() {
         "pipe" => Cdp::Pipe,
-        port => Cdp::Port(port.parse().context("BROADCAST_CODEX_CDP must be pipe or a port")?),
+        port => Cdp::Port(
+            port.parse()
+                .context("BROADCAST_CODEX_CDP must be pipe or a port")?,
+        ),
     };
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let port = listener.local_addr()?.port();
@@ -30,7 +36,10 @@ async fn main() -> anyhow::Result<()> {
     let (events, mut received) = mpsc::unbounded_channel();
     let app_path = PathBuf::from(variable("BROADCAST_CODEX_APP")?);
     let options = Options {
-        codex_executable: broadcast_codex::executable(std::env::var("CODEX_EXECUTABLE").ok().as_deref(), Some(&app_path)),
+        codex_executable: broadcast_codex::executable(
+            std::env::var("CODEX_EXECUTABLE").ok().as_deref(),
+            Some(&app_path),
+        ),
         app_path,
         cdp,
         profile: PathBuf::from(variable("BROADCAST_CODEX_PROFILE")?),
@@ -40,7 +49,11 @@ async fn main() -> anyhow::Result<()> {
         token: launcher.token,
         secret: launcher.secret,
         open: std::env::var("BROADCAST_CODEX_OPEN").map_or(true, |value| value != "0"),
-        cli: std::env::current_exe()?.parent().and_then(std::path::Path::parent).map(|debug| debug.join("broadcast")).ok_or_else(|| anyhow::anyhow!("no target directory"))?,
+        cli: std::env::current_exe()?
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(|debug| debug.join("broadcast"))
+            .ok_or_else(|| anyhow::anyhow!("no target directory"))?,
         runtime_file: std::env::var_os("BROADCAST_RUNTIME_FILE").map(PathBuf::from),
     };
     let (launcher, task) = Launcher::start(options, bridge.requests, bridge.notifications, events);

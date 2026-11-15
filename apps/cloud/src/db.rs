@@ -31,12 +31,24 @@ macro_rules! args {
 }
 pub(crate) use args;
 
-pub fn statement(db: &D1Database, sql: impl Into<String>, args: Vec<JsValue>) -> Result<D1PreparedStatement> {
+pub fn statement(
+    db: &D1Database,
+    sql: impl Into<String>,
+    args: Vec<JsValue>,
+) -> Result<D1PreparedStatement> {
     let statement = db.prepare(sql);
-    Ok(if args.is_empty() { statement } else { statement.bind(&args)? })
+    Ok(if args.is_empty() {
+        statement
+    } else {
+        statement.bind(&args)?
+    })
 }
 
-pub async fn first(db: &D1Database, sql: impl Into<String>, args: Vec<JsValue>) -> Result<Option<Row>> {
+pub async fn first(
+    db: &D1Database,
+    sql: impl Into<String>,
+    args: Vec<JsValue>,
+) -> Result<Option<Row>> {
     Ok(statement(db, sql, args)?.first::<Row>(None).await?)
 }
 
@@ -51,13 +63,17 @@ pub async fn run(db: &D1Database, sql: impl Into<String>, args: Vec<JsValue>) ->
 /// Whether a mutation changed a row.
 pub fn changed(result: &D1Result) -> Result<bool> {
     let changes = result.meta()?.and_then(|meta| meta.changes);
-    changes.map(|changes| changes > 0).ok_or_else(|| Failure::internal("D1 mutation did not return change metadata"))
+    changes
+        .map(|changes| changes > 0)
+        .ok_or_else(|| Failure::internal("D1 mutation did not return change metadata"))
 }
 
 /// The message of a D1 or JavaScript error, as JavaScript `error.message` reads it.
 pub fn message(error: &worker::Error) -> String {
     match error {
-        worker::Error::D1(error) => String::from(AsRef::<worker::js_sys::Error>::as_ref(error).message()),
+        worker::Error::D1(error) => {
+            String::from(AsRef::<worker::js_sys::Error>::as_ref(error).message())
+        }
         worker::Error::UnknownJsError { message, .. } => message.clone(),
         error => error.to_string(),
     }
@@ -77,7 +93,9 @@ pub fn optional_text<'a>(row: &'a Row, column: &str) -> Option<&'a str> {
 }
 
 pub fn integer(row: &Row, column: &str) -> i64 {
-    row.get(column).and_then(Value::as_f64).map_or(0, |value| value as i64)
+    row.get(column)
+        .and_then(Value::as_f64)
+        .map_or(0, |value| value as i64)
 }
 
 pub fn value(row: &Row, column: &str) -> Value {

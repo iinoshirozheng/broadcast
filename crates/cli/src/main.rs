@@ -23,7 +23,10 @@ enum Outcome {
 }
 
 fn main() {
-    let argv: Vec<String> = std::env::args_os().skip(1).map(|arg| arg.to_string_lossy().into_owned()).collect();
+    let argv: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
     let outcome = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -53,8 +56,12 @@ async fn run(argv: &[String]) -> Result<Outcome> {
     let command = parsed.command();
     if parsed.flag("help") {
         return match args::help(&command) {
-            Some(help) if parsed.operands.is_empty() && parsed.options.len() == 1 => Ok(Outcome::Help(help)),
-            _ => Err(usage("Help is available for broadcast, broadcast issue, and broadcast comment list")),
+            Some(help) if parsed.operands.is_empty() && parsed.options.len() == 1 => {
+                Ok(Outcome::Help(help))
+            }
+            _ => Err(usage(
+                "Help is available for broadcast, broadcast issue, and broadcast comment list",
+            )),
         };
     }
     let allowed = args::allowed_options(&command).ok_or_else(|| usage(args::UNKNOWN_COMMAND))?;
@@ -62,5 +69,7 @@ async fn run(argv: &[String]) -> Result<Outcome> {
     if command == "runner claude" {
         return runner::claude(&parsed).await.map(|()| Outcome::Interrupted);
     }
-    commands::execute(&parsed, &command).await.map(Outcome::Result)
+    commands::execute(&parsed, &command)
+        .await
+        .map(Outcome::Result)
 }

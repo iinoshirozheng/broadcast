@@ -36,16 +36,27 @@ impl Jira {
             .no_proxy()
             .timeout(REQUEST_TIMEOUT)
             .build()?;
-        Ok(Self { config: ConfigStore::new(path), client, operation: tokio::sync::Mutex::new(()), last_synced: Mutex::new(None) })
+        Ok(Self {
+            config: ConfigStore::new(path),
+            client,
+            operation: tokio::sync::Mutex::new(()),
+            last_synced: Mutex::new(None),
+        })
     }
 
     fn last_synced(&self) -> Option<(String, Instant)> {
-        self.last_synced.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.last_synced
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn mark_synced(&self) -> String {
         let at = broadcast_store::now();
-        *self.last_synced.lock().unwrap_or_else(PoisonError::into_inner) = Some((at.clone(), Instant::now()));
+        *self
+            .last_synced
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some((at.clone(), Instant::now()));
         at
     }
 
@@ -90,18 +101,32 @@ struct Site<'a> {
 
 impl Candidate {
     fn site(&self) -> Site<'_> {
-        Site { base_url: &self.base_url, username: &self.username, password: &self.password }
+        Site {
+            base_url: &self.base_url,
+            username: &self.username,
+            password: &self.password,
+        }
     }
 }
 
 impl JiraConfig {
     fn site(&self) -> Site<'_> {
-        Site { base_url: &self.base_url, username: &self.username, password: &self.password }
+        Site {
+            base_url: &self.base_url,
+            username: &self.username,
+            password: &self.password,
+        }
     }
 }
 
 /// One Jira REST call; redirects and HTTP errors become Broadcast errors.
-async fn request(app: &App, site: &Site<'_>, method: Method, path: &str, body: Option<Value>) -> Result<Value> {
+async fn request(
+    app: &App,
+    site: &Site<'_>,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value> {
     let credentials = STANDARD.encode(format!("{}:{}", site.username, site.password));
     let mut builder = app
         .jira
@@ -110,25 +135,46 @@ async fn request(app: &App, site: &Site<'_>, method: Method, path: &str, body: O
         .header(header::ACCEPT, "application/json")
         .header(header::AUTHORIZATION, format!("Basic {credentials}"));
     if let Some(body) = body {
-        builder = builder.header(header::CONTENT_TYPE, "application/json").body(body.to_string());
+        builder = builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(body.to_string());
     }
     let response = builder.send().await.map_err(|error| {
         if error.is_timeout() {
             ApiError::new(502, "JIRA_TIMEOUT", "连接 Jira 超时")
         } else {
-            ApiError::new(502, "JIRA_UNAVAILABLE", "无法连接 Jira，请检查地址和内网连接")
+            ApiError::new(
+                502,
+                "JIRA_UNAVAILABLE",
+                "无法连接 Jira，请检查地址和内网连接",
+            )
         }
     })?;
     let status = response.status().as_u16();
     if status == 401 || status == 403 {
-        return Err(ApiError::new(401, "JIRA_AUTH_FAILED", "Jira 登录失败，请检查用户名、密码、Basic Auth 或 CAPTCHA 状态").into());
+        return Err(ApiError::new(
+            401,
+            "JIRA_AUTH_FAILED",
+            "Jira 登录失败，请检查用户名、密码、Basic Auth 或 CAPTCHA 状态",
+        )
+        .into());
     }
     if (300..400).contains(&status) {
-        return Err(ApiError::new(400, "JIRA_REDIRECT", "Jira 地址发生重定向，请填写最终访问地址").into());
+        return Err(ApiError::new(
+            400,
+            "JIRA_REDIRECT",
+            "Jira 地址发生重定向，请填写最终访问地址",
+        )
+        .into());
     }
     if !response.status().is_success() {
         let code = if status >= 500 { 502 } else { 409 };
-        return Err(ApiError::new(code, "JIRA_REQUEST_FAILED", format!("Jira 请求失败（HTTP {status}）")).into());
+        return Err(ApiError::new(
+            code,
+            "JIRA_REQUEST_FAILED",
+            format!("Jira 请求失败（HTTP {status}）"),
+        )
+        .into());
     }
     if status == 204 {
         return Ok(Value::Null);
@@ -141,7 +187,9 @@ async fn request(app: &App, site: &Site<'_>, method: Method, path: &str, body: O
 /// `fetchAssignedIssues`: Jira Cloud pages by token, Data Center by offset.
 async fn assigned_issues(app: &App, site: &Site<'_>, projects: &[String]) -> Result<Vec<Value>> {
     let jql = issue::jql(projects);
-    let cloud = url::Url::parse(site.base_url).ok().and_then(|url| url.host_str().map(|host| host.ends_with(".atlassian.net")));
+    let cloud = url::Url::parse(site.base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.ends_with(".atlassian.net")));
     let mut issues = Vec::new();
     if cloud == Some(true) {
         let mut next_page_token: Option<String> = None;
@@ -150,14 +198,28 @@ async fn assigned_issues(app: &App, site: &Site<'_>, projects: &[String]) -> Res
             if let Some(token) = &next_page_token {
                 body["nextPageToken"] = json!(token);
             }
-            let page = request(app, site, Method::POST, "/rest/api/2/search/jql", Some(body)).await?;
+            let page = request(
+                app,
+                site,
+                Method::POST,
+                "/rest/api/2/search/jql",
+                Some(body),
+            )
+            .await?;
             issues.extend(page["issues"].as_array().into_iter().flatten().cloned());
             if page["isLast"] == Value::Bool(true) {
                 return Ok(issues);
             }
-            let token = page["nextPageToken"].as_str().filter(|token| !broadcast_domain::js::trim(token).is_empty());
+            let token = page["nextPageToken"]
+                .as_str()
+                .filter(|token| !broadcast_domain::js::trim(token).is_empty());
             let Some(token) = token else {
-                return Err(ApiError::new(502, "INVALID_JIRA_RESPONSE", "Jira 搜索结果缺少下一页标记").into());
+                return Err(ApiError::new(
+                    502,
+                    "INVALID_JIRA_RESPONSE",
+                    "Jira 搜索结果缺少下一页标记",
+                )
+                .into());
             };
             next_page_token = Some(token.to_owned());
         }
@@ -183,21 +245,38 @@ async fn assigned_issues(app: &App, site: &Site<'_>, projects: &[String]) -> Res
 
 async fn fetch_origin(app: &App, site: &Site<'_>) -> Result<String> {
     let manifest = request(app, site, Method::GET, "/rest/applinks/1.0/manifest", None).await?;
-    issue::origin_id(&manifest).ok_or_else(|| ApiError::new(502, "INVALID_JIRA_ORIGIN", "Jira 未返回稳定的实例身份").into())
+    issue::origin_id(&manifest).ok_or_else(|| {
+        ApiError::new(502, "INVALID_JIRA_ORIGIN", "Jira 未返回稳定的实例身份").into()
+    })
 }
 
 async fn assert_live_origin(app: &App, config: &JiraConfig) -> Result<()> {
     if fetch_origin(app, &config.site()).await? != config.origin_id {
-        return Err(ApiError::new(409, "JIRA_ORIGIN_MISMATCH", "当前 Jira 地址指向了另一个实例，请重新连接后再操作").into());
+        return Err(ApiError::new(
+            409,
+            "JIRA_ORIGIN_MISMATCH",
+            "当前 Jira 地址指向了另一个实例，请重新连接后再操作",
+        )
+        .into());
     }
     Ok(())
 }
 
 /// Mirrors `issues` into the Jira project.
-async fn store_issues(app: &Arc<App>, config: &JiraConfig, issues: &[Value], archive_missing: bool) -> Result<()> {
-    let tasks: Vec<_> = issues.iter().enumerate().map(|(index, issue)| issue::normalize(issue, config, index)).collect();
+async fn store_issues(
+    app: &Arc<App>,
+    config: &JiraConfig,
+    issues: &[Value],
+    archive_missing: bool,
+) -> Result<()> {
+    let tasks: Vec<_> = issues
+        .iter()
+        .enumerate()
+        .map(|(index, issue)| issue::normalize(issue, config, index))
+        .collect();
     let project_name = format!("Jira · {}", config.display_name);
-    app.store(move |store| store.sync_jira_tasks(&tasks, &project_name, archive_missing)).await
+    app.store(move |store| store.sync_jira_tasks(&tasks, &project_name, archive_missing))
+        .await
 }
 
 async fn sync_with(app: &Arc<App>, config: &JiraConfig, archive_missing: bool) -> Result<Value> {
@@ -208,13 +287,18 @@ async fn sync_with(app: &Arc<App>, config: &JiraConfig, archive_missing: bool) -
 }
 
 pub async fn status(app: &App) -> Result<Value> {
-    Ok(safe(app.jira.read().await?.as_ref(), app.jira.last_synced().map(|(at, _)| at)))
+    Ok(safe(
+        app.jira.read().await?.as_ref(),
+        app.jira.last_synced().map(|(at, _)| at),
+    ))
 }
 
 /// `sync`: at most once a minute unless forced.
 pub async fn sync(app: &Arc<App>, force: bool) -> Result<Value> {
     let _operation = app.jira.operation.lock().await;
-    let Some(config) = app.jira.read().await? else { return Ok(safe(None, None)) };
+    let Some(config) = app.jira.read().await? else {
+        return Ok(safe(None, None));
+    };
     if !force
         && let Some((at, synced)) = app.jira.last_synced()
         && synced.elapsed() < SYNC_INTERVAL
@@ -241,21 +325,47 @@ pub async fn configure(app: &Arc<App>, input: Input) -> Result<Value> {
     let _operation = app.jira.operation.lock().await;
     let current = app.jira.config.read().await.map_err(rejected)?;
     let keep = |given: &str, saved: Option<&str>| {
-        Some(given).filter(|given| !given.is_empty()).or(saved).map(|value| Value::String(value.to_owned()))
+        Some(given)
+            .filter(|given| !given.is_empty())
+            .or(saved)
+            .map(|value| Value::String(value.to_owned()))
     };
-    let username = keep(&input.username, current.as_ref().map(|config| config.username.as_str()));
-    let password = keep(&input.password, current.as_ref().map(|config| config.password.as_str()));
+    let username = keep(
+        &input.username,
+        current.as_ref().map(|config| config.username.as_str()),
+    );
+    let password = keep(
+        &input.password,
+        current.as_ref().map(|config| config.password.as_str()),
+    );
     let base_url = Value::String(input.base_url);
-    let candidate =
-        config::validate(Some(&base_url), username.as_ref(), password.as_ref(), input.projects.as_ref()).map_err(rejected)?;
-    let same_login = current
-        .as_ref()
-        .is_some_and(|current| current.base_url == candidate.base_url && current.username == candidate.username);
+    let candidate = config::validate(
+        Some(&base_url),
+        username.as_ref(),
+        password.as_ref(),
+        input.projects.as_ref(),
+    )
+    .map_err(rejected)?;
+    let same_login = current.as_ref().is_some_and(|current| {
+        current.base_url == candidate.base_url && current.username == candidate.username
+    });
     if input.password.is_empty() && !same_login {
-        return Err(ApiError::new(400, "JIRA_PASSWORD_REQUIRED", "修改 Jira 地址或用户名时必须重新输入密码").into());
+        return Err(ApiError::new(
+            400,
+            "JIRA_PASSWORD_REQUIRED",
+            "修改 Jira 地址或用户名时必须重新输入密码",
+        )
+        .into());
     }
     let origin_id = fetch_origin(app, &candidate.site()).await?;
-    let myself = request(app, &candidate.site(), Method::GET, "/rest/api/2/myself", None).await?;
+    let myself = request(
+        app,
+        &candidate.site(),
+        Method::GET,
+        "/rest/api/2/myself",
+        None,
+    )
+    .await?;
     let display_name = [&myself["displayName"], &myself["name"]]
         .into_iter()
         .find(|name| !name.is_null())
@@ -282,9 +392,17 @@ async fn connection_for(app: &App, task: &Task) -> Result<(JiraConfig, String)> 
     let Some(config) = app.jira.read().await? else {
         return Err(ApiError::new(409, "JIRA_NOT_CONFIGURED", "Jira 尚未配置").into());
     };
-    let key = task.external_key.clone().filter(|_| task.external_origin.as_deref() == Some(config.origin_id.as_str()));
+    let key = task
+        .external_key
+        .clone()
+        .filter(|_| task.external_origin.as_deref() == Some(config.origin_id.as_str()));
     let Some(key) = key else {
-        return Err(ApiError::new(409, "JIRA_ORIGIN_MISMATCH", "此任务不属于当前 Jira 连接，请重新同步后再操作").into());
+        return Err(ApiError::new(
+            409,
+            "JIRA_ORIGIN_MISMATCH",
+            "此任务不属于当前 Jira 连接，请重新同步后再操作",
+        )
+        .into());
     };
     assert_live_origin(app, &config).await?;
     Ok((config, key))
@@ -292,10 +410,17 @@ async fn connection_for(app: &App, task: &Task) -> Result<(JiraConfig, String)> 
 
 /// `resolveTransition`: exactly one workflow transition must reach `target`.
 async fn transition(app: &App, config: &JiraConfig, key: &str, target: &str) -> Result<String> {
-    let path = format!("/rest/api/2/issue/{}/transitions?expand=transitions.fields", encode_uri_component(key));
+    let path = format!(
+        "/rest/api/2/issue/{}/transitions?expand=transitions.fields",
+        encode_uri_component(key)
+    );
     let payload = request(app, &config.site(), Method::GET, &path, None).await?;
-    let transitions = payload["transitions"].as_array().cloned().unwrap_or_default();
-    let id = |candidate: &Value| issue::text(&candidate["id"]).unwrap_or_else(|| "undefined".to_owned());
+    let transitions = payload["transitions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let id =
+        |candidate: &Value| issue::text(&candidate["id"]).unwrap_or_else(|| "undefined".to_owned());
     let available: Vec<Value> = transitions
         .iter()
         .map(|candidate| {
@@ -303,14 +428,24 @@ async fn transition(app: &App, config: &JiraConfig, key: &str, target: &str) -> 
             json!({ "id": id(candidate), "name": name.unwrap_or_default(), "broadcastStatus": issue::status(&candidate["to"]) })
         })
         .collect();
-    let matches: Vec<&Value> = transitions.iter().filter(|candidate| issue::status(&candidate["to"]) == target).collect();
+    let matches: Vec<&Value> = transitions
+        .iter()
+        .filter(|candidate| issue::status(&candidate["to"]) == target)
+        .collect();
     match matches.as_slice() {
         [only] => Ok(id(only)),
-        [] => Err(ApiError::new(409, "JIRA_TRANSITION_UNAVAILABLE", format!("Jira 当前工作流不能将 {key} 移到目标状态"))
-            .with_details(json!({ "availableStatuses": available }))
-            .into()),
+        [] => Err(ApiError::new(
+            409,
+            "JIRA_TRANSITION_UNAVAILABLE",
+            format!("Jira 当前工作流不能将 {key} 移到目标状态"),
+        )
+        .with_details(json!({ "availableStatuses": available }))
+        .into()),
         _ => {
-            let available: Vec<Value> = available.into_iter().filter(|status| status["broadcastStatus"] == target).collect();
+            let available: Vec<Value> = available
+                .into_iter()
+                .filter(|status| status["broadcastStatus"] == target)
+                .collect();
             Err(ApiError::new(
                 409,
                 "JIRA_TRANSITION_AMBIGUOUS",
@@ -323,8 +458,18 @@ async fn transition(app: &App, config: &JiraConfig, key: &str, target: &str) -> 
 }
 
 async fn apply_transition(app: &App, config: &JiraConfig, key: &str, id: String) -> Result<()> {
-    let path = format!("/rest/api/2/issue/{}/transitions", encode_uri_component(key));
-    request(app, &config.site(), Method::POST, &path, Some(json!({ "transition": { "id": id } }))).await?;
+    let path = format!(
+        "/rest/api/2/issue/{}/transitions",
+        encode_uri_component(key)
+    );
+    request(
+        app,
+        &config.site(),
+        Method::POST,
+        &path,
+        Some(json!({ "transition": { "id": id } })),
+    )
+    .await?;
     Ok(())
 }
 
@@ -333,10 +478,26 @@ async fn priority(app: &App, config: &JiraConfig, target: &str) -> Result<Value>
     if target == "none" {
         return Ok(Value::Null);
     }
-    let priorities = request(app, &config.site(), Method::GET, "/rest/api/2/priority", None).await?;
-    let found = priorities.as_array().into_iter().flatten().find(|candidate| issue::priority(candidate) == target);
+    let priorities = request(
+        app,
+        &config.site(),
+        Method::GET,
+        "/rest/api/2/priority",
+        None,
+    )
+    .await?;
+    let found = priorities
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|candidate| issue::priority(candidate) == target);
     let Some(found) = found else {
-        return Err(ApiError::new(409, "JIRA_PRIORITY_UNAVAILABLE", "Jira 中没有可映射到该优先级的选项").into());
+        return Err(ApiError::new(
+            409,
+            "JIRA_PRIORITY_UNAVAILABLE",
+            "Jira 中没有可映射到该优先级的选项",
+        )
+        .into());
     };
     Ok(json!({ "id": issue::text(&found["id"]).unwrap_or_else(|| "undefined".to_owned()) }))
 }
@@ -345,23 +506,42 @@ async fn priority(app: &App, config: &JiraConfig, target: &str) -> Result<Value>
 pub async fn update_task(app: &App, task: &Task, changes: &TaskChanges) -> Result<bool> {
     let (config, key) = connection_for(app, task).await?;
     let status_changed = changes.status.filter(|status| *status != task.status);
-    let priority_changed = changes.priority.filter(|priority| *priority != task.priority);
+    let priority_changed = changes
+        .priority
+        .filter(|priority| *priority != task.priority);
     let mut fields = Map::new();
     if let Some(title) = changes.title.as_ref().filter(|title| **title != task.title) {
         fields.insert("summary".to_owned(), json!(title));
     }
-    if let Some(description) = changes.description.as_ref().filter(|description| **description != task.description) {
+    if let Some(description) = changes
+        .description
+        .as_ref()
+        .filter(|description| **description != task.description)
+    {
         fields.insert("description".to_owned(), json!(description));
     }
-    if let Some(labels) = changes.labels.as_ref().filter(|labels| **labels != task.labels) {
+    if let Some(labels) = changes
+        .labels
+        .as_ref()
+        .filter(|labels| **labels != task.labels)
+    {
         fields.insert("labels".to_owned(), json!(labels));
     }
-    if let Some(due_date) = changes.due_date.as_ref().filter(|due_date| **due_date != task.due_date) {
+    if let Some(due_date) = changes
+        .due_date
+        .as_ref()
+        .filter(|due_date| **due_date != task.due_date)
+    {
         fields.insert("duedate".to_owned(), json!(due_date));
     }
     let fields_changed = !fields.is_empty() || priority_changed.is_some();
     if status_changed.is_some() && fields_changed {
-        return Err(ApiError::new(409, "JIRA_MULTI_STEP_UPDATE_UNAVAILABLE", "请分开修改 Jira 状态和其他字段").into());
+        return Err(ApiError::new(
+            409,
+            "JIRA_MULTI_STEP_UPDATE_UNAVAILABLE",
+            "请分开修改 Jira 状态和其他字段",
+        )
+        .into());
     }
     if let Some(target) = priority_changed {
         fields.insert("priority".to_owned(), priority(app, &config, target).await?);
@@ -373,7 +553,14 @@ pub async fn update_task(app: &App, task: &Task, changes: &TaskChanges) -> Resul
     }
     if fields_changed {
         let path = format!("/rest/api/2/issue/{}", encode_uri_component(&key));
-        request(app, &config.site(), Method::PUT, &path, Some(json!({ "fields": fields }))).await?;
+        request(
+            app,
+            &config.site(),
+            Method::PUT,
+            &path,
+            Some(json!({ "fields": fields })),
+        )
+        .await?;
         return Ok(true);
     }
     Ok(false)

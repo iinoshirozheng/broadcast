@@ -44,7 +44,11 @@ pub struct NewAiChatEvent<'a> {
 }
 
 fn thread_not_found(id: &str) -> ApiError {
-    ApiError::new(404, "AI_CHAT_THREAD_NOT_FOUND", format!("AI chat thread '{id}' does not exist"))
+    ApiError::new(
+        404,
+        "AI_CHAT_THREAD_NOT_FOUND",
+        format!("AI chat thread '{id}' does not exist"),
+    )
 }
 
 fn run(row: &Row<'_>) -> rusqlite::Result<AiChatRun> {
@@ -61,7 +65,9 @@ fn run(row: &Row<'_>) -> rusqlite::Result<AiChatRun> {
 
 fn thread(row: &Row<'_>) -> rusqlite::Result<AiChatThread> {
     let filled = |column: &str| -> rusqlite::Result<Option<String>> {
-        Ok(row.get::<_, Option<String>>(column)?.filter(|value| !value.is_empty()))
+        Ok(row
+            .get::<_, Option<String>>(column)?
+            .filter(|value| !value.is_empty()))
     };
     Ok(AiChatThread {
         id: row.get("id")?,
@@ -112,7 +118,12 @@ struct TodoRow {
 fn todo_row(row: &Row<'_>) -> rusqlite::Result<(String, TodoRow)> {
     Ok((
         row.get("thread_id")?,
-        TodoRow { id: row.get("id")?, run_id: row.get("run_id")?, data: row.get("data")?, created_at: row.get("created_at")? },
+        TodoRow {
+            id: row.get("id")?,
+            run_id: row.get("run_id")?,
+            data: row.get("data")?,
+            created_at: row.get("created_at")?,
+        },
     ))
 }
 
@@ -126,13 +137,20 @@ fn todo_progress(row: &TodoRow) -> Option<AiChatTodo> {
     let items: Vec<&Value> = detail
         .as_array()?
         .iter()
-        .filter(|item| item["text"].as_str().is_some_and(|text| !js::trim(text).is_empty()))
+        .filter(|item| {
+            item["text"]
+                .as_str()
+                .is_some_and(|text| !js::trim(text).is_empty())
+        })
         .collect();
     if items.is_empty() {
         return None;
     }
     Some(AiChatTodo {
-        completed: items.iter().filter(|item| item["completed"] == Value::Bool(true)).count(),
+        completed: items
+            .iter()
+            .filter(|item| item["completed"] == Value::Bool(true))
+            .count(),
         total: items.len(),
         event_id: row.id.clone(),
         updated_at: row.created_at.clone(),
@@ -140,14 +158,18 @@ fn todo_progress(row: &TodoRow) -> Option<AiChatTodo> {
 }
 
 /// The newest parseable plan, from the current run when one is running.
-fn latest_todo<'a>(rows: impl Iterator<Item = &'a TodoRow>, current_run: Option<&AiChatRun>) -> Option<AiChatTodo> {
+fn latest_todo<'a>(
+    rows: impl Iterator<Item = &'a TodoRow>,
+    current_run: Option<&AiChatRun>,
+) -> Option<AiChatTodo> {
     rows.filter(|row| current_run.is_none_or(|run| row.run_id.as_deref() == Some(run.id.as_str())))
         .find_map(todo_progress)
 }
 
 fn get_thread(connection: &Connection, id: &str) -> Result<Option<AiChatThread>> {
-    let Some(mut thread) =
-        connection.query_row("SELECT * FROM ai_chat_threads WHERE id = ?", [id], thread).optional()?
+    let Some(mut thread) = connection
+        .query_row("SELECT * FROM ai_chat_threads WHERE id = ?", [id], thread)
+        .optional()?
     else {
         return Ok(None);
     };
@@ -172,7 +194,9 @@ fn get_thread(connection: &Connection, id: &str) -> Result<Option<AiChatThread>>
 }
 
 fn get_run(connection: &Connection, id: &str) -> Result<Option<AiChatRun>> {
-    Ok(connection.query_row("SELECT * FROM ai_chat_runs WHERE id = ?", [id], run).optional()?)
+    Ok(connection
+        .query_row("SELECT * FROM ai_chat_runs WHERE id = ?", [id], run)
+        .optional()?)
 }
 
 impl Store {
@@ -193,7 +217,8 @@ impl Store {
             let found = found?;
             current.entry(found.thread_id.clone()).or_insert(found);
         }
-        let mut todos: std::collections::HashMap<String, Vec<TodoRow>> = std::collections::HashMap::new();
+        let mut todos: std::collections::HashMap<String, Vec<TodoRow>> =
+            std::collections::HashMap::new();
         for found in connection
             .prepare(
                 "SELECT id, thread_id, run_id, data, created_at FROM ai_chat_events
@@ -217,7 +242,11 @@ impl Store {
     }
 
     /// Whether a conversation linked to `issue_ref` (id or identifier) belongs to another project.
-    pub fn has_ai_chat_thread_project_conflict(&self, issue_ref: &str, project_id: &str) -> Result<bool> {
+    pub fn has_ai_chat_thread_project_conflict(
+        &self,
+        issue_ref: &str,
+        project_id: &str,
+    ) -> Result<bool> {
         let found = self
             .connection()
             .query_row(
@@ -264,7 +293,11 @@ impl Store {
         get_thread(&connection, &id)?.ok_or_else(|| thread_not_found(&id).into())
     }
 
-    pub fn update_ai_chat_thread(&self, id: &str, changes: AiChatThreadChanges) -> Result<AiChatThread> {
+    pub fn update_ai_chat_thread(
+        &self,
+        id: &str,
+        changes: AiChatThreadChanges,
+    ) -> Result<AiChatThread> {
         let connection = self.connection();
         let current = get_thread(&connection, id)?.ok_or_else(|| thread_not_found(id))?;
         let columns = [
@@ -283,7 +316,10 @@ impl Store {
         }
         values.extend([now(), id.to_owned()]);
         connection.execute(
-            &format!("UPDATE ai_chat_threads SET {}, updated_at = ? WHERE id = ?", assignments.join(", ")),
+            &format!(
+                "UPDATE ai_chat_threads SET {}, updated_at = ? WHERE id = ?",
+                assignments.join(", ")
+            ),
             rusqlite::params_from_iter(values),
         )?;
         get_thread(&connection, id)?.ok_or_else(|| thread_not_found(id).into())
@@ -338,7 +374,11 @@ impl Store {
             "UPDATE ai_chat_runs SET status = ?, exit_code = ?, error = ?, finished_at = ? WHERE id = ?",
             params![outcome.status, outcome.exit_code, outcome.error, finished_at, id],
         )?;
-        let thread_status = if outcome.status == "failed" { "failed" } else { "idle" };
+        let thread_status = if outcome.status == "failed" {
+            "failed"
+        } else {
+            "idle"
+        };
         transaction.execute(
             "UPDATE ai_chat_threads SET status = ?1, updated_at = ?2
              WHERE id = ?3 AND NOT EXISTS (SELECT 1 FROM ai_chat_runs WHERE thread_id = ?3 AND status = 'running')",
@@ -379,7 +419,11 @@ impl Store {
 }
 
 fn run_not_found(id: &str) -> ApiError {
-    ApiError::new(404, "AI_CHAT_RUN_NOT_FOUND", format!("AI chat run '{id}' does not exist"))
+    ApiError::new(
+        404,
+        "AI_CHAT_RUN_NOT_FOUND",
+        format!("AI chat run '{id}' does not exist"),
+    )
 }
 
 /// `interruptAbandonedAiChatRuns`: runs left running by a previous process cannot finish.

@@ -1,14 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(target_os = "macos")]
-use dispatch2::{run_on_main, MainThreadBound};
-use futures_util::{future::{BoxFuture, Shared}, FutureExt};
+use dispatch2::{MainThreadBound, run_on_main};
+use futures_util::{
+    FutureExt,
+    future::{BoxFuture, Shared},
+};
 #[cfg(target_os = "macos")]
 use objc2::{
-    define_class, msg_send,
+    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
     rc::Retained,
     runtime::{AnyObject, NSObjectProtocol},
-    sel, DefinedClass, MainThreadMarker, MainThreadOnly,
+    sel,
 };
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
@@ -25,6 +28,10 @@ use std::cell::RefCell;
 use std::os::fd::AsRawFd;
 #[cfg(target_os = "macos")]
 use std::os::unix::process::CommandExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::OpenOptionsExt;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::time::Instant;
 use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
@@ -33,22 +40,18 @@ use std::{
     path::{Path, PathBuf},
     process::Command as StdCommand,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
     time::Duration,
 };
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::time::Instant;
-#[cfg(target_os = "windows")]
-use std::os::windows::fs::OpenOptionsExt;
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
 use tauri::{
+    AppHandle, Emitter, Manager,
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -56,20 +59,20 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use uuid::Uuid;
 #[cfg(target_os = "windows")]
 use windows::{
-    core::PWSTR,
     Win32::{
         Foundation::{CloseHandle, ERROR_SUCCESS, FILETIME, WAIT_OBJECT_0},
         System::{
             RestartManager::{
-                RmEndSession, RmRegisterResources, RmShutdown, RmStartSession, CCH_RM_SESSION_KEY,
-                RM_UNIQUE_PROCESS,
+                CCH_RM_SESSION_KEY, RM_UNIQUE_PROCESS, RmEndSession, RmRegisterResources,
+                RmShutdown, RmStartSession,
             },
             Threading::{
-                GetProcessTimes, OpenProcess, WaitForSingleObject,
-                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+                GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+                PROCESS_SYNCHRONIZE, WaitForSingleObject,
             },
         },
     },
+    core::PWSTR,
 };
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
@@ -88,8 +91,7 @@ const KNOWN_BROADCAST_SKILL_DIGESTS: [&str; 6] = [
 ];
 const BROADCAST_PREFERRED_PORT: u16 = 47823;
 #[cfg(target_os = "macos")]
-const MACOS_BUNDLE_MIGRATION_SOURCE_ENV: &str =
-    "BROADCAST_MACOS_BUNDLE_MIGRATION_SOURCE";
+const MACOS_BUNDLE_MIGRATION_SOURCE_ENV: &str = "BROADCAST_MACOS_BUNDLE_MIGRATION_SOURCE";
 #[cfg(target_os = "macos")]
 const MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV: &str =
     "BROADCAST_MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART";
@@ -219,9 +221,7 @@ struct UpdateDialog {
 #[cfg(target_os = "macos")]
 impl UpdateDialog {
     fn prompt(_app: &AppHandle, version: &str) -> Option<Self> {
-        let message = format!(
-            "发现新版本 Broadcast {version}。是否现在更新并重启？"
-        );
+        let message = format!("发现新版本 Broadcast {version}。是否现在更新并重启？");
         let (response, result) = std::sync::mpsc::channel();
         let dialog = run_on_main(move |mtm| {
             let alert = NSAlert::new(mtm);
@@ -300,7 +300,9 @@ impl UpdateDialog {
             native
                 .alert
                 .setInformativeText(&NSString::from_str(&message));
-            native.progress_indicator.setIndeterminate(progress.is_none());
+            native
+                .progress_indicator
+                .setIndeterminate(progress.is_none());
             if let Some(progress) = progress {
                 unsafe {
                     native.progress_indicator.stopAnimation(None);
@@ -311,7 +313,9 @@ impl UpdateDialog {
                     native.progress_indicator.startAnimation(None);
                 }
             }
-            native.alert.setAccessoryView(Some(&native.progress_indicator));
+            native
+                .alert
+                .setAccessoryView(Some(&native.progress_indicator));
             native.install_button.setHidden(true);
             if !cancellable {
                 native.defer_button.setEnabled(false);
@@ -470,12 +474,8 @@ fn wait_for_macos_bundle_migration_lock() -> Result<File, String> {
         .map(PathBuf::from)
         .ok_or_else(|| "HOME is unavailable".to_string())?;
     let data_directory = home_directory.join("Library/Application Support/Broadcast");
-    fs::create_dir_all(&data_directory).map_err(|error| {
-        format!(
-            "无法创建应用数据目录 {}：{error}",
-            data_directory.display()
-        )
-    })?;
+    fs::create_dir_all(&data_directory)
+        .map_err(|error| format!("无法创建应用数据目录 {}：{error}", data_directory.display()))?;
     let lock_path = data_directory.join("launcher.lock");
     let deadline = Instant::now() + LAUNCHER_STOP_TIMEOUT;
     loop {
@@ -544,10 +544,8 @@ end run"#;
 
 #[cfg(target_os = "macos")]
 fn take_macos_bundle_migration_marker() -> Result<Option<MacosBundleMigration>, String> {
-    let source_executable =
-        std::env::var_os(MACOS_BUNDLE_MIGRATION_SOURCE_ENV).map(PathBuf::from);
-    let beta_autostart_marker =
-        std::env::var_os(MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV);
+    let source_executable = std::env::var_os(MACOS_BUNDLE_MIGRATION_SOURCE_ENV).map(PathBuf::from);
+    let beta_autostart_marker = std::env::var_os(MACOS_BUNDLE_MIGRATION_BETA_AUTOSTART_ENV);
     // SAFETY: `main` calls this before Tauri or tokio start any thread.
     unsafe {
         std::env::remove_var(MACOS_BUNDLE_MIGRATION_SOURCE_ENV);
@@ -627,11 +625,14 @@ fn migrate_macos_beta_app_bundle_name() -> Result<Option<MacosBundleMigration>, 
         .join("Broadcast Beta.app");
     let executable_name = current_executable
         .file_name()
-        .ok_or_else(|| format!("无法定位 App 可执行文件名：{}", current_executable.display()))?
+        .ok_or_else(|| {
+            format!(
+                "无法定位 App 可执行文件名：{}",
+                current_executable.display()
+            )
+        })?
         .to_owned();
-    let destination_executable = destination_app
-        .join("Contents/MacOS")
-        .join(executable_name);
+    let destination_executable = destination_app.join("Contents/MacOS").join(executable_name);
     let instance_lock = wait_for_macos_bundle_migration_lock()?;
     let fd_flags = unsafe { libc::fcntl(instance_lock.as_raw_fd(), libc::F_GETFD) };
     if fd_flags < 0
@@ -1002,10 +1003,8 @@ fn install_broadcast_symlink(app: &AppHandle) -> Result<(PathBuf, PathBuf), Stri
     }
 
     let system_path = PathBuf::from("/opt/homebrew/bin/broadcast");
-    let temporary_path = system_path.with_file_name(format!(
-        ".broadcast-broadcast-{}.tmp",
-        Uuid::new_v4()
-    ));
+    let temporary_path =
+        system_path.with_file_name(format!(".broadcast-broadcast-{}.tmp", Uuid::new_v4()));
     std::os::unix::fs::symlink(&wrapper_path, &temporary_path).map_err(|error| {
         format!(
             "无法在 {} 创建符号链接：{error}",
@@ -1328,7 +1327,12 @@ fn service_exited(app: AppHandle, state: Arc<LauncherState>, generation: u64) {
         if service.as_ref().map(|service| service.generation) != Some(generation)
             || state
                 .generation
-                .compare_exchange(generation, recovery_token, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(
+                    generation,
+                    recovery_token,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
                 .is_err()
         {
             return;
@@ -1524,12 +1528,8 @@ fn start_launcher_locked(
         snapshot.message = "任务面板服务已启动，正在注入 Codex…".into();
     });
     let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
-    let (launcher, mut launching) = broadcast_codex::Launcher::start(
-        options,
-        bridge.requests,
-        bridge.notifications,
-        events,
-    );
+    let (launcher, mut launching) =
+        broadcast_codex::Launcher::start(options, bridge.requests, bridge.notifications, events);
     let (stopped_sender, stopped) = std::sync::mpsc::channel();
     *state.service.lock().unwrap() = Some(Service {
         generation,
@@ -1564,7 +1564,9 @@ fn start_launcher_locked(
         while let Some(event) = received.recv().await {
             let (phase, message) = match event {
                 broadcast_codex::Event::WaitingForCodex => ("starting", "正在等待 Codex 窗口…"),
-                broadcast_codex::Event::Injected => ("running", "任务面板已在 Codex 客户端中打开。"),
+                broadcast_codex::Event::Injected => {
+                    ("running", "任务面板已在 Codex 客户端中打开。")
+                }
                 broadcast_codex::Event::OpenedInExistingCodex => {
                     ("running", "任务面板已在现有 Codex 的浏览面板中打开。")
                 }
@@ -1750,42 +1752,43 @@ async fn prepare_update(
     let finish_dialog = Arc::clone(dialog);
     let mut downloaded = 0_u64;
     let mut displayed_progress = None;
-    let bytes = update.download(
-        move |chunk_length, content_length| {
-            downloaded = downloaded.saturating_add(chunk_length as u64);
-            let progress = content_length.filter(|total| *total > 0).map(|total| {
-                downloaded
-                    .saturating_mul(100)
-                    .saturating_div(total)
-                    .min(100)
-            });
-            if progress == displayed_progress {
-                return;
-            }
-            displayed_progress = progress;
-            let snapshot = update_snapshot(&progress_app, &progress_state, |snapshot| {
-                snapshot.update_message = match progress {
-                    Some(progress) => format!("正在下载 {progress_version} · {progress}%"),
-                    None => format!("正在下载 {progress_version}…"),
-                };
-            });
-            let dialog = progress_dialog.lock().unwrap().clone();
-            if let Some(dialog) = dialog {
-                dialog.set_progress(&snapshot.update_message, progress, false);
-            }
-        },
-        move || {
-            let snapshot = update_snapshot(&finish_app, &finish_state, |snapshot| {
-                snapshot.update_message = "正在验证更新…".into();
-            });
-            let dialog = finish_dialog.lock().unwrap().clone();
-            if let Some(dialog) = dialog {
-                dialog.set_progress(&snapshot.update_message, None, false);
-            }
-        },
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let bytes = update
+        .download(
+            move |chunk_length, content_length| {
+                downloaded = downloaded.saturating_add(chunk_length as u64);
+                let progress = content_length.filter(|total| *total > 0).map(|total| {
+                    downloaded
+                        .saturating_mul(100)
+                        .saturating_div(total)
+                        .min(100)
+                });
+                if progress == displayed_progress {
+                    return;
+                }
+                displayed_progress = progress;
+                let snapshot = update_snapshot(&progress_app, &progress_state, |snapshot| {
+                    snapshot.update_message = match progress {
+                        Some(progress) => format!("正在下载 {progress_version} · {progress}%"),
+                        None => format!("正在下载 {progress_version}…"),
+                    };
+                });
+                let dialog = progress_dialog.lock().unwrap().clone();
+                if let Some(dialog) = dialog {
+                    dialog.set_progress(&snapshot.update_message, progress, false);
+                }
+            },
+            move || {
+                let snapshot = update_snapshot(&finish_app, &finish_state, |snapshot| {
+                    snapshot.update_message = "正在验证更新…".into();
+                });
+                let dialog = finish_dialog.lock().unwrap().clone();
+                if let Some(dialog) = dialog {
+                    dialog.set_progress(&snapshot.update_message, None, false);
+                }
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())?;
 
     append_log(
         state,
@@ -1816,9 +1819,10 @@ async fn prepare_available_update(
         return Ok(None);
     };
     if let Some(current) = pending.as_ref()
-        && current.update.version == update.version {
-            return Ok(Some(current.clone()));
-        }
+        && current.update.version == update.version
+    {
+        return Ok(Some(current.clone()));
+    }
 
     let dialog = Arc::new(Mutex::new(None));
     let download = {
@@ -1829,17 +1833,26 @@ async fn prepare_available_update(
         async move {
             let result = prepare_update(&app, &state, &update, &dialog).await;
             if let Err(error) = &result {
-                append_log(&state, &format!("Update {} preparation failed: {error}", update.version));
+                append_log(
+                    &state,
+                    &format!("Update {} preparation failed: {error}", update.version),
+                );
                 update_snapshot(&app, &state, |snapshot| {
                     snapshot.update_message = format!("更新下载或签名验证失败：{error}");
                     snapshot.update_available = true;
                 });
             }
             result.map(Arc::new)
-        }.boxed().shared()
+        }
+        .boxed()
+        .shared()
     };
     tauri::async_runtime::spawn(download.clone());
-    let prepared = PendingUpdate { update, download, dialog };
+    let prepared = PendingUpdate {
+        update,
+        download,
+        dialog,
+    };
     *pending = Some(prepared.clone());
     Ok(Some(prepared))
 }
@@ -1989,8 +2002,7 @@ async fn offer_update(
     let Some(update_dialog) = UpdateDialog::prompt(app, &version) else {
         append_log(state, &format!("Update {version} deferred by user"));
         update_snapshot(app, state, |snapshot| {
-            snapshot.update_message =
-                format!("已暂缓安装 {version}，可稍后从检查更新继续。");
+            snapshot.update_message = format!("已暂缓安装 {version}，可稍后从检查更新继续。");
             snapshot.update_available = true;
         });
         finish_update_flow(state, check_update, quit);
@@ -2049,15 +2061,21 @@ fn configure_process(resource_directory: &Path) {
     #[cfg(target_os = "macos")]
     let path = std::env::join_paths(
         std::iter::once(resource_directory.join("bin")).chain(
-            ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-                .map(PathBuf::from),
+            [
+                "/opt/homebrew/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            ]
+            .map(PathBuf::from),
         ),
     );
     #[cfg(any(target_os = "windows", target_os = "linux"))]
-    let path = std::env::join_paths(
-        std::iter::once(resource_directory.join("bin"))
-            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-    );
+    let path = std::env::join_paths(std::iter::once(resource_directory.join("bin")).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ));
     // SAFETY: `main` calls this before Tauri or tokio start any thread.
     unsafe {
         if let Ok(path) = path {
@@ -2071,7 +2089,10 @@ fn configure_process(resource_directory: &Path) {
 /// The embedded server and launcher print their diagnostics; the launcher log keeps them, as
 /// it kept the Node child's output.
 fn redirect_output(log_path: &Path) -> std::io::Result<()> {
-    let log = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     unsafe {
         if libc::dup2(log.as_raw_fd(), libc::STDOUT_FILENO) < 0
@@ -2085,7 +2106,7 @@ fn redirect_output(log_path: &Path) -> std::io::Result<()> {
         use std::os::windows::io::IntoRawHandle;
         use windows::Win32::{
             Foundation::HANDLE,
-            System::Console::{SetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE},
+            System::Console::{STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle},
         };
         let handle = HANDLE(log.into_raw_handle());
         unsafe {
@@ -2131,10 +2152,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(ActivationPolicy::Accessory);
             let home_directory = app.path().home_dir()?;
-            let bundled_skill = app
-                .path()
-                .resource_dir()?
-                .join("skills/manage-broadcast");
+            let bundled_skill = app.path().resource_dir()?.join("skills/manage-broadcast");
             let legacy_skill_conflict = reconcile_legacy_skill(&home_directory, &bundled_skill)?;
             let global_skill = home_directory.join(".agents/skills/manage-broadcast");
             if global_skill.exists() {
@@ -2187,15 +2205,16 @@ fn main() {
             if let Some(migration) = macos_bundle_migration.as_ref()
                 && let Err(error) =
                     sync_macos_autostart_path(app.handle(), &home_directory, migration)
-                {
-                    append_log(&state, &format!("autostart path sync failed: {error}"));
-                }
+            {
+                append_log(&state, &format!("autostart path sync failed: {error}"));
+            }
             // A development build must not repoint the installed app's command.
             #[cfg(target_os = "macos")]
             if !cfg!(debug_assertions)
-                && let Err(error) = install_broadcast_symlink(app.handle()) {
-                    append_log(&state, &format!("broadcast sync failed: {error}"));
-                }
+                && let Err(error) = install_broadcast_symlink(app.handle())
+            {
+                append_log(&state, &format!("broadcast sync failed: {error}"));
+            }
 
             let app_info = MenuItem::with_id(
                 app,
@@ -2380,15 +2399,17 @@ fn main() {
             let periodic_update_state = Arc::clone(&state);
             let periodic_check_update = check_update.clone();
             let periodic_quit = quit.clone();
-            thread::spawn(move || loop {
-                thread::sleep(UPDATE_CHECK_INTERVAL);
-                let app_handle = periodic_update_app.clone();
-                let state = Arc::clone(&periodic_update_state);
-                let check_update = periodic_check_update.clone();
-                let quit = periodic_quit.clone();
-                tauri::async_runtime::spawn(async move {
-                    offer_update(&app_handle, &state, &check_update, &quit, false).await;
-                });
+            thread::spawn(move || {
+                loop {
+                    thread::sleep(UPDATE_CHECK_INTERVAL);
+                    let app_handle = periodic_update_app.clone();
+                    let state = Arc::clone(&periodic_update_state);
+                    let check_update = periodic_check_update.clone();
+                    let quit = periodic_quit.clone();
+                    tauri::async_runtime::spawn(async move {
+                        offer_update(&app_handle, &state, &check_update, &quit, false).await;
+                    });
+                }
             });
 
             let app_handle = app.handle().clone();

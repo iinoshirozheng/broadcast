@@ -12,8 +12,17 @@ pub struct ApiError {
 }
 
 impl ApiError {
-    pub fn new(status: u16, code: impl Into<Cow<'static, str>>, message: impl Into<String>) -> Self {
-        Self { status, code: code.into(), message: message.into(), details: None }
+    pub fn new(
+        status: u16,
+        code: impl Into<Cow<'static, str>>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status,
+            code: code.into(),
+            message: message.into(),
+            details: None,
+        }
     }
 
     pub fn with_details(mut self, details: Value) -> Self {
@@ -51,7 +60,9 @@ where
 impl From<Error> for anyhow::Error {
     fn from(error: Error) -> Self {
         match error {
-            Error::Api(error) => anyhow::anyhow!("{} {}: {}", error.status, error.code, error.message),
+            Error::Api(error) => {
+                anyhow::anyhow!("{} {}: {}", error.status, error.code, error.message)
+            }
             Error::Internal(error) => error,
         }
     }

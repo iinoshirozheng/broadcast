@@ -30,8 +30,16 @@ pub struct App {
 const POLL: Duration = Duration::from_millis(100);
 
 async fn output(program: &str, args: &[&str]) -> Option<String> {
-    let output = command(program).args(args).stdin(std::process::Stdio::null()).output().await.ok()?;
-    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    let output = command(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 impl App {
@@ -39,7 +47,11 @@ impl App {
     #[cfg(not(windows))]
     pub fn executable(&self) -> PathBuf {
         if cfg!(target_os = "linux") {
-            return if self.path == Path::new("/usr/bin/chatgpt") { PathBuf::from("/usr/lib/chatgpt/ChatGPT") } else { self.path.clone() };
+            return if self.path == Path::new("/usr/bin/chatgpt") {
+                PathBuf::from("/usr/lib/chatgpt/ChatGPT")
+            } else {
+                self.path.clone()
+            };
         }
         if !cfg!(target_os = "macos") {
             return self.path.clone();
@@ -58,40 +70,78 @@ impl App {
             return None;
         }
         let plist = self.path.join("Contents").join("Info.plist");
-        let build = output("/usr/bin/plutil", &["-extract", "CFBundleVersion", "raw", "-o", "-", &plist.to_string_lossy()]).await?;
+        let build = output(
+            "/usr/bin/plutil",
+            &[
+                "-extract",
+                "CFBundleVersion",
+                "raw",
+                "-o",
+                "-",
+                &plist.to_string_lossy(),
+            ],
+        )
+        .await?;
         Some(build.trim().to_owned()).filter(|build| !build.is_empty())
     }
 
     /// `codexAppProcesses`: every process running the app's binary.
     #[cfg(windows)]
     pub async fn processes(&self) -> Result<Vec<Record>> {
-        Ok(crate::windows::processes(&self.path).await?.into_iter().map(|(record, _)| record).collect())
+        Ok(crate::windows::processes(&self.path)
+            .await?
+            .into_iter()
+            .map(|(record, _)| record)
+            .collect())
     }
 
     /// `codexAppProcesses`: every process running the app's binary.
     #[cfg(not(windows))]
     pub async fn processes(&self) -> Result<Vec<Record>> {
-        let listing = output("/bin/ps", &["-ww", "-axo", "pid=,command="]).await.context("Unable to inspect the launched Codex process")?;
+        let listing = output("/bin/ps", &["-ww", "-axo", "pid=,command="])
+            .await
+            .context("Unable to inspect the launched Codex process")?;
         let executable = self.executable().to_string_lossy().into_owned();
         let prefix = format!("{executable} ");
         Ok(listing
             .lines()
             .filter_map(|line| {
                 let line = line.trim_start();
-                let (pid, command) = line.split_once(|character: char| character.is_ascii_whitespace())?;
+                let (pid, command) =
+                    line.split_once(|character: char| character.is_ascii_whitespace())?;
                 let command = command.trim_start();
                 let pid = pid.parse().ok()?;
-                (command == executable || command.starts_with(&prefix)).then(|| Record { pid, command: command.to_owned() })
+                (command == executable || command.starts_with(&prefix)).then(|| Record {
+                    pid,
+                    command: command.to_owned(),
+                })
             })
             .collect())
     }
 
     /// `codexUpdateReplacementProcess`: after the managed instance exits because the app updated
     /// itself, the one ordinary instance the updater relaunched.
-    pub async fn update_replacement(&self, exited: u32, previous_build: Option<&str>) -> Result<Option<(String, Record)>> {
-        let Some(previous_build) = previous_build.filter(|_| cfg!(target_os = "macos")) else { return Ok(None) };
-        let Some(build) = self.bundle_build().await.filter(|build| build != previous_build) else { return Ok(None) };
-        let mut candidates: Vec<Record> = self.processes().await?.into_iter().filter(|record| record.pid != exited).collect();
+    pub async fn update_replacement(
+        &self,
+        exited: u32,
+        previous_build: Option<&str>,
+    ) -> Result<Option<(String, Record)>> {
+        let Some(previous_build) = previous_build.filter(|_| cfg!(target_os = "macos")) else {
+            return Ok(None);
+        };
+        let Some(build) = self
+            .bundle_build()
+            .await
+            .filter(|build| build != previous_build)
+        else {
+            return Ok(None);
+        };
+        let mut candidates: Vec<Record> = self
+            .processes()
+            .await?
+            .into_iter()
+            .filter(|record| record.pid != exited)
+            .collect();
         if candidates.len() != 1 {
             return Ok(None);
         }
@@ -110,7 +160,11 @@ impl App {
         #[cfg(not(windows))]
         let mut managed: Vec<Record> = {
             let profile = format!(" {} ", self.profile_argument());
-            self.processes().await?.into_iter().filter(|record| record.command.contains(&profile)).collect()
+            self.processes()
+                .await?
+                .into_iter()
+                .filter(|record| record.command.contains(&profile))
+                .collect()
         };
         if managed.len() > 1 {
             bail!("Multiple managed Codex processes are running");
@@ -163,7 +217,10 @@ impl App {
             .status()
             .await?;
         if !status.success() {
-            bail!("LaunchServices failed to start Codex ({})", exit_reason(status));
+            bail!(
+                "LaunchServices failed to start Codex ({})",
+                exit_reason(status)
+            );
         }
         Ok(())
     }
@@ -185,10 +242,14 @@ impl App {
         if !is_running(record).await {
             return Ok(());
         }
-        if !signal(record.pid, Signal::SIGTERM)? || exits_within(record, Duration::from_secs(3)).await {
+        if !signal(record.pid, Signal::SIGTERM)?
+            || exits_within(record, Duration::from_secs(3)).await
+        {
             return Ok(());
         }
-        if signal(record.pid, Signal::SIGKILL)? && !exits_within(record, Duration::from_secs(1)).await {
+        if signal(record.pid, Signal::SIGKILL)?
+            && !exits_within(record, Duration::from_secs(1)).await
+        {
             bail!("Unable to stop the managed Codex process");
         }
         Ok(())
@@ -198,7 +259,10 @@ impl App {
     #[cfg(unix)]
     pub fn spawn_with_pipe(&self) -> Result<(tokio::process::Child, crate::cdp::Pipe)> {
         let executable = self.executable();
-        let arguments = [self.profile_argument(), "--remote-debugging-pipe".to_owned()];
+        let arguments = [
+            self.profile_argument(),
+            "--remote-debugging-pipe".to_owned(),
+        ];
         crate::cdp::Pipe::spawn(&executable, &arguments).map_err(|error| {
             let diagnostic: Vec<&str> =
                 arguments.iter().map(|argument| if argument.starts_with("--user-data-dir=") { "--user-data-dir=<broadcast-profile>" } else { argument }).collect();
@@ -231,31 +295,44 @@ fn exit_reason(status: std::process::ExitStatus) -> String {
     {
         use std::os::unix::process::ExitStatusExt;
         if let Some(signal) = status.signal() {
-            return nix::sys::signal::Signal::try_from(signal).map_or_else(|_| signal.to_string(), |signal| signal.as_str().to_owned());
+            return nix::sys::signal::Signal::try_from(signal)
+                .map_or_else(|_| signal.to_string(), |signal| signal.as_str().to_owned());
         }
     }
-    status.code().map_or_else(|| "null".to_owned(), |code| code.to_string())
+    status
+        .code()
+        .map_or_else(|| "null".to_owned(), |code| code.to_string())
 }
 
-static DEBUGGING_FLAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r" --remote-debugging-port(?:=|\s|$)").expect("valid regex"));
-static DEBUGGING_PORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r" --remote-debugging-port=(\d+)(?: |$)").expect("valid regex"));
+static DEBUGGING_FLAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" --remote-debugging-port(?:=|\s|$)").expect("valid regex"));
+static DEBUGGING_PORT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r" --remote-debugging-port=(\d+)(?: |$)").expect("valid regex"));
 
 /// `codexProcessDebuggingPort`.
 pub fn debugging_port(record: &Record) -> Option<u16> {
-    DEBUGGING_PORT.captures(&record.command)?[1].parse().ok().filter(|port| *port > 0)
+    DEBUGGING_PORT.captures(&record.command)?[1]
+        .parse()
+        .ok()
+        .filter(|port| *port > 0)
 }
 
 /// `managedCodexUsesPort`.
 pub fn uses_port(record: &Record, port: u16) -> bool {
-    record.command.contains(&format!(" --remote-debugging-port={port} "))
+    record
+        .command
+        .contains(&format!(" --remote-debugging-port={port} "))
 }
 
 /// `isManagedCodexRunning`: the pid still runs the same command line.
 #[cfg(unix)]
 async fn is_running(record: &Record) -> bool {
-    output("/bin/ps", &["-ww", "-p", &record.pid.to_string(), "-o", "command="])
-        .await
-        .is_some_and(|command| command.trim_end() == record.command)
+    output(
+        "/bin/ps",
+        &["-ww", "-p", &record.pid.to_string(), "-o", "command="],
+    )
+    .await
+    .is_some_and(|command| command.trim_end() == record.command)
 }
 
 #[cfg(unix)]
@@ -313,12 +390,21 @@ pub async fn activate(pid: u32) -> Result<()> {
 
 /// `isReachable` for the debugging endpoint.
 pub async fn reachable(http: &reqwest::Client, port: u16) -> bool {
-    let request = http.get(format!("http://127.0.0.1:{port}/json/version")).timeout(Duration::from_millis(1_500));
-    request.send().await.is_ok_and(|response| response.status().is_success())
+    let request = http
+        .get(format!("http://127.0.0.1:{port}/json/version"))
+        .timeout(Duration::from_millis(1_500));
+    request
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
 }
 
 /// `waitUntilReachable`, polling every 250 ms.
-pub async fn wait_until_reachable(http: &reqwest::Client, port: u16, timeout: Duration) -> Result<()> {
+pub async fn wait_until_reachable(
+    http: &reqwest::Client,
+    port: u16,
+    timeout: Duration,
+) -> Result<()> {
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
         if reachable(http, port).await {
@@ -333,13 +419,24 @@ pub async fn wait_until_reachable(http: &reqwest::Client, port: u16, timeout: Du
 pub fn is_codex_target(target: &serde_json::Value) -> bool {
     let url = target["url"].as_str();
     target["type"] == "page"
-        && !url.is_some_and(|url| url.contains("initialRoute=%2Fglobal-dictation") || url.contains("initialRoute=%2Favatar-overlay"))
+        && !url.is_some_and(|url| {
+            url.contains("initialRoute=%2Fglobal-dictation")
+                || url.contains("initialRoute=%2Favatar-overlay")
+        })
         && (url.is_some_and(|url| url.starts_with("app://")) || target["title"] == "Codex")
 }
 
 /// `codexTargets(port).length > 0`: whether the debugging port serves a Codex window.
 pub async fn has_codex_targets(http: &reqwest::Client, port: u16) -> bool {
-    let Ok(response) = http.get(format!("http://127.0.0.1:{port}/json/list")).send().await else { return false };
-    let Ok(targets) = response.json::<Vec<serde_json::Value>>().await else { return false };
+    let Ok(response) = http
+        .get(format!("http://127.0.0.1:{port}/json/list"))
+        .send()
+        .await
+    else {
+        return false;
+    };
+    let Ok(targets) = response.json::<Vec<serde_json::Value>>().await else {
+        return false;
+    };
     targets.iter().any(is_codex_target)
 }

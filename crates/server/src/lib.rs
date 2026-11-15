@@ -57,7 +57,10 @@ impl App {
 
 pub struct Server {
     app: Arc<App>,
-    notifications: (ai::app_server::Notifications, mpsc::UnboundedReceiver<ai::app_server::Notification>),
+    notifications: (
+        ai::app_server::Notifications,
+        mpsc::UnboundedReceiver<ai::app_server::Notification>,
+    ),
     host_notifications: mpsc::UnboundedReceiver<broadcast_codex::HostNotification>,
     host_bridge: Option<HostBridge>,
 }
@@ -76,8 +79,16 @@ impl Server {
         let notifications = mpsc::unbounded_channel();
         let (host_requests, requests) = mpsc::unbounded_channel();
         let (host_notifier, host_notifications) = mpsc::unbounded_channel();
-        let ai = ai::AiChat::new(config.codex_executable.clone(), config.codex_home.clone(), notifications.0.clone(), host_requests);
-        let summary = ai::summary::ProjectSummaries::new(config.codex_executable.clone(), std::env::current_dir()?);
+        let ai = ai::AiChat::new(
+            config.codex_executable.clone(),
+            config.codex_home.clone(),
+            notifications.0.clone(),
+            host_requests,
+        );
+        let summary = ai::summary::ProjectSummaries::new(
+            config.codex_executable.clone(),
+            std::env::current_dir()?,
+        );
         let app = App {
             store,
             events: EventHub::new(),
@@ -91,8 +102,16 @@ impl Server {
             summary,
             config,
         };
-        let host_bridge = Some(HostBridge { requests, notifications: host_notifier });
-        Ok(Self { app: Arc::new(app), notifications, host_notifications, host_bridge })
+        let host_bridge = Some(HostBridge {
+            requests,
+            notifications: host_notifier,
+        });
+        Ok(Self {
+            app: Arc::new(app),
+            notifications,
+            host_notifications,
+            host_bridge,
+        })
     }
 
     /// The host bridge for the launcher that runs beside this server; without one, requests to
@@ -104,27 +123,44 @@ impl Server {
     /// Serves until `shutdown` resolves, then ends open event streams so graceful shutdown can finish.
     /// The trust gate wraps the router because it rewrites launcher-prefixed paths before routing;
     /// inside it, cloud mode diverts business APIs to the cloud board.
-    pub async fn serve(self, listener: TcpListener, shutdown: impl Future<Output = ()> + Send + 'static) -> std::io::Result<()> {
-        let Self { app, notifications: (notifier, notifications), mut host_notifications, host_bridge } = self;
+    pub async fn serve(
+        self,
+        listener: TcpListener,
+        shutdown: impl Future<Output = ()> + Send + 'static,
+    ) -> std::io::Result<()> {
+        let Self {
+            app,
+            notifications: (notifier, notifications),
+            mut host_notifications,
+            host_bridge,
+        } = self;
         drop(host_bridge);
         tokio::spawn(ai::AiChat::consume(Arc::clone(&app), notifications));
         tokio::spawn(async move {
             while let Some(notification) = host_notifications.recv().await {
                 let origin = ai::app_server::Origin::Host(notification.host_id);
-                let _ = notifier.send(ai::app_server::Notification { origin, method: notification.method, params: notification.params });
+                let _ = notifier.send(ai::app_server::Notification {
+                    origin,
+                    method: notification.method,
+                    params: notification.params,
+                });
             }
         });
         ai::summary::ProjectSummaries::start(&app);
-        let routes = middleware::from_fn_with_state(Arc::clone(&app), cloud::proxy::route).layer(routes::router(Arc::clone(&app)));
+        let routes = middleware::from_fn_with_state(Arc::clone(&app), cloud::proxy::route)
+            .layer(routes::router(Arc::clone(&app)));
         let service = middleware::from_fn_with_state(Arc::clone(&app), trust::guard).layer(routes);
         let stopping = Arc::clone(&app);
-        let served = axum::serve(listener, ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service))
-            .with_graceful_shutdown(async move {
-                shutdown.await;
-                stopping.events.close();
-                stopping.ai.end_streams();
-            })
-            .await;
+        let served = axum::serve(
+            listener,
+            ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(service),
+        )
+        .with_graceful_shutdown(async move {
+            shutdown.await;
+            stopping.events.close();
+            stopping.ai.end_streams();
+        })
+        .await;
         app.ai.close(&app).await;
         app.summary.close().await;
         served

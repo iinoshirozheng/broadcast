@@ -27,7 +27,10 @@ const PLATFORM: &str = if cfg!(target_os = "macos") {
 };
 
 static SLASH_COMMANDS: LazyLock<Option<Value>> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../assets/codex-slash-commands-0.139.0.json")).ok()
+    serde_json::from_str(include_str!(
+        "../../assets/codex-slash-commands-0.139.0.json"
+    ))
+    .ok()
 });
 
 #[derive(Clone, Serialize)]
@@ -98,8 +101,14 @@ struct ModelKeys {
     tiers: &'static str,
 }
 
-fn sanitize(value: Option<&Value>, keys: &ModelKeys, visible: fn(&Map<String, Value>) -> bool) -> anyhow::Result<Vec<Model>> {
-    let models = value.and_then(Value::as_array).context("Codex returned an invalid model catalog")?;
+fn sanitize(
+    value: Option<&Value>,
+    keys: &ModelKeys,
+    visible: fn(&Map<String, Value>) -> bool,
+) -> anyhow::Result<Vec<Model>> {
+    let models = value
+        .and_then(Value::as_array)
+        .context("Codex returned an invalid model catalog")?;
     Ok(models
         .iter()
         .filter_map(Value::as_object)
@@ -107,7 +116,12 @@ fn sanitize(value: Option<&Value>, keys: &ModelKeys, visible: fn(&Map<String, Va
         .filter_map(|model| {
             let slug = trimmed(model.get(keys.slug))?;
             let mut efforts: Vec<String> = Vec::new();
-            for effort in model.get(keys.efforts).and_then(Value::as_array).into_iter().flatten() {
+            for effort in model
+                .get(keys.efforts)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 if let Some(effort) = trimmed(effort.get(keys.effort))
                     && !efforts.contains(&effort)
                 {
@@ -119,12 +133,21 @@ fn sanitize(value: Option<&Value>, keys: &ModelKeys, visible: fn(&Map<String, Va
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
-                .filter_map(|tier| Some(ServiceTier { id: trimmed(tier.get("id"))?, name: trimmed(tier.get("name"))? }))
+                .filter_map(|tier| {
+                    Some(ServiceTier {
+                        id: trimmed(tier.get("id"))?,
+                        name: trimmed(tier.get("name"))?,
+                    })
+                })
                 .collect();
             Some(Model {
                 display_name: trimmed(model.get(keys.display_name)).unwrap_or_else(|| slug.clone()),
                 slug,
-                description: model.get("description").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                description: model
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
                 default_reasoning_effort: model
                     .get(keys.default_effort)
                     .and_then(Value::as_str)
@@ -147,7 +170,11 @@ fn sanitize_models(value: Option<&Value>) -> anyhow::Result<Vec<Model>> {
         effort: "effort",
         tiers: "service_tiers",
     };
-    sanitize(value, &keys, |model| model.get("visibility").is_none_or(|visibility| visibility == "list"))
+    sanitize(value, &keys, |model| {
+        model
+            .get("visibility")
+            .is_none_or(|visibility| visibility == "list")
+    })
 }
 
 /// `sanitizeAppServerModels`: the app-server `model/list` catalog, skipping hidden models.
@@ -160,7 +187,9 @@ fn sanitize_app_server_models(value: Option<&Value>) -> anyhow::Result<Vec<Model
         effort: "reasoningEffort",
         tiers: "serviceTiers",
     };
-    sanitize(value, &keys, |model| model.get("hidden") != Some(&Value::Bool(true)))
+    sanitize(value, &keys, |model| {
+        model.get("hidden") != Some(&Value::Bool(true))
+    })
 }
 
 /// The skills of `skills/list` entries.
@@ -174,7 +203,11 @@ pub fn entry_skills(entries: &[Value]) -> impl Iterator<Item = &Map<String, Valu
 
 /// `interface.displayName`, trimmed.
 pub fn display_name(skill: &Map<String, Value>) -> Option<String> {
-    trimmed(skill.get("interface").and_then(|interface| interface.get("displayName")))
+    trimmed(
+        skill
+            .get("interface")
+            .and_then(|interface| interface.get("displayName")),
+    )
 }
 
 /// `sanitizeSkills`: enabled skills, unique by name and sorted by label.
@@ -184,12 +217,23 @@ fn sanitize_skills(entries: &[Value]) -> Vec<Skill> {
         if skill.get("enabled") == Some(&Value::Bool(false)) {
             continue;
         }
-        let Some(id) = trimmed(skill.get("name")) else { continue };
+        let Some(id) = trimmed(skill.get("name")) else {
+            continue;
+        };
         if skills.iter().any(|known| known.id == id) {
             continue;
         }
-        let text = |key: &str| skill.get(key).and_then(Value::as_str).map(|text| js::trim(text).to_owned()).unwrap_or_default();
-        let scope = skill.get("scope").and_then(Value::as_str).filter(|scope| ["user", "repo", "system", "admin"].contains(scope));
+        let text = |key: &str| {
+            skill
+                .get(key)
+                .and_then(Value::as_str)
+                .map(|text| js::trim(text).to_owned())
+                .unwrap_or_default()
+        };
+        let scope = skill
+            .get("scope")
+            .and_then(Value::as_str)
+            .filter(|scope| ["user", "repo", "system", "admin"].contains(scope));
         skills.push(Skill {
             label: display_name(skill).unwrap_or_else(|| id.clone()),
             id,
@@ -208,7 +252,12 @@ pub fn slash_commands() -> anyhow::Result<Vec<SlashCommand>> {
         .as_ref()
         .and_then(|catalog| catalog.get("commands")?.as_array())
         .context("Codex slash command catalog is invalid")?;
-    let lists = |command: &Value, key: &str| command.get(key).and_then(Value::as_array).map(|list| list.iter().any(|item| item == PLATFORM));
+    let lists = |command: &Value, key: &str| {
+        command
+            .get(key)
+            .and_then(Value::as_array)
+            .map(|list| list.iter().any(|item| item == PLATFORM))
+    };
     Ok(commands
         .iter()
         .filter_map(|command| {
@@ -220,7 +269,11 @@ pub fn slash_commands() -> anyhow::Result<Vec<SlashCommand>> {
             {
                 return None;
             }
-            let space = if command.get("supportsInlineArgs") == Some(&Value::Bool(true)) { " " } else { "" };
+            let space = if command.get("supportsInlineArgs") == Some(&Value::Bool(true)) {
+                " "
+            } else {
+                ""
+            };
             Some(SlashCommand {
                 id: id.to_owned(),
                 label: format!("/{id}"),
@@ -233,12 +286,20 @@ pub fn slash_commands() -> anyhow::Result<Vec<SlashCommand>> {
 
 /// `unavailableAiCatalog`: the empty catalog reported when the Codex CLI is not installed.
 pub fn unavailable() -> Catalog {
-    Catalog { available: Some(false), models: Vec::new(), skills: Vec::new(), commands: Vec::new(), sandboxes: AI_SANDBOX_MODES.to_vec() }
+    Catalog {
+        available: Some(false),
+        models: Vec::new(),
+        skills: Vec::new(),
+        commands: Vec::new(),
+        sandboxes: AI_SANDBOX_MODES.to_vec(),
+    }
 }
 
 /// Whether a catalog failure means the Codex CLI (or the workspace it runs in) is missing.
 pub fn is_missing_cli(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
 }
 
 /// `discoverAiCatalog`: `codex debug models` and a one-off app-server skill listing.
@@ -257,19 +318,31 @@ pub async fn discover(executable: &str, workspace: &str) -> anyhow::Result<Catal
             bail!("Codex model catalog exceeded the catalog size limit");
         }
         if !output.status.success() {
-            bail!("Codex could not list models ({})", app_server::exit_label(&output.status));
+            bail!(
+                "Codex could not list models ({})",
+                app_server::exit_label(&output.status)
+            );
         }
         let catalog: Value = serde_json::from_slice(&output.stdout)?;
         sanitize_models(catalog.get("models"))
     };
     let (models, entries) = tokio::try_join!(models, list_skills_once(executable, workspace))?;
-    Ok(Catalog { available: None, models, skills: sanitize_skills(&entries), commands: slash_commands()?, sandboxes: AI_SANDBOX_MODES.to_vec() })
+    Ok(Catalog {
+        available: None,
+        models,
+        skills: sanitize_skills(&entries),
+        commands: slash_commands()?,
+        sandboxes: AI_SANDBOX_MODES.to_vec(),
+    })
 }
 
 /// `discoverAppServerAiCatalog`: the same catalog from a running app-server.
 pub async fn discover_app_server(server: &AppServer, workspace: &str) -> anyhow::Result<Catalog> {
     let params = json!({ "cursor": null, "limit": 100, "includeHidden": false });
-    let (models, entries) = tokio::try_join!(server.request("model/list", params), server.list_skills(workspace, false))?;
+    let (models, entries) = tokio::try_join!(
+        server.request("model/list", params),
+        server.list_skills(workspace, false)
+    )?;
     Ok(Catalog {
         available: None,
         models: sanitize_app_server_models(models.get("data"))?,
@@ -289,11 +362,20 @@ async fn list_skills_once(executable: &str, workspace: &str) -> anyhow::Result<V
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     let mut child = command.spawn()?;
-    let mut stdin = child.stdin.take().context("app-server stdin is unavailable")?;
-    let stdout = child.stdout.take().context("app-server stdout is unavailable")?;
-    let result = tokio::time::timeout(CATALOG_TIMEOUT, converse(&mut child, &mut stdin, stdout, workspace))
-        .await
-        .unwrap_or_else(|_| Err(anyhow!("Timed out while reading Codex skills")));
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("app-server stdin is unavailable")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("app-server stdout is unavailable")?;
+    let result = tokio::time::timeout(
+        CATALOG_TIMEOUT,
+        converse(&mut child, &mut stdin, stdout, workspace),
+    )
+    .await
+    .unwrap_or_else(|_| Err(anyhow!("Timed out while reading Codex skills")));
     drop(stdin);
     app_server::signal(child.id(), false);
     tokio::spawn(async move {
@@ -302,7 +384,12 @@ async fn list_skills_once(executable: &str, workspace: &str) -> anyhow::Result<V
     result
 }
 
-async fn converse(child: &mut Child, stdin: &mut ChildStdin, stdout: ChildStdout, workspace: &str) -> anyhow::Result<Vec<Value>> {
+async fn converse(
+    child: &mut Child,
+    stdin: &mut ChildStdin,
+    stdout: ChildStdout,
+    workspace: &str,
+) -> anyhow::Result<Vec<Value>> {
     async fn send(stdin: &mut ChildStdin, message: Value) -> std::io::Result<()> {
         stdin.write_all(format!("{message}\n").as_bytes()).await
     }
@@ -323,10 +410,15 @@ async fn converse(child: &mut Child, stdin: &mut ChildStdin, stdout: ChildStdout
             Line::TooLong => bail!("Codex skills response exceeded the catalog size limit"),
             Line::Eof => {
                 let status = child.wait().await?;
-                bail!("Codex app-server exited before listing skills ({})", app_server::exit_label(&status));
+                bail!(
+                    "Codex app-server exited before listing skills ({})",
+                    app_server::exit_label(&status)
+                );
             }
         }
-        let Ok(message) = serde_json::from_slice::<Value>(&line) else { continue };
+        let Ok(message) = serde_json::from_slice::<Value>(&line) else {
+            continue;
+        };
         let failed = message.get("error").is_some_and(js::truthy);
         match message.get("id").and_then(Value::as_f64) {
             Some(1.0) => {
@@ -341,7 +433,11 @@ async fn converse(child: &mut Child, stdin: &mut ChildStdin, stdout: ChildStdout
                 if failed {
                     bail!("Codex app-server could not list skills");
                 }
-                return Ok(message.pointer("/result/data").and_then(Value::as_array).cloned().unwrap_or_default());
+                return Ok(message
+                    .pointer("/result/data")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default());
             }
             _ => {}
         }

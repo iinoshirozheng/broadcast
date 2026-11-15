@@ -24,7 +24,9 @@ impl Agent {
     fn over(self, low: &Agent) -> Agent {
         Agent {
             description: self.description.or_else(|| low.description.clone()),
-            developer_instructions: self.developer_instructions.or_else(|| low.developer_instructions.clone()),
+            developer_instructions: self
+                .developer_instructions
+                .or_else(|| low.developer_instructions.clone()),
             ..self
         }
     }
@@ -58,9 +60,14 @@ fn absolute(path: &Path) -> PathBuf {
 /// A file found by discovery (no role) must carry both texts.
 fn read_agent(path: &Path, role: Option<&str>) -> Option<Agent> {
     let table = parse(path)?;
-    let stable_id = text(&table, "name").or_else(|| text(&table, "role_name")).or_else(|| role.map(str::to_owned))?;
+    let stable_id = text(&table, "name")
+        .or_else(|| text(&table, "role_name"))
+        .or_else(|| role.map(str::to_owned))?;
     let agent = Agent::named(&stable_id, &table);
-    if stable_id.is_empty() || (role.is_none() && (agent.description.is_none() || agent.developer_instructions.is_none())) {
+    if stable_id.is_empty()
+        || (role.is_none()
+            && (agent.description.is_none() || agent.developer_instructions.is_none()))
+    {
         return None;
     }
     Some(agent)
@@ -94,7 +101,9 @@ fn toml_files(directory: &Path) -> io::Result<(Vec<PathBuf>, bool)> {
 
 /// `projectConfigFolders`: `.codex` folders from the enclosing repository root down to the workspace.
 fn project_folders(workspace: Option<&str>) -> Vec<PathBuf> {
-    let Some(workspace) = workspace.filter(|path| !js::trim(path).is_empty()) else { return Vec::new() };
+    let Some(workspace) = workspace.filter(|path| !js::trim(path).is_empty()) else {
+        return Vec::new();
+    };
     let mut folders = Vec::new();
     let mut current = Some(absolute(Path::new(workspace)));
     while let Some(directory) = current {
@@ -109,22 +118,35 @@ fn project_folders(workspace: Option<&str>) -> Vec<PathBuf> {
 }
 
 /// `loadAgentLayer`: the roles declared in a `config.toml`, then the agent files discovered beside it.
-fn load_layer(directory: &Path, config_file: &Path, agents_directory: &Path) -> io::Result<(Vec<Agent>, bool)> {
+fn load_layer(
+    directory: &Path,
+    config_file: &Path,
+    agents_directory: &Path,
+) -> io::Result<(Vec<Agent>, bool)> {
     let mut agents: Vec<Agent> = Vec::new();
     let mut declared = Vec::new();
     let config = parse(config_file);
     let mut available = config.is_some();
-    let roles = config.as_ref().and_then(|config| config.get("agents")?.as_table());
+    let roles = config
+        .as_ref()
+        .and_then(|config| config.get("agents")?.as_table());
     for (name, role) in roles.into_iter().flatten() {
-        let Some(role) = role.as_table() else { continue };
+        let Some(role) = role.as_table() else {
+            continue;
+        };
         let mut agent = Agent::named(name, role);
         if let Some(file) = text(role, "config_file") {
             let file = absolute(&directory.join(file));
-            let Some(file_agent) = read_agent(&file, Some(name)) else { continue };
+            let Some(file_agent) = read_agent(&file, Some(name)) else {
+                continue;
+            };
             agent = file_agent.over(&agent);
             declared.push(file);
         }
-        if !agents.iter().any(|known| known.stable_id == agent.stable_id) {
+        if !agents
+            .iter()
+            .any(|known| known.stable_id == agent.stable_id)
+        {
             agents.push(agent);
         }
     }
@@ -135,7 +157,9 @@ fn load_layer(directory: &Path, config_file: &Path, agents_directory: &Path) -> 
             continue;
         }
         if let Some(agent) = read_agent(&file, None)
-            && !agents.iter().any(|known| known.stable_id == agent.stable_id)
+            && !agents
+                .iter()
+                .any(|known| known.stable_id == agent.stable_id)
         {
             agents.push(agent);
         }
@@ -146,14 +170,24 @@ fn load_layer(directory: &Path, config_file: &Path, agents_directory: &Path) -> 
 /// `listConfiguredAgents`: the effective agents with a description, sorted by label.
 pub fn configured(codex_home: &Path, workspace: Option<&str>) -> io::Result<(Vec<Agent>, bool)> {
     let mut layers = vec![(codex_home.to_owned(), codex_home.join("agents"))];
-    layers.extend(project_folders(workspace).into_iter().map(|folder| (folder.clone(), folder.join("agents"))));
+    layers.extend(
+        project_folders(workspace)
+            .into_iter()
+            .map(|folder| (folder.clone(), folder.join("agents"))),
+    );
     let mut effective: Vec<Agent> = Vec::new();
     let mut available = false;
     for (directory, agents_directory) in layers {
-        let (agents, loaded) = load_layer(&directory, &directory.join("config.toml"), &agents_directory)?;
+        let (agents, loaded) = load_layer(
+            &directory,
+            &directory.join("config.toml"),
+            &agents_directory,
+        )?;
         available |= loaded;
         for agent in agents {
-            let position = effective.iter().position(|known| known.stable_id == agent.stable_id);
+            let position = effective
+                .iter()
+                .position(|known| known.stable_id == agent.stable_id);
             let merged = match position {
                 Some(index) => agent.over(&effective[index]),
                 None => agent,

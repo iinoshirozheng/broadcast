@@ -91,9 +91,15 @@ pub struct ThreadPatch {
 
 pub enum TurnBody {
     /// A plain message whose Skill markers name `skill_ids` in order.
-    Message { message: String, skill_ids: Vec<String> },
+    Message {
+        message: String,
+        skill_ids: Vec<String>,
+    },
     /// A composer document resolved against the catalog `revision`.
-    Composer { revision: String, nodes: Vec<DocumentNode> },
+    Composer {
+        revision: String,
+        nodes: Vec<DocumentNode>,
+    },
 }
 
 pub struct Turn {
@@ -118,8 +124,15 @@ struct Runtime {
 }
 
 enum Kind {
-    Exec { pid: Option<u32> },
-    AppServer { server: AppServer, origin: Option<Origin>, codex_thread_id: String, turn_id: Mutex<Option<String>> },
+    Exec {
+        pid: Option<u32>,
+    },
+    AppServer {
+        server: AppServer,
+        origin: Option<Origin>,
+        codex_thread_id: String,
+        turn_id: Mutex<Option<String>>,
+    },
 }
 
 /// A run in flight. `done` flips once the run is recorded as finished.
@@ -197,11 +210,21 @@ fn internal(message: &str) -> Error {
 }
 
 fn busy(thread_id: &str) -> Error {
-    ApiError::new(409, "THREAD_BUSY", format!("AI chat thread '{thread_id}' has a running turn")).into()
+    ApiError::new(
+        409,
+        "THREAD_BUSY",
+        format!("AI chat thread '{thread_id}' has a running turn"),
+    )
+    .into()
 }
 
 fn workspace_changed() -> Error {
-    ApiError::new(409, "PROJECT_WORKSPACE_CHANGED", "The project's device workspace no longer matches this conversation").into()
+    ApiError::new(
+        409,
+        "PROJECT_WORKSPACE_CHANGED",
+        "The project's device workspace no longer matches this conversation",
+    )
+    .into()
 }
 
 fn invalid_query(message: &str) -> Error {
@@ -210,7 +233,12 @@ fn invalid_query(message: &str) -> Error {
 
 fn confirm_danger(thread: &AiChatThread, confirmed: bool) -> Result<()> {
     if thread.sandbox == "danger-full-access" && !confirmed {
-        return Err(ApiError::new(400, "DANGER_CONFIRMATION_REQUIRED", "danger-full-access must be confirmed for every turn").into());
+        return Err(ApiError::new(
+            400,
+            "DANGER_CONFIRMATION_REQUIRED",
+            "danger-full-access must be confirmed for every turn",
+        )
+        .into());
     }
     Ok(())
 }
@@ -243,8 +271,15 @@ fn resolve_model<'a>(catalog: &'a Catalog, requested: Option<&str>) -> Result<&'
 }
 
 fn validate_effort(model: &Model, effort: &str) -> Result<()> {
-    if !model.supported_reasoning_efforts.iter().any(|supported| supported == effort) {
-        let message = format!("Reasoning effort '{effort}' is not supported by model '{}'", model.slug);
+    if !model
+        .supported_reasoning_efforts
+        .iter()
+        .any(|supported| supported == effort)
+    {
+        let message = format!(
+            "Reasoning effort '{effort}' is not supported by model '{}'",
+            model.slug
+        );
         return Err(ApiError::new(400, "INVALID_REASONING_EFFORT", message).into());
     }
     Ok(())
@@ -262,7 +297,11 @@ fn js_string(value: Option<&Value>) -> String {
 /// `cappedError` with the generic fallback for an empty message.
 fn failure(message: &str, fallback: &str) -> String {
     let capped = capped_str(message);
-    if capped.is_empty() { fallback.to_owned() } else { capped }
+    if capped.is_empty() {
+        fallback.to_owned()
+    } else {
+        capped
+    }
 }
 
 fn agent_dispatch_text(agent: &Agent) -> String {
@@ -276,7 +315,11 @@ fn agent_dispatch_text(agent: &Agent) -> String {
 fn document_node(node: &DocumentNode) -> Value {
     match node {
         DocumentNode::Text(text) => json!({ "type": "text", "text": text }),
-        DocumentNode::Reference { kind, candidate_ref, label } => json!({ "type": kind, "candidateRef": candidate_ref, "label": label }),
+        DocumentNode::Reference {
+            kind,
+            candidate_ref,
+            label,
+        } => json!({ "type": kind, "candidateRef": candidate_ref, "label": label }),
         DocumentNode::Other(kind) => json!({ "type": kind }),
     }
 }
@@ -286,16 +329,28 @@ fn app_server_item(item: Option<&Value>) -> Option<EventRecord> {
     let item = item?.as_object()?;
     let text = |key: &str| capped_str(&js_string(item.get(key)));
     let mut data = Map::new();
-    data.insert("status".into(), item.get("status").filter(|status| !status.is_null()).cloned().unwrap_or(json!("completed")));
-    if let Some(id) = item.get("id").and_then(Value::as_str).map(capped_str).filter(|id| !id.is_empty()) {
+    data.insert(
+        "status".into(),
+        item.get("status")
+            .filter(|status| !status.is_null())
+            .cloned()
+            .unwrap_or(json!("completed")),
+    );
+    if let Some(id) = item
+        .get("id")
+        .and_then(Value::as_str)
+        .map(capped_str)
+        .filter(|id| !id.is_empty())
+    {
         data.insert("itemId".into(), json!(id));
     }
-    let record = |kind: &str, role: &'static str, content: String, data: Map<String, Value>| EventRecord {
-        kind: kind.to_owned(),
-        role,
-        content,
-        data: Value::Object(data),
-    };
+    let record =
+        |kind: &str, role: &'static str, content: String, data: Map<String, Value>| EventRecord {
+            kind: kind.to_owned(),
+            role,
+            content,
+            data: Value::Object(data),
+        };
     match item.get("type").and_then(Value::as_str)? {
         "agentMessage" => Some(record("agent_message", "assistant", text("text"), data)),
         "commandExecution" => {
@@ -303,20 +358,39 @@ fn app_server_item(item: Option<&Value>) -> Option<EventRecord> {
             if let Some(output) = item.get("aggregatedOutput").and_then(Value::as_str) {
                 data.insert("output".into(), json!(capped_str(output)));
             }
-            if let Some(code) = item.get("exitCode").filter(|code| code.as_f64().is_some_and(|code| code.fract() == 0.0)) {
+            if let Some(code) = item
+                .get("exitCode")
+                .filter(|code| code.as_f64().is_some_and(|code| code.fract() == 0.0))
+            {
                 data.insert("exitCode".into(), code.clone());
             }
-            Some(record("command_execution", "activity", text("command"), data))
+            Some(record(
+                "command_execution",
+                "activity",
+                text("command"),
+                data,
+            ))
         }
         "fileChange" => {
-            let changes = item.get("changes").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
-            let files: Vec<String> = changes.iter().filter_map(|change| change.get("path")?.as_str().map(capped_str)).collect();
+            let changes = item
+                .get("changes")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let files: Vec<String> = changes
+                .iter()
+                .filter_map(|change| change.get("path")?.as_str().map(capped_str))
+                .collect();
             let content = capped_str(&files.join("\n"));
             data.insert("files".into(), json!(files));
             Some(record("file_change", "activity", content, data))
         }
         "mcpToolCall" => {
-            let joined = format!("{}.{}", js_string(item.get("server")), js_string(item.get("tool")));
+            let joined = format!(
+                "{}.{}",
+                js_string(item.get("server")),
+                js_string(item.get("tool"))
+            );
             let content = joined.strip_prefix('.').unwrap_or(&joined);
             let content = content.strip_suffix('.').unwrap_or(content).to_owned();
             for key in ["server", "tool"] {
@@ -324,7 +398,11 @@ fn app_server_item(item: Option<&Value>) -> Option<EventRecord> {
                     data.insert(key.into(), value.clone());
                 }
             }
-            let role = if item.get("error").is_some_and(js::truthy) { "error" } else { "activity" };
+            let role = if item.get("error").is_some_and(js::truthy) {
+                "error"
+            } else {
+                "activity"
+            };
             Some(record("mcp_tool_call", role, content, data))
         }
         _ => None,
@@ -350,8 +428,14 @@ async fn write_attachments(attachments: &[Attachment]) -> Result<Written> {
     if attachments.is_empty() {
         return Ok(Written::default());
     }
-    let directory = tempfile::Builder::new().prefix("broadcast-ai-turn-").tempdir()?.keep();
-    let mut written = Written { directory: Some(directory.clone()), ..Written::default() };
+    let directory = tempfile::Builder::new()
+        .prefix("broadcast-ai-turn-")
+        .tempdir()?
+        .keep();
+    let mut written = Written {
+        directory: Some(directory.clone()),
+        ..Written::default()
+    };
     for (index, attachment) in attachments.iter().enumerate() {
         let path = directory.join(format!("attachment-{}-{}", index + 1, attachment.filename));
         if let Err(error) = write_file(&path, &attachment.data).await {
@@ -371,21 +455,38 @@ async fn get_thread(app: &Arc<App>, id: &str) -> Result<AiChatThread> {
     let key = id.to_owned();
     app.store(move |store| store.get_ai_chat_thread(&key))
         .await?
-        .ok_or_else(|| ApiError::new(404, "AI_CHAT_THREAD_NOT_FOUND", format!("AI chat thread '{id}' does not exist")).into())
+        .ok_or_else(|| {
+            ApiError::new(
+                404,
+                "AI_CHAT_THREAD_NOT_FOUND",
+                format!("AI chat thread '{id}' does not exist"),
+            )
+            .into()
+        })
 }
 
 async fn get_run(app: &Arc<App>, id: &str) -> Result<AiChatRun> {
     let key = id.to_owned();
     app.store(move |store| store.get_ai_chat_run(&key))
         .await?
-        .ok_or_else(|| ApiError::new(404, "AI_CHAT_RUN_NOT_FOUND", format!("AI chat run '{id}' does not exist")).into())
+        .ok_or_else(|| {
+            ApiError::new(
+                404,
+                "AI_CHAT_RUN_NOT_FOUND",
+                format!("AI chat run '{id}' does not exist"),
+            )
+            .into()
+        })
 }
 
 fn exit_failure(status: &ExitStatus) -> Option<String> {
     match status.code() {
         Some(0) => None,
         Some(code) => Some(format!("Codex exited with code {code}")),
-        None => Some(format!("Codex exited due to signal {}", app_server::exit_label(status))),
+        None => Some(format!(
+            "Codex exited due to signal {}",
+            app_server::exit_label(status)
+        )),
     }
 }
 
@@ -400,9 +501,20 @@ impl AiChat {
     ) -> Self {
         let local_server = Arc::new(LocalAppServer::new(executable.clone(), notifications));
         let server = AppServer::Local(Arc::clone(&local_server));
-        let local = Runtime { composer: Arc::new(ComposerCatalog::new(server.clone(), Some(codex_home))), server };
+        let local = Runtime {
+            composer: Arc::new(ComposerCatalog::new(server.clone(), Some(codex_home))),
+            server,
+        };
         let (listeners, _) = broadcast::channel(1024);
-        Self { executable, local, local_server, host_requests, remote: Mutex::default(), active: Mutex::default(), listeners }
+        Self {
+            executable,
+            local,
+            local_server,
+            host_requests,
+            remote: Mutex::default(),
+            active: Mutex::default(),
+            listeners,
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<StreamMessage> {
@@ -420,12 +532,20 @@ impl AiChat {
 
     /// `runtimeForTarget`: this device's app-server, or one per remote host (without local agents).
     fn runtime(&self, remote: Option<&RemoteTarget>) -> Runtime {
-        let Some(target) = remote else { return self.local.clone() };
+        let Some(target) = remote else {
+            return self.local.clone();
+        };
         lock(&self.remote)
             .entry(target.codex_host_id.clone())
             .or_insert_with(|| {
-                let server = AppServer::Host(Arc::new(HostAppServer { host_id: target.codex_host_id.clone(), requests: self.host_requests.clone() }));
-                Runtime { composer: Arc::new(ComposerCatalog::new(server.clone(), None)), server }
+                let server = AppServer::Host(Arc::new(HostAppServer {
+                    host_id: target.codex_host_id.clone(),
+                    requests: self.host_requests.clone(),
+                }));
+                Runtime {
+                    composer: Arc::new(ComposerCatalog::new(server.clone(), None)),
+                    server,
+                }
             })
             .clone()
     }
@@ -433,15 +553,26 @@ impl AiChat {
     fn composer_for(&self, origin: &Origin) -> Option<Arc<ComposerCatalog>> {
         match origin {
             Origin::Local(_) => Some(Arc::clone(&self.local.composer)),
-            Origin::Host(host_id) => lock(&self.remote).get(host_id).map(|runtime| Arc::clone(&runtime.composer)),
+            Origin::Host(host_id) => lock(&self.remote)
+                .get(host_id)
+                .map(|runtime| Arc::clone(&runtime.composer)),
         }
     }
 
     fn is_active(&self, thread: &AiChatThread) -> bool {
-        thread.current_run.is_some() || lock(&self.active).values().any(|active| active.thread_id == thread.id)
+        thread.current_run.is_some()
+            || lock(&self.active)
+                .values()
+                .any(|active| active.thread_id == thread.id)
     }
 
-    async fn record(&self, app: &Arc<App>, thread_id: &str, run_id: &str, event: EventRecord) -> Result<()> {
+    async fn record(
+        &self,
+        app: &Arc<App>,
+        thread_id: &str,
+        run_id: &str,
+        event: EventRecord,
+    ) -> Result<()> {
         let (thread, run) = (thread_id.to_owned(), run_id.to_owned());
         let stored = app
             .store(move |store| {
@@ -461,21 +592,34 @@ impl AiChat {
 
     async fn create_run(&self, app: &Arc<App>, thread_id: &str) -> Result<AiChatRun> {
         let id = thread_id.to_owned();
-        let run = app.store(move |store| store.create_ai_chat_run(&id)).await?;
+        let run = app
+            .store(move |store| store.create_ai_chat_run(&id))
+            .await?;
         self.emit(thread_id, json!({ "type": "ai.run", "run": run }));
         Ok(run)
     }
 
     async fn catalog_for(&self, resolved: &Resolved) -> Result<Catalog> {
         match &resolved.remote {
-            Some(target) => catalog::discover_app_server(&self.runtime(Some(target)).server, &resolved.workspace_path).await,
+            Some(target) => {
+                catalog::discover_app_server(
+                    &self.runtime(Some(target)).server,
+                    &resolved.workspace_path,
+                )
+                .await
+            }
             None => catalog::discover(&self.executable, &resolved.workspace_path).await,
         }
         .map_err(Error::Internal)
     }
 
     /// `getCatalog`: the models, Skills and commands available where the project runs.
-    pub async fn catalog(&self, app: &Arc<App>, project_id: &str, remote: Option<&RemoteTarget>) -> Result<Catalog> {
+    pub async fn catalog(
+        &self,
+        app: &Arc<App>,
+        project_id: &str,
+        remote: Option<&RemoteTarget>,
+    ) -> Result<Catalog> {
         let resolved = context::resolve(app, project_id, None, remote).await?;
         self.catalog_for(&resolved).await
     }
@@ -492,8 +636,13 @@ impl AiChat {
                 }
                 other => other?,
             };
-            if project_id.as_ref().is_some_and(|id| *id != found.origin.project_id) {
-                return Err(invalid_query("Composer thread does not belong to the selected project"));
+            if project_id
+                .as_ref()
+                .is_some_and(|id| *id != found.origin.project_id)
+            {
+                return Err(invalid_query(
+                    "Composer thread does not belong to the selected project",
+                ));
             }
             project_id = Some(found.origin.project_id.clone());
             remote = target_of(&found.origin);
@@ -502,35 +651,65 @@ impl AiChat {
         let without_compact = |mut response: Value| {
             if let Some(candidates) = response.get_mut("candidates").and_then(Value::as_array_mut) {
                 candidates.retain(|candidate| {
-                    candidate.pointer("/dispatch/handlerId").and_then(Value::as_str) != Some(composer::COMPACT_HANDLER)
+                    candidate
+                        .pointer("/dispatch/handlerId")
+                        .and_then(Value::as_str)
+                        != Some(composer::COMPACT_HANDLER)
                 });
             }
             response
         };
         let Some(project_id) = project_id else {
-            let response = self.local.composer.candidates(None, &query.trigger, &query.query).await?;
+            let response = self
+                .local
+                .composer
+                .candidates(None, &query.trigger, &query.query)
+                .await?;
             return Ok(without_compact(response));
         };
-        let issue_id = thread.as_ref().and_then(|thread| thread.origin.issue_id.clone());
-        let resolved = match context::resolve(app, &project_id, issue_id.as_deref(), remote.as_ref()).await {
-            Err(Error::Api(error)) if error.code == "PROJECT_NOT_FOUND" || error.code == "AI_CHAT_ISSUE_NOT_FOUND" => {
-                return Err(invalid_query("Composer project is invalid"));
-            }
-            other => other?,
-        };
-        if thread.as_ref().is_some_and(|thread| thread.origin.workspace_path != resolved.workspace_path) {
-            return Err(invalid_query("Composer thread workspace no longer matches the selected project"));
+        let issue_id = thread
+            .as_ref()
+            .and_then(|thread| thread.origin.issue_id.clone());
+        let resolved =
+            match context::resolve(app, &project_id, issue_id.as_deref(), remote.as_ref()).await {
+                Err(Error::Api(error))
+                    if error.code == "PROJECT_NOT_FOUND"
+                        || error.code == "AI_CHAT_ISSUE_NOT_FOUND" =>
+                {
+                    return Err(invalid_query("Composer project is invalid"));
+                }
+                other => other?,
+            };
+        if thread
+            .as_ref()
+            .is_some_and(|thread| thread.origin.workspace_path != resolved.workspace_path)
+        {
+            return Err(invalid_query(
+                "Composer thread workspace no longer matches the selected project",
+            ));
         }
         let composer = self.runtime(resolved.remote.as_ref()).composer;
-        let response = composer.candidates(Some(&resolved.workspace_path), &query.trigger, &query.query).await?;
+        let response = composer
+            .candidates(Some(&resolved.workspace_path), &query.trigger, &query.query)
+            .await?;
         let compactable = thread.is_some_and(|thread| {
             thread.codex_thread_id.is_some_and(|id| !id.is_empty()) && thread.status != "running"
         });
-        Ok(if compactable { response } else { without_compact(response) })
+        Ok(if compactable {
+            response
+        } else {
+            without_compact(response)
+        })
     }
 
     /// `resolveComposerRebindWorkspace` + `rebind`: re-resolves persisted references for a document.
-    pub async fn rebind(&self, app: &Arc<App>, project_id: &str, thread_id: Option<&str>, nodes: Vec<RebindNode>) -> Result<Value> {
+    pub async fn rebind(
+        &self,
+        app: &Arc<App>,
+        project_id: &str,
+        thread_id: Option<&str>,
+        nodes: Vec<RebindNode>,
+    ) -> Result<Value> {
         let (workspace, composer) = match thread_id {
             Some(thread_id) => {
                 let thread = match get_thread(app, thread_id).await {
@@ -540,13 +719,19 @@ impl AiChat {
                     other => other?,
                 };
                 if thread.origin.project_id != project_id {
-                    return Err(invalid_query("Composer thread does not belong to the selected project"));
+                    return Err(invalid_query(
+                        "Composer thread does not belong to the selected project",
+                    ));
                 }
                 if !thread.origin.remote() {
-                    let directory = tokio::fs::metadata(&thread.origin.workspace_path).await.is_ok_and(|meta| meta.is_dir());
+                    let directory = tokio::fs::metadata(&thread.origin.workspace_path)
+                        .await
+                        .is_ok_and(|meta| meta.is_dir());
                     if !directory {
                         let message = "The conversation workspace is not available on this device";
-                        return Err(ApiError::new(409, "PROJECT_WORKSPACE_UNAVAILABLE", message).into());
+                        return Err(
+                            ApiError::new(409, "PROJECT_WORKSPACE_UNAVAILABLE", message).into()
+                        );
                     }
                 }
                 let composer = self.runtime(target_of(&thread.origin).as_ref()).composer;
@@ -554,7 +739,10 @@ impl AiChat {
             }
             None => {
                 let resolved = match context::resolve(app, project_id, None, None).await {
-                    Err(Error::Api(error)) if error.code == "PROJECT_NOT_FOUND" || error.code == "AI_CHAT_ISSUE_NOT_FOUND" => {
+                    Err(Error::Api(error))
+                        if error.code == "PROJECT_NOT_FOUND"
+                            || error.code == "AI_CHAT_ISSUE_NOT_FOUND" =>
+                    {
                         return Err(invalid_query("Composer project is invalid"));
                     }
                     other => other?,
@@ -577,7 +765,9 @@ impl AiChat {
     pub async fn summary(&self, app: &Arc<App>, id: &str) -> Result<Value> {
         let thread = get_thread(app, id).await?;
         let key = id.to_owned();
-        let runs = app.store(move |store| store.list_ai_chat_runs(&key)).await?;
+        let runs = app
+            .store(move |store| store.list_ai_chat_runs(&key))
+            .await?;
         Ok(json!({ "thread": thread, "runs": runs }))
     }
 
@@ -586,17 +776,30 @@ impl AiChat {
         let thread = get_thread(app, id).await?;
         let key = id.to_owned();
         let (events, runs) = app
-            .store(move |store| Ok((store.list_ai_chat_events(&key)?, store.list_ai_chat_runs(&key)?)))
+            .store(move |store| {
+                Ok((
+                    store.list_ai_chat_events(&key)?,
+                    store.list_ai_chat_runs(&key)?,
+                ))
+            })
             .await?;
         Ok(json!({ "thread": thread, "events": events, "runs": runs }))
     }
 
     /// `createThread`: a conversation pinned to the project's workspace and a supported model.
     pub async fn create(&self, app: &Arc<App>, input: NewThread) -> Result<AiChatThread> {
-        let resolved = context::resolve(app, &input.project_id, input.issue_id.as_deref(), input.remote.as_ref()).await?;
+        let resolved = context::resolve(
+            app,
+            &input.project_id,
+            input.issue_id.as_deref(),
+            input.remote.as_ref(),
+        )
+        .await?;
         let catalog = self.catalog_for(&resolved).await?;
         let model = resolve_model(&catalog, input.model.as_deref())?;
-        let reasoning_effort = input.reasoning_effort.unwrap_or_else(|| model.default_reasoning_effort.clone());
+        let reasoning_effort = input
+            .reasoning_effort
+            .unwrap_or_else(|| model.default_reasoning_effort.clone());
         validate_effort(model, &reasoning_effort)?;
         let remote = resolved.remote.as_ref();
         let issue = resolved.issue.as_ref();
@@ -611,25 +814,52 @@ impl AiChat {
             issue_identifier: issue.map(|issue| issue.identifier.clone()),
         };
         let thread = NewAiChatThread {
-            title: input.title.or_else(|| issue.map(|issue| issue.identifier.clone())).unwrap_or_else(|| "New conversation".to_owned()),
+            title: input
+                .title
+                .or_else(|| issue.map(|issue| issue.identifier.clone()))
+                .unwrap_or_else(|| "New conversation".to_owned()),
             origin,
             model: model.slug.clone(),
             reasoning_effort,
-            sandbox: input.sandbox.unwrap_or_else(|| "workspace-write".to_owned()),
+            sandbox: input
+                .sandbox
+                .unwrap_or_else(|| "workspace-write".to_owned()),
         };
-        app.store(move |store| store.create_ai_chat_thread(thread)).await
+        app.store(move |store| store.create_ai_chat_thread(thread))
+            .await
     }
 
     /// `updateThread`: settings cannot change while a turn runs.
-    pub async fn update(&self, app: &Arc<App>, id: &str, patch: ThreadPatch) -> Result<AiChatThread> {
+    pub async fn update(
+        &self,
+        app: &Arc<App>,
+        id: &str,
+        patch: ThreadPatch,
+    ) -> Result<AiChatThread> {
         let mut thread = get_thread(app, id).await?;
-        let settings = patch.model.is_some() || patch.reasoning_effort.is_some() || patch.sandbox.is_some();
+        let settings =
+            patch.model.is_some() || patch.reasoning_effort.is_some() || patch.sandbox.is_some();
         let was_active = settings && self.is_active(&thread);
         if patch.model.is_some() || patch.reasoning_effort.is_some() {
-            let catalog = self.catalog(app, &thread.origin.project_id, target_of(&thread.origin).as_ref()).await?;
+            let catalog = self
+                .catalog(
+                    app,
+                    &thread.origin.project_id,
+                    target_of(&thread.origin).as_ref(),
+                )
+                .await?;
             thread = get_thread(app, id).await?;
-            let model = resolve_model(&catalog, Some(patch.model.as_deref().unwrap_or(&thread.model)))?;
-            validate_effort(model, patch.reasoning_effort.as_deref().unwrap_or(&thread.reasoning_effort))?;
+            let model = resolve_model(
+                &catalog,
+                Some(patch.model.as_deref().unwrap_or(&thread.model)),
+            )?;
+            validate_effort(
+                model,
+                patch
+                    .reasoning_effort
+                    .as_deref()
+                    .unwrap_or(&thread.reasoning_effort),
+            )?;
         }
         if was_active || (settings && self.is_active(&thread)) {
             return Err(busy(id));
@@ -642,7 +872,8 @@ impl AiChat {
             sandbox: patch.sandbox,
         };
         let key = id.to_owned();
-        app.store(move |store| store.update_ai_chat_thread(&key, changes)).await
+        app.store(move |store| store.update_ai_chat_thread(&key, changes))
+            .await
     }
 
     pub async fn delete(&self, app: &Arc<App>, id: &str) -> Result<()> {
@@ -651,7 +882,8 @@ impl AiChat {
             return Err(busy(id));
         }
         let key = id.to_owned();
-        app.store(move |store| store.delete_ai_chat_thread(&key)).await?;
+        app.store(move |store| store.delete_ai_chat_thread(&key))
+            .await?;
         Ok(())
     }
 
@@ -659,27 +891,57 @@ impl AiChat {
     pub async fn compact(&self, app: &Arc<App>, id: &str) -> Result<AiChatThread> {
         let thread = get_thread(app, id).await?;
         if thread.status == "running" {
-            return Err(ApiError::new(409, "AI_CHAT_THREAD_RUNNING", "Cannot compact a running conversation").into());
+            return Err(ApiError::new(
+                409,
+                "AI_CHAT_THREAD_RUNNING",
+                "Cannot compact a running conversation",
+            )
+            .into());
         }
-        let Some(codex_thread_id) = thread.codex_thread_id.clone().filter(|id| !id.is_empty()) else {
-            return Err(ApiError::new(409, "AI_CHAT_THREAD_NOT_STARTED", "Conversation has not started").into());
+        let Some(codex_thread_id) = thread.codex_thread_id.clone().filter(|id| !id.is_empty())
+        else {
+            return Err(ApiError::new(
+                409,
+                "AI_CHAT_THREAD_NOT_STARTED",
+                "Conversation has not started",
+            )
+            .into());
         };
         let server = self.runtime(target_of(&thread.origin).as_ref()).server;
-        server.request("thread/compact/start", json!({ "threadId": codex_thread_id })).await.map_err(Error::Internal)?;
+        server
+            .request(
+                "thread/compact/start",
+                json!({ "threadId": codex_thread_id }),
+            )
+            .await
+            .map_err(Error::Internal)?;
         get_thread(app, id).await
     }
 
     /// `startTurn`: starts a turn and returns its run; the turn's events arrive on the thread stream.
-    pub async fn start_turn(&self, app: &Arc<App>, thread_id: &str, turn: Turn) -> Result<AiChatRun> {
+    pub async fn start_turn(
+        &self,
+        app: &Arc<App>,
+        thread_id: &str,
+        turn: Turn,
+    ) -> Result<AiChatRun> {
         let thread = get_thread(app, thread_id).await?;
         if self.is_active(&thread) {
             return Err(busy(thread_id));
         }
-        let Turn { confirmed, attachments, body } = turn;
+        let Turn {
+            confirmed,
+            attachments,
+            body,
+        } = turn;
         match body {
-            TurnBody::Composer { revision, nodes } => self.start_composer_turn(app, thread, confirmed, attachments, revision, nodes).await,
+            TurnBody::Composer { revision, nodes } => {
+                self.start_composer_turn(app, thread, confirmed, attachments, revision, nodes)
+                    .await
+            }
             TurnBody::Message { message, skill_ids } => {
-                self.start_message_turn(app, thread, confirmed, attachments, message, skill_ids).await
+                self.start_message_turn(app, thread, confirmed, attachments, message, skill_ids)
+                    .await
             }
         }
     }
@@ -694,11 +956,22 @@ impl AiChat {
         skill_ids: Vec<String>,
     ) -> Result<AiChatRun> {
         if js::trim(&message).is_empty() && attachments.is_empty() {
-            return Err(ApiError::new(400, "INVALID_MESSAGE", "A message or at least one attachment is required").into());
+            return Err(ApiError::new(
+                400,
+                "INVALID_MESSAGE",
+                "A message or at least one attachment is required",
+            )
+            .into());
         }
         confirm_danger(&thread, confirmed)?;
         let remote = target_of(&thread.origin);
-        let resolved = context::resolve(app, &thread.origin.project_id, thread.origin.issue_id.as_deref(), remote.as_ref()).await?;
+        let resolved = context::resolve(
+            app,
+            &thread.origin.project_id,
+            thread.origin.issue_id.as_deref(),
+            remote.as_ref(),
+        )
+        .await?;
         let catalog = self.catalog_for(&resolved).await?;
         let thread = get_thread(app, &thread.id).await?;
         if self.is_active(&thread) {
@@ -712,18 +985,38 @@ impl AiChat {
         }
         let mut skills = Vec::new();
         for id in &skill_ids {
-            let skill = catalog.skills.iter().rev().find(|skill| skill.id == *id && skill.id != "manage-broadcast");
-            let skill = skill.ok_or_else(|| ApiError::new(400, "INVALID_SKILL", format!("Unknown or unavailable skill '{id}'")))?;
-            skills.push(SkillLink { id: skill.id.clone(), path: skill.path.clone() });
+            let skill = catalog
+                .skills
+                .iter()
+                .rev()
+                .find(|skill| skill.id == *id && skill.id != "manage-broadcast");
+            let skill = skill.ok_or_else(|| {
+                ApiError::new(
+                    400,
+                    "INVALID_SKILL",
+                    format!("Unknown or unavailable skill '{id}'"),
+                )
+            })?;
+            skills.push(SkillLink {
+                id: skill.id.clone(),
+                path: skill.path.clone(),
+            });
         }
         let mut data = Map::new();
         if !skills.is_empty() {
             data.insert("skillIds".into(), json!(skill_ids));
         }
         if !attachments.is_empty() {
-            data.insert("attachments".into(), attachments.iter().map(Attachment::summary).collect());
+            data.insert(
+                "attachments".into(),
+                attachments.iter().map(Attachment::summary).collect(),
+            );
         }
-        let data = if data.is_empty() { Value::Null } else { Value::Object(data) };
+        let data = if data.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(data)
+        };
 
         if resolved.remote.is_some() {
             let mut input = Vec::new();
@@ -736,15 +1029,34 @@ impl AiChat {
                 }
             }
             input.extend(attachments.iter().map(Attachment::remote_input));
-            let user_event = EventRecord { kind: "user_message".into(), role: "user", content: message, data };
-            return self.start_app_server_run(app, &thread, &resolved, input, user_event, None).await;
+            let user_event = EventRecord {
+                kind: "user_message".into(),
+                role: "user",
+                content: message,
+                data,
+            };
+            return self
+                .start_app_server_run(app, &thread, &resolved, input, user_event, None)
+                .await;
         }
 
         let written = write_attachments(&attachments).await?;
         let args = exec::build_args(&thread, &resolved.add_directories, &written.images);
-        let prompt = exec::build_prompt(&thread, &message, &skills, &written.paths, &app.config.skill_path);
-        let user_event = EventRecord { kind: "user_message".into(), role: "user", content: message, data };
-        self.start_exec(app, &thread, &args, &prompt, user_event, written.directory).await
+        let prompt = exec::build_prompt(
+            &thread,
+            &message,
+            &skills,
+            &written.paths,
+            &app.config.skill_path,
+        );
+        let user_event = EventRecord {
+            kind: "user_message".into(),
+            role: "user",
+            content: message,
+            data,
+        };
+        self.start_exec(app, &thread, &args, &prompt, user_event, written.directory)
+            .await
     }
 
     /// The local `codex exec` turn: records the run and user message, then drives the owner.
@@ -780,10 +1092,14 @@ impl AiChat {
         tokio::spawn(async move {
             let chat = &app.ai;
             match process {
-                Ok(process) => chat.drive_exec(&app, &active, process, resuming.as_deref()).await,
+                Ok(process) => {
+                    chat.drive_exec(&app, &active, process, resuming.as_deref())
+                        .await
+                }
                 Err(error) => {
                     let message = failure(&error.to_string(), "Codex turn failed");
-                    chat.conclude(&app, &active, "failed", None, Some(message), true).await;
+                    chat.conclude(&app, &active, "failed", None, Some(message), true)
+                        .await;
                 }
             }
         });
@@ -791,8 +1107,20 @@ impl AiChat {
     }
 
     /// `spawnCodexTurn` + `finishRun`: reads the owner's JSONL until it exits, then records the outcome.
-    async fn drive_exec(&self, app: &Arc<App>, active: &Arc<Active>, process: TurnProcess, resuming: Option<&str>) {
-        let TurnProcess { pid, mut child, control, mut stdout, stderr } = process;
+    async fn drive_exec(
+        &self,
+        app: &Arc<App>,
+        active: &Arc<Active>,
+        process: TurnProcess,
+        resuming: Option<&str>,
+    ) {
+        let TurnProcess {
+            pid,
+            mut child,
+            control,
+            mut stdout,
+            stderr,
+        } = process;
         tokio::spawn(exec::drain(stderr));
         let mut state = ExecState::default();
         let mut line = Vec::new();
@@ -801,11 +1129,17 @@ impl AiChat {
             match exec::read_line(&mut stdout, &mut line, exec::MAX_LINE_BYTES).await {
                 Ok(Line::Eof) => break,
                 Ok(Line::TooLong) => {
-                    fatal = Some(format!("Codex JSONL line exceeded {} bytes", exec::MAX_LINE_BYTES));
+                    fatal = Some(format!(
+                        "Codex JSONL line exceeded {} bytes",
+                        exec::MAX_LINE_BYTES
+                    ));
                     break;
                 }
                 Ok(Line::Read) => {
-                    if let Err(error) = self.exec_line(app, active, &line, resuming, &mut state).await {
+                    if let Err(error) = self
+                        .exec_line(app, active, &line, resuming, &mut state)
+                        .await
+                    {
                         fatal = Some(error);
                         break;
                     }
@@ -834,19 +1168,39 @@ impl AiChat {
         } else if let Some(fatal) = &fatal {
             ("failed", Some(failure(fatal, "Codex turn failed")))
         } else if state.terminal == Some("failed") {
-            ("failed", Some(failure(&state.terminal_error, "Codex reported a failed turn")))
+            (
+                "failed",
+                Some(failure(
+                    &state.terminal_error,
+                    "Codex reported a failed turn",
+                )),
+            )
         } else if let Some(message) = exit.as_ref().and_then(exit_failure) {
             ("failed", Some(message))
         } else if state.terminal != Some("completed") {
-            ("failed", Some(failure(&state.pending_error, "Codex exited without reporting turn completion")))
+            (
+                "failed",
+                Some(failure(
+                    &state.pending_error,
+                    "Codex exited without reporting turn completion",
+                )),
+            )
         } else if resuming.is_none() && state.started.is_none() {
-            ("failed", Some("Codex did not provide a thread id".to_owned()))
+            (
+                "failed",
+                Some("Codex did not provide a thread id".to_owned()),
+            )
         } else {
             ("completed", None)
         };
-        let exit_code = if fatal.is_some() { None } else { exit.and_then(|status| status.code()).map(i64::from) };
+        let exit_code = if fatal.is_some() {
+            None
+        } else {
+            exit.and_then(|status| status.code()).map(i64::from)
+        };
         let error_event = status == "failed" && state.terminal != Some("failed");
-        self.conclude(app, active, status, exit_code, error, error_event).await;
+        self.conclude(app, active, status, exit_code, error, error_event)
+            .await;
     }
 
     /// One JSONL line from `codex exec`. An error is fatal to the turn.
@@ -862,30 +1216,46 @@ impl AiChat {
         if js::trim(&line).is_empty() {
             return Ok(());
         }
-        let raw: Value = serde_json::from_str(&line).map_err(|_| "Codex emitted malformed JSONL".to_owned())?;
-        let Some(event) = exec::normalize_event(&raw) else { return Ok(()) };
+        let raw: Value =
+            serde_json::from_str(&line).map_err(|_| "Codex emitted malformed JSONL".to_owned())?;
+        let Some(event) = exec::normalize_event(&raw) else {
+            return Ok(());
+        };
         match event {
             CodexEvent::ThreadStarted(id) => {
-                if resuming.is_some_and(|resuming| resuming != id) || state.started.as_ref().is_some_and(|started| *started != id) {
+                if resuming.is_some_and(|resuming| resuming != id)
+                    || state.started.as_ref().is_some_and(|started| *started != id)
+                {
                     return Err("Codex returned an unexpected thread id".to_owned());
                 }
                 state.started = Some(id.clone());
                 let thread = active.thread_id.clone();
-                let changes = AiChatThreadChanges { codex_thread_id: Some(id), ..AiChatThreadChanges::default() };
-                app.store(move |store| store.update_ai_chat_thread(&thread, changes)).await.map_err(|error| anyhow::Error::from(error).to_string())?;
+                let changes = AiChatThreadChanges {
+                    codex_thread_id: Some(id),
+                    ..AiChatThreadChanges::default()
+                };
+                app.store(move |store| store.update_ai_chat_thread(&thread, changes))
+                    .await
+                    .map_err(|error| anyhow::Error::from(error).to_string())?;
             }
             CodexEvent::Event(record) => {
                 let content = record.content.clone();
-                self.record(app, &active.thread_id, &active.run.id, record).await.map_err(|error| anyhow::Error::from(error).to_string())?;
+                self.record(app, &active.thread_id, &active.run.id, record)
+                    .await
+                    .map_err(|error| anyhow::Error::from(error).to_string())?;
                 match raw.get("type").and_then(Value::as_str) {
-                    Some("turn.completed") if state.terminal.is_none() => state.terminal = Some("completed"),
+                    Some("turn.completed") if state.terminal.is_none() => {
+                        state.terminal = Some("completed")
+                    }
                     Some("turn.failed") => {
                         state.terminal = Some("failed");
                         if state.terminal_error.is_empty() {
                             state.terminal_error = content;
                         }
                     }
-                    Some("error") if state.pending_error.is_empty() => state.pending_error = content,
+                    Some("error") if state.pending_error.is_empty() => {
+                        state.pending_error = content
+                    }
                     _ => {}
                 }
             }
@@ -904,12 +1274,26 @@ impl AiChat {
         error_event: bool,
     ) {
         if error_event && let Some(message) = &error {
-            let event = EventRecord { kind: "error".into(), role: "error", content: capped_str(message), data: json!({ "status": "failed" }) };
-            let _ = self.record(app, &active.thread_id, &active.run.id, event).await;
+            let event = EventRecord {
+                kind: "error".into(),
+                role: "error",
+                content: capped_str(message),
+                data: json!({ "status": "failed" }),
+            };
+            let _ = self
+                .record(app, &active.thread_id, &active.run.id, event)
+                .await;
         }
         let id = active.run.id.clone();
-        let outcome = AiChatRunOutcome { status, exit_code, error: error.map(|error| capped_str(&error)) };
-        if let Ok(run) = app.store(move |store| store.finish_ai_chat_run(&id, outcome)).await {
+        let outcome = AiChatRunOutcome {
+            status,
+            exit_code,
+            error: error.map(|error| capped_str(&error)),
+        };
+        if let Ok(run) = app
+            .store(move |store| store.finish_ai_chat_run(&id, outcome))
+            .await
+        {
             self.emit(&active.thread_id, json!({ "type": "ai.run", "run": run }));
         }
         lock(&self.active).remove(&active.run.id);
@@ -920,16 +1304,26 @@ impl AiChat {
     }
 
     /// `finishAppServerRun`: only the first finish of a run records it.
-    async fn finish_app_server(&self, app: &Arc<App>, active: &Active, status: &'static str, error: Option<String>) {
+    async fn finish_app_server(
+        &self,
+        app: &Arc<App>,
+        active: &Active,
+        status: &'static str,
+        error: Option<String>,
+    ) {
         if lock(&self.active).remove(&active.run.id).is_none() {
             return;
         }
         let error = match status {
             "interrupted" => Some("Interrupted".to_owned()),
-            "failed" => Some(failure(error.as_deref().unwrap_or_default(), "Codex turn failed")),
+            "failed" => Some(failure(
+                error.as_deref().unwrap_or_default(),
+                "Codex turn failed",
+            )),
             _ => None,
         };
-        self.conclude(app, active, status, None, error, status == "failed").await;
+        self.conclude(app, active, status, None, error, status == "failed")
+            .await;
     }
 
     async fn start_composer_turn(
@@ -943,7 +1337,13 @@ impl AiChat {
     ) -> Result<AiChatRun> {
         confirm_danger(&thread, confirmed)?;
         let remote = target_of(&thread.origin);
-        let resolved = context::resolve(app, &thread.origin.project_id, thread.origin.issue_id.as_deref(), remote.as_ref()).await?;
+        let resolved = context::resolve(
+            app,
+            &thread.origin.project_id,
+            thread.origin.issue_id.as_deref(),
+            remote.as_ref(),
+        )
+        .await?;
         let runtime = self.runtime(resolved.remote.as_ref());
         let thread = get_thread(app, &thread.id).await?;
         if self.is_active(&thread) {
@@ -952,13 +1352,21 @@ impl AiChat {
         if resolved.workspace_path != thread.origin.workspace_path {
             return Err(workspace_changed());
         }
-        if let Some(index) = nodes.iter().position(|node| matches!(node, DocumentNode::Other(_))) {
+        if let Some(index) = nodes
+            .iter()
+            .position(|node| matches!(node, DocumentNode::Other(_)))
+        {
             let message = format!("Unsupported composer node at index {index}");
-            return Err(ApiError::new(422, "COMPOSER_NODE_UNSUPPORTED", message).with_details(json!({ "nodeIndex": index })).into());
+            return Err(ApiError::new(422, "COMPOSER_NODE_UNSUPPORTED", message)
+                .with_details(json!({ "nodeIndex": index }))
+                .into());
         }
         let has_references = nodes.iter().any(DocumentNode::is_reference);
         let references = if has_references {
-            runtime.composer.resolve(&resolved.workspace_path, &revision, &nodes).await?
+            runtime
+                .composer
+                .resolve(&resolved.workspace_path, &revision, &nodes)
+                .await?
         } else {
             Vec::new()
         };
@@ -971,19 +1379,27 @@ impl AiChat {
             return Err(ApiError::new(400, "INVALID_COMPOSER_DOCUMENT", message).into());
         }
 
-        let written = if resolved.remote.is_some() { Written::default() } else { write_attachments(&attachments).await? };
+        let written = if resolved.remote.is_some() {
+            Written::default()
+        } else {
+            write_attachments(&attachments).await?
+        };
         let mut input = Vec::new();
         let mut dispatches = Vec::new();
         for (index, node) in nodes.iter().enumerate() {
             match (node, references.get(index).and_then(Option::as_ref)) {
-                (DocumentNode::Text(text), _) => input.push(json!({ "type": "text", "text": text })),
+                (DocumentNode::Text(text), _) => {
+                    input.push(json!({ "type": "text", "text": text }))
+                }
                 (_, Some(Reference::Skill(skill))) => {
                     input.push(json!({ "type": "text", "text": format!("${}", skill.name) }));
                     input.push(json!({ "type": "skill", "name": skill.name, "path": skill.path }));
                 }
                 (_, Some(Reference::Agent(agent))) => {
                     input.push(json!({ "type": "text", "text": agent_dispatch_text(agent) }));
-                    dispatches.push(json!({ "nodeIndex": index, "id": agent.stable_id, "name": agent.name }));
+                    dispatches.push(
+                        json!({ "nodeIndex": index, "id": agent.stable_id, "name": agent.name }),
+                    );
                 }
                 _ => {}
             }
@@ -1009,17 +1425,37 @@ impl AiChat {
         let mut data = Map::new();
         data.insert("contractVersion".into(), json!(composer::CONTRACT_VERSION));
         data.insert("revision".into(), json!(revision));
-        data.insert("document".into(), json!({ "version": 1, "nodes": nodes.iter().map(document_node).collect::<Vec<_>>() }));
+        data.insert(
+            "document".into(),
+            json!({ "version": 1, "nodes": nodes.iter().map(document_node).collect::<Vec<_>>() }),
+        );
         if !dispatches.is_empty() {
             data.insert("dispatchProtocol".into(), json!(AGENT_DISPATCH_PROTOCOL));
             data.insert("agentDispatches".into(), Value::Array(dispatches));
         }
         if !attachments.is_empty() {
-            data.insert("attachments".into(), attachments.iter().map(Attachment::summary).collect());
+            data.insert(
+                "attachments".into(),
+                attachments.iter().map(Attachment::summary).collect(),
+            );
         }
-        let user_event = EventRecord { kind: "user_message".into(), role: "user", content, data: Value::Object(data) };
+        let user_event = EventRecord {
+            kind: "user_message".into(),
+            role: "user",
+            content,
+            data: Value::Object(data),
+        };
         let directory = written.directory.clone();
-        let started = self.start_app_server_run(app, &thread, &resolved, input, user_event, written.directory).await;
+        let started = self
+            .start_app_server_run(
+                app,
+                &thread,
+                &resolved,
+                input,
+                user_event,
+                written.directory,
+            )
+            .await;
         if started.is_err()
             && let Some(directory) = &directory
         {
@@ -1057,18 +1493,36 @@ impl AiChat {
                 let mut params = Map::new();
                 params.insert("threadId".into(), json!(id));
                 params.extend(settings);
-                let resumed = server.request("thread/resume", Value::Object(params)).await.map_err(Error::Internal)?;
+                let resumed = server
+                    .request("thread/resume", Value::Object(params))
+                    .await
+                    .map_err(Error::Internal)?;
                 if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(id.as_str()) {
                     return Err(internal("Codex returned an unexpected resumed thread id"));
                 }
                 id
             }
             None => {
-                let started = server.request("thread/start", Value::Object(settings)).await.map_err(Error::Internal)?;
-                let id = started.pointer("/thread/id").and_then(Value::as_str).filter(|id| !id.is_empty());
-                let id = id.ok_or_else(|| internal("Codex did not provide a thread id"))?.to_owned();
-                let (key, changes) = (thread.id.clone(), AiChatThreadChanges { codex_thread_id: Some(id.clone()), ..AiChatThreadChanges::default() });
-                app.store(move |store| store.update_ai_chat_thread(&key, changes)).await?;
+                let started = server
+                    .request("thread/start", Value::Object(settings))
+                    .await
+                    .map_err(Error::Internal)?;
+                let id = started
+                    .pointer("/thread/id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty());
+                let id = id
+                    .ok_or_else(|| internal("Codex did not provide a thread id"))?
+                    .to_owned();
+                let (key, changes) = (
+                    thread.id.clone(),
+                    AiChatThreadChanges {
+                        codex_thread_id: Some(id.clone()),
+                        ..AiChatThreadChanges::default()
+                    },
+                );
+                app.store(move |store| store.update_ai_chat_thread(&key, changes))
+                    .await?;
                 id
             }
         };
@@ -1076,7 +1530,12 @@ impl AiChat {
         let run = self.create_run(app, &thread.id).await?;
         self.record(app, &thread.id, &run.id, user_event).await?;
         let origin = server.origin().await;
-        let kind = Kind::AppServer { server: server.clone(), origin, codex_thread_id: codex_thread_id.clone(), turn_id: Mutex::new(None) };
+        let kind = Kind::AppServer {
+            server: server.clone(),
+            origin,
+            codex_thread_id: codex_thread_id.clone(),
+            turn_id: Mutex::new(None),
+        };
         let active = Active::new(&run, temporary, kind);
         lock(&self.active).insert(run.id.clone(), Arc::clone(&active));
         let params = json!({ "threadId": codex_thread_id, "input": input, "effort": thread.reasoning_effort });
@@ -1097,7 +1556,8 @@ impl AiChat {
                 Ok(run)
             }
             Err(error) => {
-                self.finish_app_server(app, &active, "failed", Some(error.to_string())).await;
+                self.finish_app_server(app, &active, "failed", Some(error.to_string()))
+                    .await;
                 Err(Error::Internal(error))
             }
         }
@@ -1112,21 +1572,38 @@ impl AiChat {
         let active = lock(&self.active).get(run_id).cloned();
         let Some(active) = active else {
             let id = run_id.to_owned();
-            let outcome = AiChatRunOutcome { status: "interrupted", exit_code: None, error: Some("Interrupted".to_owned()) };
-            let run = app.store(move |store| store.finish_ai_chat_run(&id, outcome)).await?;
+            let outcome = AiChatRunOutcome {
+                status: "interrupted",
+                exit_code: None,
+                error: Some("Interrupted".to_owned()),
+            };
+            let run = app
+                .store(move |store| store.finish_ai_chat_run(&id, outcome))
+                .await?;
             self.emit(&run.thread_id, json!({ "type": "ai.run", "run": run }));
             return Ok(run);
         };
         active.interrupted.store(true, Ordering::SeqCst);
         match &active.kind {
-            Kind::AppServer { server, codex_thread_id, turn_id, .. } => {
+            Kind::AppServer {
+                server,
+                codex_thread_id,
+                turn_id,
+                ..
+            } => {
                 let turn = lock(turn_id).clone();
                 if let Some(turn) = turn {
-                    let _ = server.request("turn/interrupt", json!({ "threadId": codex_thread_id, "turnId": turn })).await;
+                    let _ = server
+                        .request(
+                            "turn/interrupt",
+                            json!({ "threadId": codex_thread_id, "turnId": turn }),
+                        )
+                        .await;
                 }
                 active.settled(INTERRUPT_WAIT).await;
                 if lock(&self.active).contains_key(run_id) {
-                    self.finish_app_server(app, &active, "interrupted", None).await;
+                    self.finish_app_server(app, &active, "interrupted", None)
+                        .await;
                 }
             }
             Kind::Exec { pid } => {
@@ -1155,36 +1632,58 @@ impl AiChat {
 
     /// `handleAppServerNotification`.
     async fn notify(&self, app: &Arc<App>, notification: Notification) {
-        let Notification { origin, method, params } = notification;
+        let Notification {
+            origin,
+            method,
+            params,
+        } = notification;
         if method == "skills/changed"
             && let Some(composer) = self.composer_for(&origin)
         {
             composer.invalidate();
         }
-        let Some(params) = params.as_object() else { return };
+        let Some(params) = params.as_object() else {
+            return;
+        };
         if method == "app-server/terminated" {
             // A remote bridge disconnect does not establish that the remote turn stopped.
             if !matches!(origin, Origin::Local(_)) {
                 return;
             }
-            let message = params.get("message").and_then(Value::as_str).map(str::to_owned);
+            let message = params
+                .get("message")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             let terminated: Vec<Arc<Active>> = lock(&self.active)
                 .values()
                 .filter(|active| matches!(&active.kind, Kind::AppServer { origin: Some(known), .. } if *known == origin))
                 .cloned()
                 .collect();
             for active in terminated {
-                let status = if active.interrupted() { "interrupted" } else { "failed" };
-                self.finish_app_server(app, &active, status, message.clone()).await;
+                let status = if active.interrupted() {
+                    "interrupted"
+                } else {
+                    "failed"
+                };
+                self.finish_app_server(app, &active, status, message.clone())
+                    .await;
             }
             return;
         }
         let thread_id = params.get("threadId").and_then(Value::as_str);
-        let turn_id = params.get("turnId").and_then(Value::as_str).filter(|id| !id.is_empty());
+        let turn_id = params
+            .get("turnId")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
         let active = lock(&self.active)
             .values()
             .find(|active| match &active.kind {
-                Kind::AppServer { origin: Some(known), codex_thread_id, turn_id: current, .. } => {
+                Kind::AppServer {
+                    origin: Some(known),
+                    codex_thread_id,
+                    turn_id: current,
+                    ..
+                } => {
                     let current = lock(current);
                     *known == origin
                         && Some(codex_thread_id.as_str()) == thread_id
@@ -1196,28 +1695,41 @@ impl AiChat {
         let Some(active) = active else { return };
         match method.as_str() {
             "turn/started" => {
-                if let (Some(id), Kind::AppServer { turn_id, .. }) = (params.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str), &active.kind) {
+                if let (Some(id), Kind::AppServer { turn_id, .. }) = (
+                    params
+                        .get("turn")
+                        .and_then(|turn| turn.get("id"))
+                        .and_then(Value::as_str),
+                    &active.kind,
+                ) {
                     *lock(turn_id) = Some(id.to_owned());
                 }
             }
             "item/completed" => {
                 if let Some(event) = app_server_item(params.get("item")) {
-                    let _ = self.record(app, &active.thread_id, &active.run.id, event).await;
+                    let _ = self
+                        .record(app, &active.thread_id, &active.run.id, event)
+                        .await;
                 }
             }
             "turn/completed" => {
                 let turn = params.get("turn");
-                let status = turn.and_then(|turn| turn.get("status")).and_then(Value::as_str);
+                let status = turn
+                    .and_then(|turn| turn.get("status"))
+                    .and_then(Value::as_str);
                 if active.interrupted() || status == Some("interrupted") {
-                    self.finish_app_server(app, &active, "interrupted", None).await;
+                    self.finish_app_server(app, &active, "interrupted", None)
+                        .await;
                 } else if status == Some("completed") {
-                    self.finish_app_server(app, &active, "completed", None).await;
+                    self.finish_app_server(app, &active, "completed", None)
+                        .await;
                 } else {
                     let message = match turn.and_then(|turn| turn.pointer("/error/message")) {
                         None | Some(Value::Null) => "Codex reported a failed turn".to_owned(),
                         other => js_string(other),
                     };
-                    self.finish_app_server(app, &active, "failed", Some(message)).await;
+                    self.finish_app_server(app, &active, "failed", Some(message))
+                        .await;
                 }
             }
             _ => {}
@@ -1230,10 +1742,18 @@ impl AiChat {
         for active in &entries {
             active.interrupted.store(true, Ordering::SeqCst);
             match &active.kind {
-                Kind::AppServer { server, codex_thread_id, turn_id, .. } => {
+                Kind::AppServer {
+                    server,
+                    codex_thread_id,
+                    turn_id,
+                    ..
+                } => {
                     let turn = lock(turn_id).clone();
                     if let Some(turn) = turn {
-                        let (server, params) = (server.clone(), json!({ "threadId": codex_thread_id, "turnId": turn }));
+                        let (server, params) = (
+                            server.clone(),
+                            json!({ "threadId": codex_thread_id, "turnId": turn }),
+                        );
                         tokio::spawn(async move {
                             let _ = server.request("turn/interrupt", params).await;
                         });
@@ -1244,12 +1764,19 @@ impl AiChat {
             }
         }
         if !entries.is_empty() {
-            let _ = tokio::time::timeout(KILL_GRACE, futures_util::future::join_all(entries.iter().map(|active| active.wait()))).await;
+            let _ = tokio::time::timeout(
+                KILL_GRACE,
+                futures_util::future::join_all(entries.iter().map(|active| active.wait())),
+            )
+            .await;
             for active in &entries {
                 let running = lock(&self.active).contains_key(&active.run.id);
                 match &active.kind {
                     Kind::Exec { pid: Some(pid) } if running => exec::signal_group(*pid, true),
-                    Kind::AppServer { .. } if running => self.finish_app_server(app, active, "interrupted", None).await,
+                    Kind::AppServer { .. } if running => {
+                        self.finish_app_server(app, active, "interrupted", None)
+                            .await
+                    }
                     _ => {}
                 }
             }

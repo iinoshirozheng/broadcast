@@ -16,7 +16,12 @@ pub enum Owner {
 }
 
 fn not_found(id: &str) -> Failure {
-    ApiError::new(404, "ATTACHMENT_NOT_FOUND", format!("Attachment '{id}' does not exist")).into()
+    ApiError::new(
+        404,
+        "ATTACHMENT_NOT_FOUND",
+        format!("Attachment '{id}' does not exist"),
+    )
+    .into()
 }
 
 impl Board {
@@ -29,12 +34,22 @@ impl Board {
             cache_control: None,
             cache_expiry: None,
         };
-        self.env.bucket("ATTACHMENTS")?.put(id, body).http_metadata(metadata).execute().await?;
+        self.env
+            .bucket("ATTACHMENTS")?
+            .put(id, body)
+            .http_metadata(metadata)
+            .execute()
+            .await?;
         Ok(())
     }
 
     /// Runs the metadata insert for freshly stored content, removing the content if it fails.
-    async fn insert_stored(&self, id: &str, sql: String, values: Vec<worker::wasm_bindgen::JsValue>) -> Result<()> {
+    async fn insert_stored(
+        &self,
+        id: &str,
+        sql: String,
+        values: Vec<worker::wasm_bindgen::JsValue>,
+    ) -> Result<()> {
         if let Err(error) = db::run(&self.db, sql, values).await {
             self.delete_objects(&[id.to_owned()]).await?;
             return Err(error);
@@ -42,7 +57,12 @@ impl Board {
         Ok(())
     }
 
-    async fn attachment_page(&self, filter: &str, owner: &str, after: Option<&Cursor>) -> Result<Value> {
+    async fn attachment_page(
+        &self,
+        filter: &str,
+        owner: &str,
+        after: Option<&Cursor>,
+    ) -> Result<Value> {
         let rows = match after {
             Some(after) => {
                 db::all(
@@ -61,22 +81,47 @@ impl Board {
         Ok(json!({ "attachments": attachments, "nextCursor": next_cursor(&rows, after) }))
     }
 
-    pub async fn list_task_attachments(&self, task_id: &str, after: Option<&Cursor>) -> Result<Value> {
+    pub async fn list_task_attachments(
+        &self,
+        task_id: &str,
+        after: Option<&Cursor>,
+    ) -> Result<Value> {
         let task = self.require_task_row(task_id).await?;
-        self.attachment_page("task_id = ? AND comment_id IS NULL", text(&task, "id"), after).await
+        self.attachment_page(
+            "task_id = ? AND comment_id IS NULL",
+            text(&task, "id"),
+            after,
+        )
+        .await
     }
 
-    pub async fn list_comment_attachments(&self, comment_id: &str, after: Option<&Cursor>) -> Result<Value> {
+    pub async fn list_comment_attachments(
+        &self,
+        comment_id: &str,
+        after: Option<&Cursor>,
+    ) -> Result<Value> {
         self.require_comment_row(comment_id).await?;
-        self.attachment_page("comment_id = ?", comment_id, after).await
+        self.attachment_page("comment_id = ?", comment_id, after)
+            .await
     }
 
-    pub async fn upload_attachment(&self, owner: Owner, owner_id: &str, request: &mut Request) -> Result<Value> {
+    pub async fn upload_attachment(
+        &self,
+        owner: Owner,
+        owner_id: &str,
+        request: &mut Request,
+    ) -> Result<Value> {
         let (task_id, comment_id) = match owner {
-            Owner::Task => (text(&self.require_task_row(owner_id).await?, "id").to_owned(), Value::Null),
+            Owner::Task => (
+                text(&self.require_task_row(owner_id).await?, "id").to_owned(),
+                Value::Null,
+            ),
             Owner::Comment => {
                 let comment = self.require_comment_row(owner_id).await?;
-                (text(&comment, "task_id").to_owned(), Value::from(text(&comment, "id")))
+                (
+                    text(&comment, "task_id").to_owned(),
+                    Value::from(text(&comment, "id")),
+                )
             }
         };
         let headers = http::attachment_headers(request)?;
@@ -94,15 +139,30 @@ impl Board {
             args![id, task_id, comment_id, headers.kind, headers.filename, headers.content_type, size, now()],
         )
         .await?;
-        let row = db::first(&self.db, "SELECT * FROM attachments WHERE id = ?", args![id]).await?.ok_or_else(|| not_found(&id))?;
+        let row = db::first(
+            &self.db,
+            "SELECT * FROM attachments WHERE id = ?",
+            args![id],
+        )
+        .await?
+        .ok_or_else(|| not_found(&id))?;
         Ok(records::attachment(&row))
     }
 
-    pub async fn upload_project_readme_attachment(&self, project_id: &str, request: &mut Request) -> Result<Value> {
+    pub async fn upload_project_readme_attachment(
+        &self,
+        project_id: &str,
+        request: &mut Request,
+    ) -> Result<Value> {
         self.require_project(project_id).await?;
         let headers = http::attachment_headers(request)?;
         if headers.kind != "inline" {
-            return Err(ApiError::new(400, "INVALID_ATTACHMENT_KIND", "Project README attachments must be inline").into());
+            return Err(ApiError::new(
+                400,
+                "INVALID_ATTACHMENT_KIND",
+                "Project README attachments must be inline",
+            )
+            .into());
         }
         let body = http::read_attachment(request).await?;
         let id = uuid();
@@ -116,32 +176,62 @@ impl Board {
             args![id, project_id, headers.filename, headers.content_type, size, now()],
         )
         .await?;
-        let row = db::first(&self.db, "SELECT * FROM project_readme_attachments WHERE id = ?", args![id])
-            .await?
-            .ok_or_else(|| not_found(&id))?;
+        let row = db::first(
+            &self.db,
+            "SELECT * FROM project_readme_attachments WHERE id = ?",
+            args![id],
+        )
+        .await?
+        .ok_or_else(|| not_found(&id))?;
         Ok(records::project_readme_attachment(&row))
     }
 
     /// `requireAttachment`: a task or comment attachment, else a project README attachment.
     async fn require_attachment(&self, id: &str) -> Result<Value> {
-        if let Some(row) = db::first(&self.db, "SELECT * FROM attachments WHERE id = ?", args![id]).await? {
+        if let Some(row) = db::first(
+            &self.db,
+            "SELECT * FROM attachments WHERE id = ?",
+            args![id],
+        )
+        .await?
+        {
             return Ok(records::attachment(&row));
         }
-        let row = db::first(&self.db, "SELECT * FROM project_readme_attachments WHERE id = ?", args![id]).await?;
-        row.map(|row| records::project_readme_attachment(&row)).ok_or_else(|| not_found(id))
+        let row = db::first(
+            &self.db,
+            "SELECT * FROM project_readme_attachments WHERE id = ?",
+            args![id],
+        )
+        .await?;
+        row.map(|row| records::project_readme_attachment(&row))
+            .ok_or_else(|| not_found(id))
     }
 
     pub async fn delete_attachment(&self, id: &str) -> Result<Value> {
         let attachment = self.require_attachment(id).await?;
         let stored = attachment["id"].as_str().unwrap_or_default().to_owned();
-        let table = if attachment.get("projectId").is_some() { "project_readme_attachments" } else { "attachments" };
-        db::run(&self.db, format!("DELETE FROM {table} WHERE id = ?"), args![stored]).await?;
+        let table = if attachment.get("projectId").is_some() {
+            "project_readme_attachments"
+        } else {
+            "attachments"
+        };
+        db::run(
+            &self.db,
+            format!("DELETE FROM {table} WHERE id = ?"),
+            args![stored],
+        )
+        .await?;
         self.delete_objects(std::slice::from_ref(&stored)).await?;
         Ok(attachment)
     }
 
     /// `GET|HEAD /api/attachments/:id/(content|download)`.
-    pub async fn attachment_content(&self, id: &str, head: bool, download: bool) -> Result<Response> {
+    pub async fn attachment_content(
+        &self,
+        id: &str,
+        head: bool,
+        download: bool,
+    ) -> Result<Response> {
         let attachment = self.require_attachment(id).await?;
         let object = self
             .env

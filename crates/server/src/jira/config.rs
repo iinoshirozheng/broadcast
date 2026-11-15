@@ -21,7 +21,10 @@ pub struct ConfigError {
 
 impl ConfigError {
     fn new(code: &'static str, message: &str) -> Self {
-        Self { code, message: message.to_owned() }
+        Self {
+            code,
+            message: message.to_owned(),
+        }
     }
 
     fn invalid(message: &str) -> Self {
@@ -39,7 +42,10 @@ impl std::error::Error for ConfigError {}
 
 impl From<std::io::Error> for ConfigError {
     fn from(error: std::io::Error) -> Self {
-        Self { code: "INVALID_JIRA_CONFIG", message: error.to_string() }
+        Self {
+            code: "INVALID_JIRA_CONFIG",
+            message: error.to_string(),
+        }
     }
 }
 
@@ -82,9 +88,16 @@ impl JiraConfig {
 /// `normalizeJiraUrl`: an http(s) URL without credentials, query or fragment, minus trailing slashes.
 pub fn normalize_url(value: Option<&Value>) -> Result<String, ConfigError> {
     let rules = || ConfigError::new("INVALID_JIRA_URL", URL_RULES);
-    let value = value.and_then(Value::as_str).filter(|value| !value.contains(['?', '#'])).ok_or_else(rules)?;
-    let mut url = Url::parse(value).map_err(|_| ConfigError::new("INVALID_JIRA_URL", "Jira 地址无效"))?;
-    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
+    let value = value
+        .and_then(Value::as_str)
+        .filter(|value| !value.contains(['?', '#']))
+        .ok_or_else(rules)?;
+    let mut url =
+        Url::parse(value).map_err(|_| ConfigError::new("INVALID_JIRA_URL", "Jira 地址无效"))?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
         return Err(rules());
     }
     let path = url.path().trim_end_matches('/').to_owned();
@@ -93,32 +106,49 @@ pub fn normalize_url(value: Option<&Value>) -> Result<String, ConfigError> {
     Ok(text.strip_suffix('/').unwrap_or(text).to_owned())
 }
 
-fn credentials(username: Option<&Value>, password: Option<&Value>) -> Result<(String, String), ConfigError> {
+fn credentials(
+    username: Option<&Value>,
+    password: Option<&Value>,
+) -> Result<(String, String), ConfigError> {
     let username = username
         .and_then(Value::as_str)
         .filter(|name| !js::trim(name).is_empty() && js::len(name) <= 254 && !name.contains(':'))
         .ok_or_else(|| {
-            ConfigError::new("INVALID_JIRA_USERNAME", "Jira 用户名不能为空、不能包含冒号，且不能超过 254 个字符")
+            ConfigError::new(
+                "INVALID_JIRA_USERNAME",
+                "Jira 用户名不能为空、不能包含冒号，且不能超过 254 个字符",
+            )
         })?;
     let password = password
         .and_then(Value::as_str)
         .filter(|password| !password.is_empty() && js::len(password) <= 4096)
-        .ok_or_else(|| ConfigError::new("INVALID_JIRA_PASSWORD", "Jira 密码不能为空且不能超过 4096 个字符"))?;
+        .ok_or_else(|| {
+            ConfigError::new(
+                "INVALID_JIRA_PASSWORD",
+                "Jira 密码不能为空且不能超过 4096 个字符",
+            )
+        })?;
     Ok((js::trim(username).to_owned(), password.to_owned()))
 }
 
 fn projects(value: Option<&Value>) -> Result<Vec<String>, ConfigError> {
-    let Some(value) = value else { return Ok(Vec::new()) };
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
     let items = value
         .as_array()
         .filter(|items| items.len() <= 20)
-        .ok_or_else(|| ConfigError::new("INVALID_JIRA_PROJECTS", "Jira 项目必须是最多 20 项的数组"))?;
+        .ok_or_else(|| {
+            ConfigError::new("INVALID_JIRA_PROJECTS", "Jira 项目必须是最多 20 项的数组")
+        })?;
     let mut projects: Vec<String> = Vec::new();
     for item in items {
         let project = item
             .as_str()
             .filter(|project| {
-                !js::trim(project).is_empty() && js::len(project) <= 128 && !project.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
+                !js::trim(project).is_empty()
+                    && js::len(project) <= 128
+                    && !project.chars().any(|c| c <= '\u{1f}' || c == '\u{7f}')
             })
             .ok_or_else(|| {
                 ConfigError::new(
@@ -135,10 +165,20 @@ fn projects(value: Option<&Value>) -> Result<Vec<String>, ConfigError> {
 }
 
 /// `validate`: the connection fields a user submits.
-pub fn validate(base_url: Option<&Value>, username: Option<&Value>, password: Option<&Value>, projects_value: Option<&Value>) -> Result<Candidate, ConfigError> {
+pub fn validate(
+    base_url: Option<&Value>,
+    username: Option<&Value>,
+    password: Option<&Value>,
+    projects_value: Option<&Value>,
+) -> Result<Candidate, ConfigError> {
     let base_url = normalize_url(base_url)?;
     let (username, password) = credentials(username, password)?;
-    Ok(Candidate { base_url, username, password, projects: projects(projects_value)? })
+    Ok(Candidate {
+        base_url,
+        username,
+        password,
+        projects: projects(projects_value)?,
+    })
 }
 
 fn parse(value: &Value) -> Result<JiraConfig, ConfigError> {
@@ -146,7 +186,15 @@ fn parse(value: &Value) -> Result<JiraConfig, ConfigError> {
         .as_object()
         .filter(|object| object.get("version").and_then(Value::as_u64) == Some(VERSION))
         .ok_or_else(|| ConfigError::invalid("Jira 配置文件无效"))?;
-    const KEYS: [&str; 7] = ["version", "baseUrl", "username", "password", "originId", "displayName", "projects"];
+    const KEYS: [&str; 7] = [
+        "version",
+        "baseUrl",
+        "username",
+        "password",
+        "originId",
+        "displayName",
+        "projects",
+    ];
     if object.keys().any(|key| !KEYS.contains(&key.as_str())) {
         return Err(ConfigError::invalid("Jira 配置文件包含未知字段"));
     }
@@ -154,7 +202,12 @@ fn parse(value: &Value) -> Result<JiraConfig, ConfigError> {
     let origin_id = object
         .get("originId")
         .and_then(Value::as_str)
-        .filter(|id| id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+        .filter(|id| {
+            id.len() == 64
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
         .ok_or_else(|| ConfigError::invalid("Jira 配置缺少稳定实例身份"))?;
     let display_name = object
         .get("displayName")
@@ -167,7 +220,11 @@ fn parse(value: &Value) -> Result<JiraConfig, ConfigError> {
         password,
         projects: projects(object.get("projects"))?,
     };
-    Ok(JiraConfig::new(candidate, origin_id.to_owned(), display_name))
+    Ok(JiraConfig::new(
+        candidate,
+        origin_id.to_owned(),
+        display_name,
+    ))
 }
 
 /// Serializes reads and writes of the file.
@@ -178,12 +235,19 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn new(path: PathBuf) -> Self {
-        Self { path, lock: Mutex::new(()) }
+        Self {
+            path,
+            lock: Mutex::new(()),
+        }
     }
 
     pub async fn read(&self) -> Result<Option<JiraConfig>, ConfigError> {
         let _guard = self.lock.lock().await;
-        files::read_json(&self.path).await?.as_ref().map(parse).transpose()
+        files::read_json(&self.path)
+            .await?
+            .as_ref()
+            .map(parse)
+            .transpose()
     }
 
     pub async fn save(&self, config: &JiraConfig) -> Result<(), ConfigError> {

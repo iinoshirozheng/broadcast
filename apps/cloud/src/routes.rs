@@ -19,14 +19,24 @@ fn require_no_query(query: &Query, route: &str) -> Result<()> {
     if query.is_empty() {
         Ok(())
     } else {
-        Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("{route} does not accept query parameters")).into())
+        Err(ApiError::new(
+            400,
+            "UNKNOWN_QUERY_PARAMETER",
+            format!("{route} does not accept query parameters"),
+        )
+        .into())
     }
 }
 
 /// `decodePathPart`.
 fn path_part(raw: &str, label: &str) -> Result<String> {
-    let decoded = js::decode_uri_component(raw)
-        .ok_or_else(|| ApiError::new(400, "INVALID_PATH", format!("{label} contains invalid encoding")))?;
+    let decoded = js::decode_uri_component(raw).ok_or_else(|| {
+        ApiError::new(
+            400,
+            "INVALID_PATH",
+            format!("{label} contains invalid encoding"),
+        )
+    })?;
     let length = js::len(&decoded);
     if length == 0 || length > 128 {
         return Err(ApiError::new(400, "INVALID_PATH", format!("{label} is invalid")).into());
@@ -35,7 +45,10 @@ fn path_part(raw: &str, label: &str) -> Result<String> {
 }
 
 fn project_id(raw: &str) -> Result<String> {
-    Ok(fields::project_id(Some(&Value::String(path_part(raw, "Project id")?)))?)
+    Ok(fields::project_id(Some(&Value::String(path_part(
+        raw,
+        "Project id",
+    )?)))?)
 }
 
 /// A decimal string that `Number()` reads as a non-negative safe integer.
@@ -43,21 +56,37 @@ fn decimal(value: &str) -> Option<i64> {
     if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    value.parse::<u64>().ok().filter(|number| *number <= MAX_SAFE_INTEGER).and_then(|number| i64::try_from(number).ok())
+    value
+        .parse::<u64>()
+        .ok()
+        .filter(|number| *number <= MAX_SAFE_INTEGER)
+        .and_then(|number| i64::try_from(number).ok())
 }
 
 /// `parseAfterCursor`.
 fn after_cursor(query: &Query) -> Result<Option<Cursor>> {
     if let Some((key, _)) = query.iter().find(|(key, _)| key != "after") {
-        return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("Unknown query parameter: {key}")).into());
+        return Err(ApiError::new(
+            400,
+            "UNKNOWN_QUERY_PARAMETER",
+            format!("Unknown query parameter: {key}"),
+        )
+        .into());
     }
     match query {
         [] => Ok(None),
         [(_, value)] => {
             let revision = decimal(value).ok_or_else(|| {
-                ApiError::new(400, "INVALID_CURSOR", "'after' must be a non-negative decimal integer")
+                ApiError::new(
+                    400,
+                    "INVALID_CURSOR",
+                    "'after' must be a non-negative decimal integer",
+                )
             })?;
-            Ok(Some(Cursor { value: value.clone(), revision }))
+            Ok(Some(Cursor {
+                value: value.clone(),
+                revision,
+            }))
         }
         _ => Err(ApiError::new(400, "INVALID_CURSOR", "'after' must be provided once").into()),
     }
@@ -67,8 +96,12 @@ fn after_cursor(query: &Query) -> Result<Option<Cursor>> {
 fn client_storage_update(body: &Value) -> Result<Value> {
     let body = fields::object(body, &["key", "value"])?;
     let key = fields::required_string(body.get("key"), "key", 512)?;
-    if !key.starts_with(hub::DISPLAY_SETTINGS_PREFIX) || key.len() == hub::DISPLAY_SETTINGS_PREFIX.len() {
-        return Err(ApiError::invalid_field("'key' must identify project board display settings").into());
+    if !key.starts_with(hub::DISPLAY_SETTINGS_PREFIX)
+        || key.len() == hub::DISPLAY_SETTINGS_PREFIX.len()
+    {
+        return Err(
+            ApiError::invalid_field("'key' must identify project board display settings").into(),
+        );
     }
     let value = fields::nullable_string(body.get("value"), "value", 100_000)?.flatten();
     Ok(json!({ "key": key, "value": value }))
@@ -76,21 +109,43 @@ fn client_storage_update(body: &Value) -> Result<Value> {
 
 /// `readGlobalRevision`.
 pub async fn global_revision(db: &D1Database) -> Result<Value> {
-    let row = db::first(db, "SELECT revision FROM global_revision WHERE singleton = 1", vec![]).await?;
+    let row = db::first(
+        db,
+        "SELECT revision FROM global_revision WHERE singleton = 1",
+        vec![],
+    )
+    .await?;
     Ok(row.map_or(Value::Null, |row| value(&row, "revision")))
 }
 
 async fn revisions(board: &Board, query: &Query) -> Result<Response> {
     if let Some((key, _)) = query.iter().find(|(key, _)| key != "since") {
-        return Err(ApiError::new(400, "UNKNOWN_QUERY_PARAMETER", format!("Unknown query parameter: {key}")).into());
+        return Err(ApiError::new(
+            400,
+            "UNKNOWN_QUERY_PARAMETER",
+            format!("Unknown query parameter: {key}"),
+        )
+        .into());
     }
     let [(_, raw)] = query else {
-        return Err(ApiError::new(400, "INVALID_QUERY_PARAMETER", "'since' must be provided once").into());
+        return Err(ApiError::new(
+            400,
+            "INVALID_QUERY_PARAMETER",
+            "'since' must be provided once",
+        )
+        .into());
     };
-    let since = decimal(raw)
-        .ok_or_else(|| ApiError::new(400, "INVALID_QUERY_PARAMETER", "'since' must be a non-negative integer"))?;
+    let since = decimal(raw).ok_or_else(|| {
+        ApiError::new(
+            400,
+            "INVALID_QUERY_PARAMETER",
+            "'since' must be a non-negative integer",
+        )
+    })?;
     let revision = global_revision(&board.db).await?;
-    let changed = revision.as_f64().is_some_and(|revision| revision > since as f64);
+    let changed = revision
+        .as_f64()
+        .is_some_and(|revision| revision > since as f64);
     http::json(200, &json!({ "changed": changed, "revision": revision }))
 }
 
@@ -99,10 +154,18 @@ async fn client_storage(board: &Board, request: &mut Request, query: &Query) -> 
     match request.method() {
         Method::Get => Ok(hub::send(&board.env, Method::Get, "/client-storage", None).await?),
         Method::Patch => {
-            let update = client_storage_update(&http::read_json(request, JSON_BODY_LIMIT, JSON_BODY_TOO_LARGE).await?)?;
-            let response = hub::send(&board.env, Method::Patch, "/client-storage", Some(&update)).await?;
+            let update = client_storage_update(
+                &http::read_json(request, JSON_BODY_LIMIT, JSON_BODY_TOO_LARGE).await?,
+            )?;
+            let response =
+                hub::send(&board.env, Method::Patch, "/client-storage", Some(&update)).await?;
             if (200..300).contains(&response.status_code()) {
-                db::run(&board.db, "UPDATE global_revision SET revision = revision + 1 WHERE singleton = 1", vec![]).await?;
+                db::run(
+                    &board.db,
+                    "UPDATE global_revision SET revision = revision + 1 WHERE singleton = 1",
+                    vec![],
+                )
+                .await?;
             }
             Ok(response)
         }
@@ -119,7 +182,12 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
     let query: Vec<(String, String)> = url.query_pairs().into_owned().collect();
     let query = query.as_slice();
     let method = request.method();
-    let parts: Vec<&str> = url.path().strip_prefix("/api/").unwrap_or_default().split('/').collect();
+    let parts: Vec<&str> = url
+        .path()
+        .strip_prefix("/api/")
+        .unwrap_or_default()
+        .split('/')
+        .collect();
     if parts.iter().any(|part| part.is_empty()) {
         return Err(ApiError::new(404, "NOT_FOUND", "API route not found").into());
     }
@@ -150,7 +218,12 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             if method != Method::Get {
                 return method_not_allowed(&["GET"]);
             }
-            Err(ApiError::new(409, "LOCAL_COMPANION_REQUIRED", "This capability requires the local Codex companion").into())
+            Err(ApiError::new(
+                409,
+                "LOCAL_COMPANION_REQUIRED",
+                "This capability requires the local Codex companion",
+            )
+            .into())
         }
         ["events"] => {
             if method != Method::Get {
@@ -159,7 +232,12 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             require_no_query(query, "GET /api/events")?;
             let upgrade = request.headers().get("upgrade")?.unwrap_or_default();
             if !upgrade.eq_ignore_ascii_case("websocket") {
-                return Err(ApiError::new(426, "WEBSOCKET_REQUIRED", "A WebSocket upgrade is required").into());
+                return Err(ApiError::new(
+                    426,
+                    "WEBSOCKET_REQUIRED",
+                    "A WebSocket upgrade is required",
+                )
+                .into());
             }
             Ok(hub::connect(&board.env, request).await?)
         }
@@ -169,7 +247,9 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
                 http::json(200, &json!({ "projects": board.list_projects().await? }))
             }
             Method::Post => {
-                let project = board.create_project(&input::project_create(&body(request).await?)?).await?;
+                let project = board
+                    .create_project(&input::project_create(&body(request).await?)?)
+                    .await?;
                 http::json(201, &json!({ "project": project }))
             }
             _ => method_not_allowed(&["GET", "POST"]),
@@ -210,7 +290,10 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             require_no_query(query, "Project README routes")?;
             let id = project_id(id)?;
             match method {
-                Method::Get => http::json(200, &json!({ "readme": board.get_project_readme(&id).await? })),
+                Method::Get => http::json(
+                    200,
+                    &json!({ "readme": board.get_project_readme(&id).await? }),
+                ),
                 Method::Put => {
                     let body = http::read_json(
                         request,
@@ -218,7 +301,9 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
                         "Project README request cannot exceed 3 MiB",
                     )
                     .await?;
-                    let readme = board.save_project_readme(&id, &input::cloud_project_readme_save(&body)?).await?;
+                    let readme = board
+                        .save_project_readme(&id, &input::cloud_project_readme_save(&body)?)
+                        .await?;
                     http::json(200, &json!({ "readme": readme }))
                 }
                 _ => method_not_allowed(&["GET", "PUT"]),
@@ -230,7 +315,8 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
                 http::json(200, &json!({ "tasks": tasks }))
             }
             Method::Post => {
-                let input = input::task_create(&body(request).await?, input::cloud_development_context)?;
+                let input =
+                    input::task_create(&body(request).await?, input::cloud_development_context)?;
                 http::json(201, &json!({ "task": board.create_task(&input).await? }))
             }
             _ => method_not_allowed(&["GET", "POST"]),
@@ -241,7 +327,10 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             }
             let id = path_part(id, "Task id")?;
             let tree = input::cloud_task_tree_query(query)?;
-            http::json(200, &json!({ "tree": board.get_task_tree(&id, tree.direction, tree.depth).await? }))
+            http::json(
+                200,
+                &json!({ "tree": board.get_task_tree(&id, tree.direction, tree.depth).await? }),
+            )
         }
         ["tasks", id, "relations", kind, related] => {
             require_no_query(query, "Issue relation routes")?;
@@ -250,8 +339,14 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             let related = path_part(related, "Related task id")?;
             let input = input::relation_mutation(&body(request).await?)?;
             match method {
-                Method::Post => http::json(200, &board.add_relation(&id, &kind, &related, &input).await?),
-                Method::Delete => http::json(200, &board.remove_relation(&id, &kind, &related, &input).await?),
+                Method::Post => http::json(
+                    200,
+                    &board.add_relation(&id, &kind, &related, &input).await?,
+                ),
+                Method::Delete => http::json(
+                    200,
+                    &board.remove_relation(&id, &kind, &related, &input).await?,
+                ),
                 _ => method_not_allowed(&["POST", "DELETE"]),
             }
         }
@@ -261,30 +356,47 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             if method != Method::Get {
                 return method_not_allowed(&["GET"]);
             }
-            http::json(200, &json!({ "activities": board.list_task_activities(&id).await? }))
+            http::json(
+                200,
+                &json!({ "activities": board.list_task_activities(&id).await? }),
+            )
         }
         ["tasks", id, "comments"] => {
             let id = path_part(id, "Task id")?;
             if method == Method::Get {
-                return http::json(200, &board.list_comments(&id, after_cursor(query)?.as_ref()).await?);
+                return http::json(
+                    200,
+                    &board
+                        .list_comments(&id, after_cursor(query)?.as_ref())
+                        .await?,
+                );
             }
             require_no_query(query, "Comment routes")?;
             if method != Method::Post {
                 return method_not_allowed(&["GET", "POST"]);
             }
-            let comment = board.create_comment(&id, &input::comment_create(&body(request).await?)?).await?;
+            let comment = board
+                .create_comment(&id, &input::comment_create(&body(request).await?)?)
+                .await?;
             http::json(201, &json!({ "comment": comment }))
         }
         ["comments", id, "attachments"] => {
             let id = path_part(id, "Comment id")?;
             if method == Method::Get {
-                return http::json(200, &board.list_comment_attachments(&id, after_cursor(query)?.as_ref()).await?);
+                return http::json(
+                    200,
+                    &board
+                        .list_comment_attachments(&id, after_cursor(query)?.as_ref())
+                        .await?,
+                );
             }
             require_no_query(query, "Attachment routes")?;
             if method != Method::Post {
                 return method_not_allowed(&["GET", "POST"]);
             }
-            let attachment = board.upload_attachment(Owner::Comment, &id, request).await?;
+            let attachment = board
+                .upload_attachment(Owner::Comment, &id, request)
+                .await?;
             http::json(201, &json!({ "attachment": attachment }))
         }
         ["comments", id] => {
@@ -292,7 +404,9 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             let id = path_part(id, "Comment id")?;
             match method {
                 Method::Patch => {
-                    let comment = board.update_comment(&id, &input::comment_patch(&body(request).await?)?).await?;
+                    let comment = board
+                        .update_comment(&id, &input::comment_patch(&body(request).await?)?)
+                        .await?;
                     http::json(200, &json!({ "comment": comment }))
                 }
                 Method::Delete => {
@@ -306,7 +420,12 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
         ["tasks", id, "attachments"] => {
             let id = path_part(id, "Task id")?;
             if method == Method::Get {
-                return http::json(200, &board.list_task_attachments(&id, after_cursor(query)?.as_ref()).await?);
+                return http::json(
+                    200,
+                    &board
+                        .list_task_attachments(&id, after_cursor(query)?.as_ref())
+                        .await?,
+                );
             }
             require_no_query(query, "Attachment routes")?;
             if method != Method::Post {
@@ -321,14 +440,18 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
                 return method_not_allowed(&["GET", "HEAD"]);
             }
             let id = path_part(id, "Attachment id")?;
-            board.attachment_content(&id, method == Method::Head, *action == "download").await
+            board
+                .attachment_content(&id, method == Method::Head, *action == "download")
+                .await
         }
         ["attachments", id] => {
             require_no_query(query, "Attachment routes")?;
             if method != Method::Delete {
                 return method_not_allowed(&["DELETE"]);
             }
-            board.delete_attachment(&path_part(id, "Attachment id")?).await?;
+            board
+                .delete_attachment(&path_part(id, "Attachment id")?)
+                .await?;
             http::empty(204)
         }
         ["tasks", id] => {
@@ -338,12 +461,19 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
                 Method::Get => {
                     let task = board.get_task(&id).await?;
                     if task.is_null() {
-                        return Err(ApiError::new(404, "TASK_NOT_FOUND", format!("Task '{id}' does not exist")).into());
+                        return Err(ApiError::new(
+                            404,
+                            "TASK_NOT_FOUND",
+                            format!("Task '{id}' does not exist"),
+                        )
+                        .into());
                     }
                     http::json(200, &json!({ "task": task }))
                 }
                 Method::Patch => {
-                    let task = board.update_task(&id, &input::cloud_task_patch(&body(request).await?)?).await?;
+                    let task = board
+                        .update_task(&id, &input::cloud_task_patch(&body(request).await?)?)
+                        .await?;
                     http::json(200, &json!({ "task": task }))
                 }
                 Method::Delete => {
@@ -363,8 +493,16 @@ pub async fn route(board: &Board, request: &mut Request, url: &Url) -> Result<Re
             let body = body(request).await?;
             let task = match *action {
                 "move" => board.move_task(&id, &input::task_move(&body)?).await?,
-                "archive" => board.archive_task(&id, &input::version_mutation(&body)?).await?,
-                _ => board.restore_task(&id, &input::version_mutation(&body)?).await?,
+                "archive" => {
+                    board
+                        .archive_task(&id, &input::version_mutation(&body)?)
+                        .await?
+                }
+                _ => {
+                    board
+                        .restore_task(&id, &input::version_mutation(&body)?)
+                        .await?
+                }
             };
             http::json(200, &json!({ "task": task }))
         }
