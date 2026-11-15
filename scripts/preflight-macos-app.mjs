@@ -12,9 +12,6 @@ import { verifyUpdaterSignature } from "./verify-updater-signature.mjs";
 const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!appPath) throw new Error("Usage: preflight-macos-app.mjs <App.app>");
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const releasePolicy = JSON.parse(
-  await readFile(path.join(projectRoot, "apps", "desktop", "release.json"), "utf8"),
-);
 const entitlementsPath = path.join(projectRoot, "apps", "desktop", "Entitlements.plist");
 
 function run(command, args, options = {}) {
@@ -25,35 +22,13 @@ function run(command, args, options = {}) {
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
 
-function signingDetails(targetPath) {
-  return run("/usr/bin/codesign", ["-dv", "--verbose=4", targetPath]).stderr;
-}
-
-function entitlements(targetPath) {
-  const { stdout } = run("/usr/bin/codesign", ["-d", "--entitlements", ":-", targetPath]);
-  const { stdout: json } = run("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], {
-    input: stdout,
-  });
-  return JSON.parse(json);
-}
-
-function verifyNode(targetApp) {
-  const nodePath = path.join(targetApp, "Contents", "MacOS", "node");
-  run("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", nodePath]);
-  if (!signingDetails(nodePath).includes(`TeamIdentifier=${releasePolicy.nodeTeamId}`)) {
-    throw new Error(`Node does not use Team ${releasePolicy.nodeTeamId}`);
+// The signed `broadcast-cli` sidecar runs from wherever the App was copied or extracted.
+function verifyCli(targetApp) {
+  const cliPath = path.join(targetApp, "Contents", "MacOS", "broadcast-cli");
+  run("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", cliPath]);
+  if (!run(cliPath, ["--help"]).stdout.startsWith("Usage: broadcast ")) {
+    throw new Error(`${cliPath} did not print the broadcast usage`);
   }
-  const policy = entitlements(nodePath);
-  for (const entitlement of [
-    "com.apple.security.cs.allow-jit",
-    "com.apple.security.cs.allow-unsigned-executable-memory",
-  ]) {
-    if (policy[entitlement] !== true) throw new Error(`Node is missing ${entitlement}`);
-  }
-  run(nodePath, [
-    "-e",
-    "let n=0; const add=(v)=>v+1; for(let i=0;i<5000000;i+=1)n=add(n); if(n!==5000000)process.exit(1)",
-  ]);
 }
 
 async function manifest(root, relative = "") {
@@ -82,9 +57,12 @@ async function manifest(root, relative = "") {
   return entries;
 }
 
-verifyNode(appPath);
-const launcherPath = path.join(appPath, "Contents", "MacOS", "broadcast-launcher");
-for (const targetPath of [launcherPath, appPath]) {
+const macosDirectory = path.join(appPath, "Contents", "MacOS");
+for (const targetPath of [
+  path.join(macosDirectory, "broadcast-cli"),
+  path.join(macosDirectory, "broadcast-launcher"),
+  appPath,
+]) {
   run("/usr/bin/codesign", [
     "--force",
     "--options",
@@ -97,7 +75,7 @@ for (const targetPath of [launcherPath, appPath]) {
   ]);
 }
 run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
-verifyNode(appPath);
+verifyCli(appPath);
 
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "broadcast-preflight."));
 let mountedDmg = null;
@@ -136,7 +114,7 @@ try {
   run("/usr/bin/tar", ["-xzf", archivePath, "-C", extractedDirectory]);
   const extractedApp = path.join(extractedDirectory, path.basename(appPath));
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", extractedApp]);
-  verifyNode(extractedApp);
+  verifyCli(extractedApp);
 
   const dmgPath = path.join(temporaryRoot, "Codex.Broadcast.preflight.dmg");
   const dmgSource = path.join(temporaryRoot, "dmg-source");
@@ -152,7 +130,7 @@ try {
   if (!mountedDmg) throw new Error("Preflight DMG did not expose a mount point");
   const dmgApp = path.join(mountedDmg, path.basename(appPath));
   run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", dmgApp]);
-  verifyNode(dmgApp);
+  verifyCli(dmgApp);
 
   const expectedManifest = JSON.stringify(await manifest(appPath));
   if (JSON.stringify(await manifest(extractedApp)) !== expectedManifest) {

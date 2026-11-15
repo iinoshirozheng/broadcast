@@ -1,14 +1,19 @@
 #!/usr/bin/env node
-
+// Runs the packaged `bin/broadcast` wrapper and its `broadcast-cli` sidecar against a Broadcast
+// server found through the App's launcher-runtime.json, the way Codex agents reach the desktop.
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const appPath = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (!appPath) throw new Error("Usage: verify-packaged-broadcast.mjs <App.app>");
+// The desktop runs the server in-process; `pixi run build-native` builds the same server alone.
+const serverBin =
+  process.env.BROADCAST_SERVER_BIN ??
+  fileURLToPath(new URL("../target/debug/broadcast-server", import.meta.url));
 
 function waitForExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
@@ -39,78 +44,57 @@ const temporaryHome = await mkdtemp(path.join(os.tmpdir(), "broadcast-broadcast.
 const dataDirectory = path.join(temporaryHome, "Library", "Application Support", "Broadcast");
 await mkdir(dataDirectory, { recursive: true });
 const runtimeFile = path.join(dataDirectory, "launcher-runtime.json");
-const nodePath = path.join(appPath, "Contents", "MacOS", "node");
-const appRoot = path.join(appPath, "Contents", "Resources", "app");
-const wrapperPath = path.join(appPath, "Contents", "Resources", "bin", "broadcast");
-await stat(path.join(appRoot, "node_modules", "smol-toml", "package.json"));
-const reservation = createServer();
-await new Promise((resolve, reject) => {
-  reservation.once("error", reject);
-  reservation.listen(0, "127.0.0.1", resolve);
-});
-const address = reservation.address();
-const inheritedFd = reservation._handle?.fd;
-if (!address || typeof address === "string" || !Number.isInteger(inheritedFd)) {
-  throw new Error("Could not reserve the packaged Broadcast listener");
-}
+const resourcesDirectory = path.join(appPath, "Contents", "Resources");
+const wrapperPath = path.join(resourcesDirectory, "bin", "broadcast");
 
 const instanceToken = randomUUID();
-const instanceSecret = randomBytes(32).toString("hex");
-const server = spawn(nodePath, [path.join(appRoot, "server", "index.mjs")], {
-  cwd: appRoot,
+const server = spawn(serverBin, [], {
   env: {
     ...process.env,
-    BROADCAST_DATA_DIR: dataDirectory,
+    BROADCAST_DATA_DIR: path.join(temporaryHome, "server"),
     BROADCAST_HOST: "127.0.0.1",
-    BROADCAST_PORT: String(address.port),
-    BROADCAST_LISTEN_FD: "5",
+    BROADCAST_PORT: "0",
     BROADCAST_INSTANCE_TOKEN: instanceToken,
-    BROADCAST_INSTANCE_SECRET: instanceSecret,
+    BROADCAST_INSTANCE_SECRET: randomBytes(32).toString("hex"),
     BROADCAST_VERSION: "preflight",
   },
-  stdio: ["ignore", "pipe", "pipe", "ignore", "ignore", inheritedFd],
+  stdio: ["ignore", "pipe", "pipe"],
 });
-reservation._handle.readStop();
-
 let stderr = "";
 server.stderr.setEncoding("utf8");
 server.stderr.on("data", (chunk) => {
   stderr += chunk;
 });
+
 try {
-  await new Promise((resolve, reject) => {
+  const port = await new Promise((resolve, reject) => {
     let stdout = "";
     const timeout = setTimeout(
-      () => reject(new Error(stderr || "Packaged server did not start")),
+      () => reject(new Error(stderr || "Broadcast server did not start")),
       15_000,
     );
     server.stdout.setEncoding("utf8");
     server.stdout.on("data", (chunk) => {
       stdout += chunk;
-      if (stdout.includes("Broadcast listening")) {
+      const match = stdout.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
+      if (match) {
         clearTimeout(timeout);
-        resolve();
+        resolve(match[1]);
       }
     });
     server.once("exit", () => {
       clearTimeout(timeout);
-      reject(new Error(stderr || "Packaged server exited during startup"));
+      reject(new Error(stderr || "Broadcast server exited during startup"));
     });
   });
-
   await writeFile(
     runtimeFile,
-    `${JSON.stringify({
-      version: 1,
-      pid: server.pid,
-      url: `http://127.0.0.1:${address.port}/${instanceToken}`,
-    })}\n`,
+    `${JSON.stringify({ version: 1, url: `http://127.0.0.1:${port}/${instanceToken}` })}\n`,
     { mode: 0o600 },
   );
   if ((await stat(runtimeFile)).mode % 0o1000 !== 0o600) {
     throw new Error("Packaged Broadcast runtime descriptor must use mode 0600");
   }
-
   const projects = runBroadcast(wrapperPath, temporaryHome, ["project", "list", "--json"]);
   const projectId = projects.projects?.[0]?.id;
   if (!projectId) throw new Error("Packaged broadcast did not list the local project");
@@ -122,10 +106,10 @@ try {
     "map",
     projectId,
     "--workspace-path",
-    appRoot,
+    resourcesDirectory,
     "--json",
   ]);
-  if (mapping.projectId !== projectId || mapping.workspacePath !== appRoot) {
+  if (mapping.projectId !== projectId || mapping.workspacePath !== resourcesDirectory) {
     throw new Error("Packaged project map used the wrong endpoint");
   }
   const created = runBroadcast(wrapperPath, temporaryHome, [
@@ -174,25 +158,12 @@ try {
     "--json",
   ]).comment;
   if (comment.body !== "packaged endpoint verified") throw new Error("Packaged comment add failed");
-
-  server.kill("SIGTERM");
-  await waitForExit(server, 10_000);
-  const takeover = createServer();
-  const takeoverError = await new Promise((resolve) => {
-    takeover.once("error", resolve);
-    takeover.listen(address.port, "127.0.0.1", () => resolve(null));
-  });
-  if (takeoverError?.code !== "EADDRINUSE") {
-    takeover.close();
-    throw new Error("The launcher-owned listener was replaceable after server exit");
-  }
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
     server.kill("SIGKILL");
     await waitForExit(server, 2_000).catch(() => {});
   }
-  await new Promise((resolve) => reservation.close(resolve));
   await rm(temporaryHome, { recursive: true, force: true });
 }
 
-console.log("Verified packaged broadcast discovery and launcher-owned listener");
+console.log("Verified the packaged broadcast CLI through the launcher runtime descriptor");

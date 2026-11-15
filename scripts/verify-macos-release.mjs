@@ -46,14 +46,6 @@ function signingDetails(targetPath) {
   return run("/usr/bin/codesign", ["-dv", "--verbose=4", targetPath]).stderr;
 }
 
-function entitlements(targetPath) {
-  const { stdout } = run("/usr/bin/codesign", ["-d", "--entitlements", ":-", targetPath]);
-  const { stdout: json } = run("/usr/bin/plutil", ["-convert", "json", "-o", "-", "-"], {
-    input: stdout,
-  });
-  return JSON.parse(json);
-}
-
 function plistValue(targetPath, key) {
   return run("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, targetPath]).stdout;
 }
@@ -96,18 +88,9 @@ function verifyApp(targetPath) {
   if (!signingDetails(launcherPath).includes(`TeamIdentifier=${releasePolicy.appleTeamId}`)) {
     throw new Error(`Launcher does not use Apple Team ${releasePolicy.appleTeamId}`);
   }
-  const nodePath = path.join(targetPath, "Contents", "MacOS", "node");
-  if (!signingDetails(nodePath).includes(`TeamIdentifier=${releasePolicy.nodeTeamId}`)) {
-    throw new Error(`Node does not use Team ${releasePolicy.nodeTeamId}`);
-  }
-  const nodeEntitlements = entitlements(nodePath);
-  for (const entitlement of [
-    "com.apple.security.cs.allow-jit",
-    "com.apple.security.cs.allow-unsigned-executable-memory",
-  ]) {
-    if (nodeEntitlements[entitlement] !== true) {
-      throw new Error(`Node is missing ${entitlement}`);
-    }
+  const cliPath = path.join(targetPath, "Contents", "MacOS", "broadcast-cli");
+  if (!signingDetails(cliPath).includes(`TeamIdentifier=${releasePolicy.appleTeamId}`)) {
+    throw new Error(`broadcast-cli does not use Apple Team ${releasePolicy.appleTeamId}`);
   }
 }
 
@@ -218,10 +201,7 @@ try {
     throw new Error("DMG App differs from the notarized source App");
   }
 
-  run(path.join(updaterApp, "Contents", "MacOS", "node"), [
-    "-e",
-    "let n=0; const add=(v)=>v+1; for(let i=0;i<5000000;i+=1)n=add(n); if(n!==5000000)process.exit(1)",
-  ]);
+  run(path.join(updaterApp, "Contents", "MacOS", "broadcast-cli"), ["--help"]);
 } finally {
   if (mountedDmg) run("/usr/bin/hdiutil", ["detach", mountedDmg]);
   await rm(temporaryRoot, { recursive: true, force: true });

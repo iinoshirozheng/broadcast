@@ -335,7 +335,9 @@ jobs:
           --no-sign
           --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - run: test -d "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"
-      - name: Verify packaged broadcast and inherited listener
+      - name: Build the server the packaged CLI is verified against
+        run: cargo build -p broadcast-server
+      - name: Verify the packaged broadcast CLI
         run: >-
           pnpm app:verify-packaged-broadcast
           "target/universal-apple-darwin/release/bundle/macos/Broadcast.app"

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, open, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -59,38 +59,24 @@ async function assertElfX64(filePath) {
 
 async function verifyPackageRoot(root, label) {
   const launcherPath = path.join(root, "usr", "bin", "broadcast-launcher");
-  const nodePath = path.join(root, "usr", "bin", "broadcast-node");
+  const cliPath = path.join(root, "usr", "bin", "broadcast-cli");
   const resourceRoot = path.join(root, "usr", "lib", productName);
   const broadcastPath = path.join(resourceRoot, "bin", "broadcast");
-  const requiredResources = [
-    "app/cli/broadcast.mjs",
-    "app/dist/web/index.html",
-    "app/inject/broadcast.user.js",
-    "app/node_modules/smol-toml/package.json",
-    "app/scripts/codex-injector.mjs",
-    "app/server/app.mjs",
-    "app/server/index.mjs",
-    "app/shared/codex-executable.mjs",
-    "app/skills/manage-broadcast/SKILL.md",
-  ];
+  const requiredResources = ["web/index.html", "skills/manage-broadcast/SKILL.md"];
 
   await assertExecutable(launcherPath);
   await assertElfX64(launcherPath);
-  await assertExecutable(nodePath);
-  await assertElfX64(nodePath);
+  await assertExecutable(cliPath);
+  await assertElfX64(cliPath);
   await assertExecutable(broadcastPath);
   for (const resource of requiredResources) {
     const details = await stat(path.join(resourceRoot, resource));
     if (!details.isFile()) throw new Error(`${label} is missing ${resource}`);
   }
 
-  const wrapper = await readFile(broadcastPath, "utf8");
-  if (!wrapper.includes("broadcast-node") || !wrapper.includes("app/cli/broadcast.mjs")) {
-    throw new Error(`${label} broadcast does not use the packaged Node and CLI`);
-  }
-  const nodeVersion = run(nodePath, ["--version"]);
-  if (nodeVersion !== "v22.23.2") {
-    throw new Error(`${label} contains unexpected Node.js ${nodeVersion}`);
+  // The wrapper resolves the sidecar relative to itself, so it runs inside the extracted tree.
+  if (!run(broadcastPath, ["--help"]).startsWith("Usage: broadcast ")) {
+    throw new Error(`${label} broadcast does not run the packaged broadcast-cli`);
   }
 }
 
