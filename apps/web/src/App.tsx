@@ -65,9 +65,9 @@ import { ProjectReadmeView } from "./components/ProjectReadmeView";
 import { IssueListView } from "./components/IssueListView";
 import { JiraConnectionDialog } from "./components/JiraConnectionDialog";
 import { ArchivedTasksColumn, OtherTasksPanel } from "./components/OtherTasksPanel";
-import {
-  type PendingInlineAttachment,
-  type PendingInlineImage,
+import type {
+  PendingInlineAttachment,
+  PendingInlineImage,
 } from "./documentModel";
 import { LinearIcon } from "./components/LinearIcon";
 import {
@@ -102,7 +102,6 @@ import { buildIssueUrl, readIssueIdentifier } from "./issueRoute";
 import {
   getBroadcastI18n,
   resolveBroadcastLanguage,
-  taskStatusLabel,
   BroadcastLanguageProvider,
 } from "./i18n";
 import {
@@ -779,7 +778,7 @@ export function App() {
     : typeof actionError === "string"
       ? actionError
       : text(actionError[0], actionError[1]);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [, setConnection] = useState<ConnectionState>("connecting");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(readTaskFilters);
   const [taskSort, setTaskSort] = useState<TaskSort>("default");

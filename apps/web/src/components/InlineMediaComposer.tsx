@@ -44,7 +44,6 @@ import type {
 import type { MentionableAgent } from "../actors";
 import {
   attachmentContentUrl,
-  attachmentDownloadUrl,
   getAiChatComposerCandidates,
   resolvePersistedAttachmentUrl,
 } from "../api";
@@ -725,7 +724,7 @@ composerMarkdownTokenizer.inline.ruler.before(
     const scanned = state.src.charCodeAt(state.pos) === 0x7e
       ? state.scanDelims(state.pos, true)
       : null;
-    if (!scanned || scanned.length !== 1 || silent) return false;
+    if (scanned?.length !== 1 || silent) return false;
 
     const token = state.push("text", "", 0);
     token.content = "~";
@@ -1157,7 +1156,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
     onKeyDownRef.current = onKeyDown;
 
     const issueResults = useMemo(() => {
-      if (!completionQuery || completionQuery.trigger !== "@") return [];
+      if (completionQuery?.trigger !== "@") return [];
       const query = completionQuery.query.toLocaleLowerCase();
       return mentionTasks.filter((task) => (
         !query
@@ -1167,7 +1166,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
     }, [completionQuery, mentionTasks]);
 
     const agentResults = useMemo(() => {
-      if (!completionQuery || completionQuery.trigger !== "@") return [];
+      if (completionQuery?.trigger !== "@") return [];
       const query = completionQuery.query.toLocaleLowerCase();
       return mentionAgents.filter((agent) => (
         agent.handle.includes(query) || agent.actor.name.toLocaleLowerCase().includes(query)
@@ -1510,7 +1509,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       return true;
     }
 
-    function handleCompletionKey(view: EditorView, event: globalThis.KeyboardEvent): boolean {
+    function handleCompletionKey(_view: EditorView, event: globalThis.KeyboardEvent): boolean {
       const query = completionQueryRef.current;
       const selections = completionSelectionsRef.current;
       if (!query || selections.length === 0) return false;
@@ -1682,7 +1681,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
           onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent<HTMLDivElement>);
           return event.defaultPrevented;
         },
-        handlePaste(view, event) {
+        handlePaste(_view, event) {
           if (disabledRef.current) return false;
           const pastedFiles: File[] = event.clipboardData
             ? Array.from(event.clipboardData.files)
@@ -1886,6 +1885,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
       const segment = atomSegments.current.get(segmentIdValue);
       if (!segment || segment.type === "text") return [];
       const remove = () => removeAtom(segment.id);
+      // biome-ignore-start lint/correctness/useJsxKeyInIterable: createPortal below carries the key
       const content = segment.type === "pending-image"
         ? <PendingImageBlock segment={segment} disabled={disabled} onRemove={remove} />
         : segment.type === "persisted-image"
@@ -1906,6 +1906,7 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
                     />
                   )
                   : <ComposerReferenceChip segment={segment} disabled={disabled} onRemove={remove} />;
+      // biome-ignore-end lint/correctness/useJsxKeyInIterable: createPortal below carries the key
       return [createPortal(content, host, segment.id)];
     });
     const mermaidPortals = Array.from(mermaidHosts.current.entries()).map(([

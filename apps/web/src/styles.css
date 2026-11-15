@@ -1751,6 +1751,7 @@ kbd {
   view-transition-group: contain;
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoElement: nested view transitions */
 ::view-transition-group-children(review-task-list) {
   overflow: clip;
 }

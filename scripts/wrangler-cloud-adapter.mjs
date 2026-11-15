@@ -89,7 +89,8 @@ export function createWranglerCloudAdapters({
 
   async function privateFile(extension, contents) {
     const directory = await temporaryDirectory;
-    const filename = path.join(directory, `${sequence += 1}${extension}`);
+    sequence += 1;
+    const filename = path.join(directory, `${sequence}${extension}`);
     await writeFile(filename, contents, { flag: "wx", mode: 0o600 });
     await chmod(filename, 0o600);
     return filename;
@@ -178,7 +179,8 @@ export function createWranglerCloudAdapters({
     },
     async head(key) {
       const directory = await temporaryDirectory;
-      const outputPath = path.join(directory, `${sequence += 1}.download`);
+      sequence += 1;
+      const outputPath = path.join(directory, `${sequence}.download`);
       try {
         await run([
           "r2",

@@ -78,8 +78,8 @@
   let frameCapability = "";
   let frameChallenge = "";
   let frameReady = false;
-  let frameReadyWaiters = new Set();
-  let hostRequests = new Map();
+  const frameReadyWaiters = new Set();
+  const hostRequests = new Map();
   let hostRequestSequence = 0;
   let hostHeartbeatAt = 0;
   let observer = null;
@@ -916,6 +916,7 @@
           await new Promise((resolve) => window.setTimeout(resolve, 40));
         }
         if (profileButton.getAttribute("aria-expanded") === "true") {
+          // biome-ignore lint/correctness/noUnsafeFinally: a menu left open must fail the read
           throw hostError("无法关闭 Codex 个人资料菜单", "Could not close the Codex profile menu");
         }
       }
@@ -1197,9 +1198,7 @@
         workspacePath,
         ...projectRoots.map(({ root }) => root),
       ]);
-      const matchingRootIndex = canonicalRoots.slice(1).findIndex((root) => (
-        root === canonicalRoots[0]
-      ));
+      const matchingRootIndex = canonicalRoots.slice(1).indexOf(canonicalRoots[0]);
       if (matchingRootIndex >= 0) project = projectRoots[matchingRootIndex].project;
     }
     const targetRoot = normalizedWorkspacePath ? workspacePath : project?.rootPaths[0];

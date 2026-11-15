@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { access, chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, test } from "node:test";
 import { WebSocket, WebSocketServer } from "ws";
 

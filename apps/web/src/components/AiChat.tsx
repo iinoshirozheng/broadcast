@@ -10,7 +10,6 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
@@ -688,7 +687,7 @@ function composerQuery(root: HTMLElement): {
   range: Range;
 } | null {
   const selection = root.ownerDocument.getSelection();
-  if (!selection || !selection.isCollapsed || !selection.focusNode) return null;
+  if (!selection?.isCollapsed || !selection.focusNode) return null;
   if (selection.focusNode.nodeType === Node.TEXT_NODE) {
     return composerQueryAt(root, selection.focusNode as Text, selection.focusOffset);
   }
@@ -739,7 +738,7 @@ function composerQueryAfterInput(
 
 function tokenBeforeComposerCaret(root: HTMLElement): HTMLElement | null {
   const selection = root.ownerDocument.getSelection();
-  if (!selection || !selection.isCollapsed || !selection.focusNode) return null;
+  if (!selection?.isCollapsed || !selection.focusNode) return null;
   const focusNode = selection.focusNode;
   let candidate: ChildNode | null = null;
   if (focusNode.nodeType === Node.TEXT_NODE) {
@@ -2096,8 +2095,7 @@ export function AiChat({
     const selection = editor?.ownerDocument.getSelection();
     if (
       !editor
-      || !selection
-      || !selection.isCollapsed
+      || !selection?.isCollapsed
       || !selection.focusNode
       || !editor.contains(selection.focusNode)
       || event.inputType !== "insertText"
@@ -2194,8 +2192,6 @@ export function AiChat({
           fragment.message.slice(messageOffset, markerOffset),
         ));
       }
-      const skillId = fragment.skillIds[skillIndex];
-      const skill = skillsById.get(skillId);
       const reference = composerFragmentReference(fragment, skillIndex, skillsById);
       if (!reference) return false;
       const tokenElement = editor.ownerDocument.createElement("span");

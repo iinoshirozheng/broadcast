@@ -15,7 +15,7 @@ export function agentPlatformLabel(platform: AgentPlatform | "codex") {
 export function sessionResumeCommand(platform: AgentPlatform | "codex", sessionId: string) {
   const argument = /^[A-Za-z0-9_./:@+-]+$/.test(sessionId)
     ? sessionId
-    : "'" + sessionId.replace(/'/g, "'\"'\"'") + "'";
+    : `'${sessionId.replace(/'/g, "'\"'\"'")}'`;
   switch (platform) {
     case "codex": return `codex resume ${argument}`;
     case "claude": return `claude --resume ${argument}`;

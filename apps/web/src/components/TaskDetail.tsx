@@ -1354,7 +1354,7 @@ export function TaskDetail({
                           <strong>{activity.actorName}</strong>
                           {" "}
                           {change.field === "description" ? (
-                            <>{text("更新了描述", "updated the description")}</>
+                            text("更新了描述", "updated the description")
                           ) : change.field === "relation" && change.before === null ? (
                             <>{text("添加了 ", "added ")}<span className="activity-change-value">{afterValue}</span></>
                           ) : change.field === "relation" && change.after === null ? (

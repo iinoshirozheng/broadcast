@@ -1,6 +1,7 @@
 .inline-media-composer.ProseMirror {
   position: relative;
   white-space: pre-wrap;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: pre-wrap is the fallback */
   white-space: break-spaces;
   outline: none;
   -webkit-font-variant-ligatures: none;

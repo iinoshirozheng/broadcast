@@ -182,7 +182,7 @@ export function BoardCardDisplayMenu({
         <span>{text("封面", "Cover")}</span>
         <button
           type="button"
-          className={"board-setting-switch" + (settings.cover ? " is-on" : "")}
+          className={`board-setting-switch${settings.cover ? " is-on" : ""}`}
           role="switch"
           aria-label={text("显示封面", "Show cover")}
           aria-checked={settings.cover}
@@ -195,7 +195,7 @@ export function BoardCardDisplayMenu({
         <span>{text("正文", "Body")}</span>
         <button
           type="button"
-          className={"board-setting-switch" + (settings.body ? " is-on" : "")}
+          className={`board-setting-switch${settings.body ? " is-on" : ""}`}
           role="switch"
           aria-label={text("显示正文", "Show body")}
           aria-checked={settings.body}
@@ -208,7 +208,7 @@ export function BoardCardDisplayMenu({
         <span>{text("创建时间", "Creation date")}</span>
         <button
           type="button"
-          className={"board-setting-switch" + (settings.createdAt ? " is-on" : "")}
+          className={`board-setting-switch${settings.createdAt ? " is-on" : ""}`}
           role="switch"
           aria-label={text("显示创建时间", "Show creation date")}
           aria-checked={Boolean(settings.createdAt)}
@@ -266,9 +266,7 @@ export function BoardCardDisplayMenu({
             ["hidden", text("隐藏", "Hidden")],
           ] as const).map(([placement, label]) => (
             <section
-              className={"display-settings-column" + (
-                dropTarget?.placement === placement ? " is-drop-target" : ""
-              )}
+              className={`display-settings-column${dropTarget?.placement === placement ? " is-drop-target" : ""}`}
               aria-label={label}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -292,13 +290,15 @@ export function BoardCardDisplayMenu({
                   const dragShift = getStatusDragShift(status, placement);
                   return (
                     <div
-                      className={`display-settings-status-item status-${status}` + (
-                        draggedStatus === status ? " is-dragging" : ""
-                      ) + (dragShift ? " is-drag-shifted" : "") + (
+                      className={[
+                        "display-settings-status-item",
+                        `status-${status}`,
+                        draggedStatus === status ? "is-dragging" : "",
+                        dragShift ? "is-drag-shifted" : "",
                         dropTarget?.placement === placement && dropTarget.beforeStatus === status
-                          ? " is-drop-before"
-                          : ""
-                      )}
+                          ? "is-drop-before"
+                          : "",
+                      ].filter(Boolean).join(" ")}
                       style={dragShift ? { transform: `translate3d(0, ${dragShift}px, 0)` } : undefined}
                       draggable
                       data-display-status={status}
@@ -346,9 +346,7 @@ export function BoardCardDisplayMenu({
     <>
       <button
         ref={triggerRef}
-        className={"task-filter-trigger board-card-display-trigger" + (
-          menuOpen || dialogOpen ? " is-open" : ""
-        )}
+        className={`task-filter-trigger board-card-display-trigger${menuOpen || dialogOpen ? " is-open" : ""}`}
         type="button"
         aria-label={text("显示设置", "Display settings")}
         aria-haspopup="dialog"

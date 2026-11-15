@@ -175,7 +175,6 @@ function hasExternalMermaidCss(source: string) {
     try {
       if (hasExternalThemeCss(JSON.parse(directive[1].trim().replace(/'/g, '"')))) return true;
     } catch {
-      continue;
     }
   }
 
@@ -224,7 +223,6 @@ function hasExternalMermaidResource(source: string) {
         if (iconSource !== "" && !iconSource.startsWith("@")) return true;
       }
     } catch {
-      continue;
     }
   }
   return false;
@@ -493,6 +491,7 @@ export function MermaidDiagram({ source }: { source: string }) {
       className="markdown-mermaid"
       role="img"
       aria-label={text("Mermaid 图", "Mermaid diagram")}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid renders this SVG with securityLevel "strict"
       dangerouslySetInnerHTML={{ __html: currentDiagram.svg }}
     />
   );

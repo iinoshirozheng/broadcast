@@ -32,6 +32,7 @@
     "check": "pnpm typecheck && pnpm build:web && pnpm test"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.7",
     "@e2e-dev/web": "0.15.2",
     "@tauri-apps/cli": "2.11.4",
     "e2e": "0.21.2",

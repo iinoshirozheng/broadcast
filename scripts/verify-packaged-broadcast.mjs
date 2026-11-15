@@ -158,7 +158,7 @@ try {
     takeover.once("error", resolve);
     takeover.listen(address.port, "127.0.0.1", () => resolve(null));
   });
-  if (!takeoverError || takeoverError.code !== "EADDRINUSE") {
+  if (takeoverError?.code !== "EADDRINUSE") {
     takeover.close();
     throw new Error("The launcher-owned listener was replaceable after server exit");
   }

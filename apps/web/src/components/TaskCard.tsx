@@ -19,7 +19,6 @@ import type {
   TaskConversationItem,
 } from "../taskConversations";
 import { ActorAvatar } from "./ActorAvatar";
-import { LinearIcon } from "./LinearIcon";
 import { DueDateIcon, PriorityIcon, ProjectIcon } from "./SemanticIcons";
 import { LabelPicker } from "./LabelPicker";
 import { TaskPropertyPicker } from "./TaskPropertyPicker";
