@@ -184,7 +184,18 @@ so packaging infrastructure is edited only once.
         `verify-linux-packages`. conda's rust links through its own gcc and glibc 2.28
         sysroot while the `cc` crate and WebKitGTK use the system's, so pixi sets the
         linux-64 linker to the system `cc`.
-  - [ ] Unverified: the Windows build and suites, until their CI jobs run.
+  - [x] Windows cross-check: every crate, the desktop's Windows code included, passes
+        `clippy -D warnings` for `x86_64-pc-windows-gnu` (mingw-w64), and the gnu
+        `broadcast-server.exe` and `broadcast.exe` run under Wine 9 in an amd64 container:
+        `/health`, `project create`, an attributed `issue create` and `issue list`.
+        The suites cannot be judged that way: run against those exes, 9 of the 27 HTTP
+        tests pass and each of the other 18 fails because Docker's Rosetta emulation kills
+        Wine's server process ("invalid gdt selector"); Wine also reports data paths as
+        `Z:\…`, which path assertions reject. The server and CLI also build for
+        `aarch64-pc-windows-gnullvm` (llvm-mingw), but arm64 Wine (Ubuntu 9.0, Debian 10.0)
+        hangs creating its prefix in Docker, so that build cannot avoid the emulation.
+  - [ ] Unverified: the MSVC build, the NSIS installer and the suites on Windows, until
+        their CI jobs run.
 
 ## Consequences
 
