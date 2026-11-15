@@ -177,8 +177,14 @@ so packaging infrastructure is edited only once.
         through a launcher runtime descriptor; it and the ad-hoc-signed App, updater and
         DMG preflight pass locally.
   - [ ] Developer ID signing and notarization run only in the release workflow.
-  - [ ] Unverified: the Linux packages (conda Rust with the system `cc` and WebKitGTK) and
-        the Windows build and suites, until their CI jobs run.
+  - [x] Tauri CLI 2.12.4 skips its `--target` check when `rustup target list` fails, and
+        pixi sets `RUSTUP_TOOLCHAIN=pixi`, so a runner's rustup (whose toolchain lacks
+        `x86_64-apple-darwin`) never stands in for the pixi toolchain.
+  - [x] The Linux x64 `.deb` and AppImage build in an Ubuntu 24.04 amd64 container and pass
+        `verify-linux-packages`. conda's rust links through its own gcc and glibc 2.28
+        sysroot while the `cc` crate and WebKitGTK use the system's, so pixi sets the
+        linux-64 linker to the system `cc`.
+  - [ ] Unverified: the Windows build and suites, until their CI jobs run.
 
 ## Consequences
 

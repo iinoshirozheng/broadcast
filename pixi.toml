@@ -15,6 +15,12 @@ pnpm = "12.*"
 # name a toolchain rustup does not have so that check is skipped.
 RUSTUP_TOOLCHAIN = "pixi"
 
+# conda's rust links through its own gcc and glibc 2.28 sysroot, but the cc crate compiles C
+# (aws-lc, SQLite) with the system `cc`, and the desktop links the distribution's WebKitGTK:
+# link with the system toolchain too.
+[target.linux-64.activation.env]
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "cc"
+
 [feature.dev.dependencies]
 rust-src = "1.100.*"
 rust-analyzer = "*"
