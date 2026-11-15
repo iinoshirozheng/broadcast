@@ -26,7 +26,7 @@ async fn get_as(server: &Server, host: &str, headers: &[(&str, &str)], path: &st
 #[tokio::test]
 async fn health_and_the_default_local_project_are_available() {
     let builder = Server::builder();
-    let skill_path = builder.dir().join("skills/manage-broadcast/SKILL.md");
+    let skill_path = builder.dir().join("skills").join("manage-broadcast").join("SKILL.md");
     let server = builder.env("BROADCAST_SKILL_PATH", &skill_path).start().await;
 
     assert_eq!(server.get("/health").await, (200, json!({ "status": "ok" })));
@@ -176,7 +176,7 @@ async fn trusted_https_origins_allow_their_exact_public_host_without_trusting_fo
 async fn trusted_https_origins_do_not_inherit_device_local_capabilities_from_tunnel_loopback() {
     let upstream = Upstream::json(json!({ "projects": [] })).await;
     let builder = Server::builder();
-    let skill_path = builder.dir().join("skills/manage-broadcast/SKILL.md");
+    let skill_path = builder.dir().join("skills").join("manage-broadcast").join("SKILL.md");
     let server = builder
         .env("BROADCAST_SKILL_PATH", &skill_path)
         .env("BROADCAST_TRUSTED_ORIGINS", TRUSTED_ORIGIN)
