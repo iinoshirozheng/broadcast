@@ -149,6 +149,7 @@ pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
         conversation_refs: Vec::new(),
         participants: Vec::new(),
         preview_image: None,
+        spec: None,
         activity_key: String::new(),
         activity_updated_at: String::new(),
     })

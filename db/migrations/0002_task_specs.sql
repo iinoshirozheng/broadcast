@@ -1,0 +1,8 @@
+CREATE TABLE task_specs (
+  task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+  proposal TEXT NOT NULL DEFAULT '',
+  specs TEXT NOT NULL DEFAULT '',
+  design TEXT NOT NULL DEFAULT '',
+  tasks TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);

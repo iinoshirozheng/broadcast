@@ -1,3 +1,5 @@
+import { AppSidebar } from "./components/AppSidebar";
+import { ThemeSwitcher, type ThemePreference } from "./components/ThemeSwitcher";
 import { Toasts, showToast, dismissUndoToast } from "./components/Toasts";
 import { agentPlatformLabel, sessionResumeCommand } from "./agentSessions";
 import { resolveInlineAttachments } from "./inlineAttachments";
@@ -384,10 +386,15 @@ function getInitialTheme(): Theme {
   if (window.parent !== window && (host === "codex" || host === "deepseek-harness")) {
     const fromQuery = query.get("theme");
     if (isTheme(fromQuery)) return fromQuery;
-    const stored = broadcastStorage.getItem("broadcast.theme");
-    if (isTheme(stored)) return stored;
   }
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+const THEME_PREFERENCE_KEY = "broadcast.theme";
+
+function readThemePreference(): ThemePreference {
+  const stored = broadcastStorage.getItem(THEME_PREFERENCE_KEY);
+  return isTheme(stored) ? stored : "system";
 }
 
 function readDeviceWorkspacePaths(): Record<string, string> {
@@ -744,7 +751,9 @@ export function App() {
   const host = query.get("host");
   const embedded = host === "codex" || host === "deepseek-harness";
   const undoShortcut = navigator.userAgent.includes("Macintosh") ? "⌘Z" : "Ctrl+Z";
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [autoTheme, setAutoTheme] = useState<Theme>(getInitialTheme);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
+  const theme = themePreference === "system" ? autoTheme : themePreference;
   const [hostContext, setHostContext] = useState<HostContext | null>(null);
   const language = resolveBroadcastLanguage(
     hostContext?.language ?? query.get("lang") ?? navigator.language,
@@ -1786,7 +1795,7 @@ export function App() {
   useEffect(() => {
     if (embedded && window.parent !== window) return;
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
-    const syncTheme = () => setTheme(systemTheme.matches ? "dark" : "light");
+    const syncTheme = () => setAutoTheme(systemTheme.matches ? "dark" : "light");
     syncTheme();
     systemTheme.addEventListener("change", syncTheme);
     return () => systemTheme.removeEventListener("change", syncTheme);
@@ -1922,7 +1931,7 @@ export function App() {
       }
 
       if (message.type === "broadcast:theme" && isTheme(message.theme)) {
-        setTheme(message.theme);
+        setAutoTheme(message.theme);
         return;
       }
 
@@ -1959,7 +1968,7 @@ export function App() {
       const payload = message.payload as HostContext;
       setHostContext(payload);
       setCurrentUserActor(payload.user);
-      if (isTheme(payload.theme)) setTheme(payload.theme);
+      if (isTheme(payload.theme)) setAutoTheme(payload.theme);
       if (host === "codex") void publishHostRuntime(payload);
     }
 
@@ -2489,7 +2498,7 @@ export function App() {
   const mainBoardMinWidth = mainColumnCount * 300 + (mainColumnCount - 1) * 24;
   const mainBoardMaxWidth = mainColumnCount * 400 + (mainColumnCount - 1) * 24;
   const otherTasksColumnCount = mainColumnCount + 1;
-  const otherTasksWidth = `clamp(300px, calc(${100 / otherTasksColumnCount}% - ${(36 + mainColumnCount * 24) / otherTasksColumnCount}px), 400px)`;
+  const otherTasksWidth = `min(calc(${100 / otherTasksColumnCount}% - ${(36 + mainColumnCount * 24) / otherTasksColumnCount}px), 400px)`;
   const otherTaskTabs = boardDisplaySettings.sidebarStatuses;
   const otherTaskTabsKey = otherTaskTabs.join(",");
   const otherTasksAvailable = otherTaskTabs.length > 0;
@@ -2525,8 +2534,7 @@ export function App() {
               aiThreadsByTask.get(task.id) ?? [],
               unread,
               runningNativeThreadId,
-              hostContext?.threadTodoProgress ?? null,
-              taskThreadId ? (codexThreadProgress[taskThreadId] ?? null) : undefined,
+              taskThreadId ? codexThreadProgress[taskThreadId]?.running === true : undefined,
             ),
           ];
         }),
@@ -2536,7 +2544,6 @@ export function App() {
       codexThreadProgress,
       hostContext?.threadId,
       hostContext?.threadRunning,
-      hostContext?.threadTodoProgress,
       issueReadMode,
       readActivityKeys,
       tasks,
@@ -3237,7 +3244,7 @@ export function App() {
     return liveProject ? baseIdentity : null;
   }
 
-  async function openTaskInThread(task: Task) {
+  async function openTaskInThread(task: Task, draftSpec = false) {
     const standalone = !embedded || window.parent === window;
     const projectless = task.projectId === GLOBAL_PROJECT_ID;
     const broadcastProject = projects.find((project) => project.id === task.projectId);
@@ -3285,8 +3292,14 @@ export function App() {
           deviceWorkspacePaths[task.projectId] ??
           broadcastProject?.workspacePath);
     const embeddedInstruction = text(
-      `[$manage-broadcast](${manageBroadcastSkillPath}) 议题 ID：${task.identifier}`,
-      `[$manage-broadcast](${manageBroadcastSkillPath}) Issue ID: ${task.identifier}`,
+      `[$manage-broadcast](${manageBroadcastSkillPath}) 议题 ID：${task.identifier}${
+        draftSpec ? "\n先为这个议题写 Spec：用 broadcast issue spec set 写入提案、规格、设计和任务，然后等我确认任务。" : ""
+      }`,
+      `[$manage-broadcast](${manageBroadcastSkillPath}) Issue ID: ${task.identifier}${
+        draftSpec
+          ? "\nWrite a spec for this issue first: save the proposal, specs, design and tasks with broadcast issue spec set, then wait for me to confirm the tasks."
+          : ""
+      }`,
     );
 
     if (
@@ -3569,6 +3582,17 @@ export function App() {
     : selectedProject?.id === GLOBAL_PROJECT_ID
       ? text("临时任务", "Temporary tasks")
       : (selectedProject?.name ?? text("任务面板", "Broadcast"));
+  const workspaceViewTitle = !selectedProjectId
+    ? headerProjectName
+    : boardView === "dashboard"
+      ? text("仪表盘", "Dashboard")
+      : boardView === "issues"
+        ? text("议题看板", "Issue board")
+        : boardView === "list"
+          ? text("列表视图", "List")
+          : boardView === "gantt"
+            ? text("甘特图", "Gantt")
+            : text("项目文档", "Project Docs");
   const appShellStyle = embedded
     ? ({
         "--codex-titlebar-left-inset": `${hostContext?.titlebarLeftInset ?? 0}px`,
@@ -3591,6 +3615,173 @@ export function App() {
             setReadmeRevision={setReadmeRevision}
           />
         )}
+        <AppSidebar
+          footer={
+            <ThemeSwitcher
+              value={themePreference}
+              onChange={(preference) => {
+                setThemePreference(preference);
+                broadcastStorage.setItem(THEME_PREFERENCE_KEY, preference);
+              }}
+            />
+          }
+          boardView={detailTask ? null : boardView}
+          viewsAvailable={Boolean(selectedProjectId)}
+          showDocs={!isAllProjects}
+          onSelectView={(view) => {
+            if (detailTask) closeTaskDetail();
+            selectBoardView(view);
+          }}
+          projects={projectMenuCandidates}
+          selectedProjectId={selectedProjectId}
+          allProjectsSelected={isAllProjects}
+          projectsDisabled={openingProjectId !== null}
+          onSelectAllProjects={() => changeProject(ALL_PROJECTS_ID)}
+          onSelectProject={(project) => void selectProject(project)}
+        >
+          <div className="header-project-switcher" data-project-switcher>
+            <button
+              className="header-project-button"
+              type="button"
+              aria-label={text("切换项目", "Switch project")}
+              aria-haspopup="menu"
+              aria-expanded={projectMenuOpen}
+              onClick={() => {
+                setProjectContextMenu(null);
+                setProjectMenuSearch("");
+                setProjectMenuOpen((current) => !current);
+              }}
+            >
+              <span className="project-name">{headerProjectName}</span>
+              <BroadcastIcon className="project-switcher-chevron" name="dropdown" />
+            </button>
+            {projectMenuOpen && (
+              <div
+                className="header-project-menu"
+                role="menu"
+                aria-label={text("项目", "Projects")}
+              >
+                <span>{text("切换项目", "Switch project")}</span>
+                <div className="project-menu-search">
+                  <label className="sr-only" htmlFor="project-menu-search-input">
+                    {text("按名称筛选项目", "Filter projects by name")}
+                  </label>
+                  <BroadcastIcon name="search" />
+                  <input
+                    id="project-menu-search-input"
+                    autoFocus
+                    type="search"
+                    value={projectMenuSearch}
+                    onChange={(event) => setProjectMenuSearch(event.target.value)}
+                    placeholder={text("筛选项目…", "Filter projects…")}
+                  />
+                  {projectMenuSearch && (
+                    <button
+                      className="search-clear"
+                      type="button"
+                      aria-label={text("清除项目筛选", "Clear project filter")}
+                      onClick={() => setProjectMenuSearch("")}
+                    >
+                      <LinearIcon name="close" />
+                    </button>
+                  )}
+                </div>
+                <div className="project-menu-list">
+                  {!projectMenuNeedle && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isAllProjects}
+                        disabled={openingProjectId !== null}
+                        onClick={() => {
+                          if (isAllProjects) setProjectMenuOpen(false);
+                          else changeProject(ALL_PROJECTS_ID);
+                        }}
+                      >
+                        <BroadcastIcon className="project-avatar" name="projectFolder" />
+                        <span>{text("所有项目", "All projects")}</span>
+                        {isAllProjects && (
+                          <span className="project-menu-check" aria-hidden="true">
+                            <LinearIcon name="check" />
+                          </span>
+                        )}
+                      </button>
+                      <div className="project-menu-divider" role="separator" />
+                    </>
+                  )}
+                  {projectMenuChoices.map((project) => (
+                    <Fragment key={project.id}>
+                      {hasProjectsWithIssues && project.id === firstEmptyProjectId && (
+                        <div className="project-menu-divider" role="separator" />
+                      )}
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={project.id === selectedProjectId}
+                        disabled={openingProjectId !== null}
+                        onContextMenu={
+                          project.id.startsWith("temp-")
+                            ? (event) => {
+                                event.preventDefault();
+                                setProjectContextMenu({
+                                  project,
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                });
+                              }
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (project.id === selectedProjectId) setProjectMenuOpen(false);
+                          else void selectProject(project);
+                        }}
+                      >
+                        <BroadcastIcon className="project-avatar" name="projectFolder" />
+                        <span>{project.name}</span>
+                        {project.id === selectedProjectId && (
+                          <span className="project-menu-check" aria-hidden="true">
+                            <LinearIcon name="check" />
+                          </span>
+                        )}
+                      </button>
+                    </Fragment>
+                  ))}
+                  {projectMenuNeedle && projectMenuChoices.length === 0 && (
+                    <div className="project-menu-empty">
+                      {text("没有匹配项目", "No matching projects")}
+                    </div>
+                  )}
+                </div>
+                <div className="project-menu-actions">
+                  <div className="project-menu-divider" role="separator" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={openingProjectId !== null}
+                    onClick={openJiraDialog}
+                  >
+                    <RelationIcon className="project-avatar" color="currentColor" size={16} />
+                    <span>
+                      {jiraConnection?.configured
+                        ? text("Jira 设置", "Jira settings")
+                        : text("连接 Jira", "Connect Jira")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={openingProjectId !== null}
+                    onClick={openCreateProjectDialog}
+                  >
+                    <PlusIcon className="project-avatar" color="currentColor" size={16} />
+                    <span>{text("创建项目", "Create project")}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </AppSidebar>
         <main className="workspace">
           <header className="workspace-header">
             <div className="workspace-title">
@@ -3617,148 +3808,9 @@ export function App() {
                     <LinearIcon name="codexSidebarExpand" />
                   </button>
                 )}
-                <div className="header-project-switcher" data-project-switcher>
-                  <button
-                    className="header-project-button"
-                    type="button"
-                    aria-label={text("切换项目", "Switch project")}
-                    aria-haspopup="menu"
-                    aria-expanded={projectMenuOpen}
-                    onClick={() => {
-                      setProjectContextMenu(null);
-                      setProjectMenuSearch("");
-                      setProjectMenuOpen((current) => !current);
-                    }}
-                  >
-                    <span className="project-name">{headerProjectName}</span>
-                    <BroadcastIcon className="project-switcher-chevron" name="dropdown" />
-                  </button>
-                  {projectMenuOpen && (
-                    <div
-                      className="header-project-menu"
-                      role="menu"
-                      aria-label={text("项目", "Projects")}
-                    >
-                      <span>{text("切换项目", "Switch project")}</span>
-                      <div className="project-menu-search">
-                        <label className="sr-only" htmlFor="project-menu-search-input">
-                          {text("按名称筛选项目", "Filter projects by name")}
-                        </label>
-                        <BroadcastIcon name="search" />
-                        <input
-                          id="project-menu-search-input"
-                          autoFocus
-                          type="search"
-                          value={projectMenuSearch}
-                          onChange={(event) => setProjectMenuSearch(event.target.value)}
-                          placeholder={text("筛选项目…", "Filter projects…")}
-                        />
-                        {projectMenuSearch && (
-                          <button
-                            className="search-clear"
-                            type="button"
-                            aria-label={text("清除项目筛选", "Clear project filter")}
-                            onClick={() => setProjectMenuSearch("")}
-                          >
-                            <LinearIcon name="close" />
-                          </button>
-                        )}
-                      </div>
-                      <div className="project-menu-list">
-                        {!projectMenuNeedle && (
-                          <>
-                            <button
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={isAllProjects}
-                              disabled={openingProjectId !== null}
-                              onClick={() => {
-                                if (isAllProjects) setProjectMenuOpen(false);
-                                else changeProject(ALL_PROJECTS_ID);
-                              }}
-                            >
-                              <BroadcastIcon className="project-avatar" name="projectFolder" />
-                              <span>{text("所有项目", "All projects")}</span>
-                              {isAllProjects && (
-                                <span className="project-menu-check" aria-hidden="true">
-                                  <LinearIcon name="check" />
-                                </span>
-                              )}
-                            </button>
-                            <div className="project-menu-divider" role="separator" />
-                          </>
-                        )}
-                        {projectMenuChoices.map((project) => (
-                          <Fragment key={project.id}>
-                            {hasProjectsWithIssues && project.id === firstEmptyProjectId && (
-                              <div className="project-menu-divider" role="separator" />
-                            )}
-                            <button
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={project.id === selectedProjectId}
-                              disabled={openingProjectId !== null}
-                              onContextMenu={
-                                project.id.startsWith("temp-")
-                                  ? (event) => {
-                                      event.preventDefault();
-                                      setProjectContextMenu({
-                                        project,
-                                        x: event.clientX,
-                                        y: event.clientY,
-                                      });
-                                    }
-                                  : undefined
-                              }
-                              onClick={() => {
-                                if (project.id === selectedProjectId) setProjectMenuOpen(false);
-                                else void selectProject(project);
-                              }}
-                            >
-                              <BroadcastIcon className="project-avatar" name="projectFolder" />
-                              <span>{project.name}</span>
-                              {project.id === selectedProjectId && (
-                                <span className="project-menu-check" aria-hidden="true">
-                                  <LinearIcon name="check" />
-                                </span>
-                              )}
-                            </button>
-                          </Fragment>
-                        ))}
-                        {projectMenuNeedle && projectMenuChoices.length === 0 && (
-                          <div className="project-menu-empty">
-                            {text("没有匹配项目", "No matching projects")}
-                          </div>
-                        )}
-                      </div>
-                      <div className="project-menu-actions">
-                        <div className="project-menu-divider" role="separator" />
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={openingProjectId !== null}
-                          onClick={openJiraDialog}
-                        >
-                          <RelationIcon className="project-avatar" color="currentColor" size={16} />
-                          <span>
-                            {jiraConnection?.configured
-                              ? text("Jira 设置", "Jira settings")
-                              : text("连接 Jira", "Connect Jira")}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={openingProjectId !== null}
-                          onClick={openCreateProjectDialog}
-                        >
-                          <PlusIcon className="project-avatar" color="currentColor" size={16} />
-                          <span>{text("创建项目", "Create project")}</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <h1 className="workspace-view-title">
+                  {detailTask ? headerProjectName : workspaceViewTitle}
+                </h1>
               </div>
             </div>
 
@@ -3802,52 +3854,8 @@ export function App() {
             </div>
           </header>
 
-          {selectedProjectId && !detailTask && (
+          {selectedProjectId && !detailTask && boardView !== "dashboard" && boardView !== "readme" && (
             <div className="board-toolbar">
-              <div className="view-tabs" aria-label={text("看板视图", "Board views")}>
-                <button
-                  className={`view-tab${boardView === "dashboard" ? " active" : ""}`}
-                  type="button"
-                  aria-pressed={boardView === "dashboard"}
-                  onClick={() => selectBoardView("dashboard")}
-                >
-                  {text("仪表盘", "Dashboard")}
-                </button>
-                <button
-                  className={`view-tab${boardView === "issues" ? " active" : ""}`}
-                  type="button"
-                  aria-pressed={boardView === "issues"}
-                  onClick={() => selectBoardView("issues")}
-                >
-                  {text("议题看板", "Issue board")}
-                </button>
-                <button
-                  className={`view-tab${boardView === "list" ? " active" : ""}`}
-                  type="button"
-                  aria-pressed={boardView === "list"}
-                  onClick={() => selectBoardView("list")}
-                >
-                  {text("列表视图", "List")}
-                </button>
-                <button
-                  className={`view-tab${boardView === "gantt" ? " active" : ""}`}
-                  type="button"
-                  aria-pressed={boardView === "gantt"}
-                  onClick={() => selectBoardView("gantt")}
-                >
-                  {text("甘特图", "Gantt")}
-                </button>
-                {!isAllProjects && (
-                  <button
-                    className={`view-tab${boardView === "readme" ? " active" : ""}`}
-                    type="button"
-                    aria-pressed={boardView === "readme"}
-                    onClick={() => selectBoardView("readme")}
-                  >
-                    {text("项目文档", "Project Docs")}
-                  </button>
-                )}
-              </div>
               {(boardView === "issues" || boardView === "list" || boardView === "gantt") && (
                 <div className="toolbar-tools">
                   <div
@@ -4129,7 +4137,7 @@ export function App() {
             </Suspense>
           ) : (
             <div
-              className={`issue-board-layout${otherTasksAvailable && otherTasksVisible ? " has-other-tasks" : ""}`}
+              className={`issue-board-layout${otherTasksAvailable && otherTasksMounted ? " other-tasks-mounted" : ""}${otherTasksAvailable && otherTasksVisible ? " has-other-tasks" : ""}`}
               data-main-columns={mainBoardItems.length}
               style={
                 {

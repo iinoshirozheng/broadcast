@@ -422,6 +422,32 @@ export type TaskConversationRef = TaskConversationRefBase &
     | { agentSession: AgentSession }
   );
 
+// The spec an agent writes onto the task (`broadcast issue spec set`), stored in Broadcast.
+export interface TaskSpecTask {
+  number: string;
+  title: string;
+  done: boolean;
+}
+
+export interface TaskSpecGroup {
+  title: string;
+  tasks: TaskSpecTask[];
+}
+
+export interface TaskSpecSummary {
+  updatedAt: string;
+  groups: TaskSpecGroup[];
+}
+
+export interface TaskSpec {
+  taskId: string;
+  proposal: string;
+  specs: string;
+  design: string;
+  tasks: string;
+  updatedAt: string;
+}
+
 export interface Task {
   id: string;
   identifier: string;
@@ -439,6 +465,7 @@ export interface Task {
   conversationRefs: TaskConversationRef[];
   participants: ActorIdentity[];
   previewImage: Attachment | null;
+  spec?: TaskSpecSummary | null;
   activityKey: string;
   activityUpdatedAt: string;
   creatorType: ActorType;

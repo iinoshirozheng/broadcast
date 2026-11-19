@@ -37,6 +37,14 @@ When writing Chinese, keep the English word or use **本地 companion** / **本�
 6. Verify the requested operation path. Add a comment with the changes, verification result, outcome, and remaining risks. Read the issue again, then move it to `in_review` with its current `version`.
 7. Move an issue to `done` only after the user explicitly accepts it or asks to complete it. Use `blocked` when work cannot continue and `canceled` when it will not continue.
 
+## Issue specs
+
+Use this when the user asks to split an issue into a spec first, or the issue already shows a spec. The spec lives in Broadcast, not in the repository: read it with `broadcast issue spec get ISSUE_ID` before working on the issue.
+
+1. Write the proposal, specs, design (when needed) and tasks as markdown files in a scratch directory, then save them with `broadcast issue spec set ISSUE_ID --proposal-file F --specs-file F --design-file F --tasks-file F`. Write tasks as `## 1. Group` headings with `- [ ] 1.1 Task` items. When the user asked to split first, comment that the spec is ready and stop until the user confirms the tasks.
+2. Create a sub-issue with a `parent` relation only for a task group that a different person or agent should claim on its own; order those sub-issues with `blocks`. Keep every other group in the parent issue.
+3. While implementing, run `broadcast issue spec check ISSUE_ID TASK_NUMBER` after each finished task. To revise a section, `spec set` only that file; the other sections are kept.
+
 ## Other operations
 
 - Run `broadcast project readme get [PROJECT_ID]` to inspect project architecture, constraints, and conventions before planning or executing complex tasks.

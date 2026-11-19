@@ -11,6 +11,7 @@ mod projects;
 mod readme;
 mod relations;
 mod rows;
+mod specs;
 mod tasks;
 
 use std::path::Path;
@@ -25,9 +26,10 @@ pub use attachments::NewAttachment;
 pub use jira::{JiraActor, JiraTask};
 pub use tasks::DeletedTask;
 
-const MIGRATION_LIST: &[M<'_>] = &[M::up(include_str!(
-    "../../../db/migrations/0001_initial.sql"
-))];
+const MIGRATION_LIST: &[M<'_>] = &[
+    M::up(include_str!("../../../db/migrations/0001_initial.sql")),
+    M::up(include_str!("../../../db/migrations/0002_task_specs.sql")),
+];
 const MIGRATIONS: Migrations<'_> = Migrations::from_slice(MIGRATION_LIST);
 
 pub struct Store {

@@ -11,6 +11,7 @@ mod projects;
 mod readme;
 mod relations;
 mod runners;
+mod specs;
 mod tasks;
 
 use std::sync::Arc;
@@ -64,6 +65,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/tasks/{id}/attachments", any(attachments::for_task))
         .route("/api/tasks/{id}/activities", any(relations::activities))
         .route("/api/tasks/{id}/tree", any(relations::tree))
+        .route("/api/tasks/{id}/spec", any(specs::spec))
+        .route("/api/tasks/{id}/spec/tasks/{number}", any(specs::check))
         .route(
             "/api/tasks/{id}/relations/{kind}/{related}",
             any(relations::relation),

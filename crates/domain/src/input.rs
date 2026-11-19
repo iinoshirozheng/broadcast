@@ -808,3 +808,41 @@ fn project_readme_content(body: &Object) -> Result<String> {
     }
     Ok(content)
 }
+
+/// `PATCH /api/tasks/:id/spec`: the sections an agent writes; omitted sections are kept.
+#[derive(Debug, Clone)]
+pub struct TaskSpecPatch {
+    pub proposal: Option<String>,
+    pub specs: Option<String>,
+    pub design: Option<String>,
+    pub tasks: Option<String>,
+}
+
+pub fn task_spec_patch(body: &Value) -> Result<TaskSpecPatch> {
+    let body = fields::object(body, &["proposal", "specs", "design", "tasks"])?;
+    Ok(TaskSpecPatch {
+        proposal: spec_text(body, "proposal")?,
+        specs: spec_text(body, "specs")?,
+        design: spec_text(body, "design")?,
+        tasks: spec_text(body, "tasks")?,
+    })
+}
+
+fn spec_text(body: &Object, name: &str) -> Result<Option<String>> {
+    match nullish(body.get(name)) {
+        None => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(_) => Err(ApiError::invalid_field(format!(
+            "'{name}' must be a string"
+        ))),
+    }
+}
+
+/// `PUT /api/tasks/:id/spec/tasks/:number`: `{"done": bool}`.
+pub fn task_spec_check(body: &Value) -> Result<bool> {
+    let body = fields::object(body, &["done"])?;
+    match body.get("done") {
+        Some(Value::Bool(done)) => Ok(*done),
+        _ => Err(ApiError::invalid_field("'done' must be a boolean")),
+    }
+}

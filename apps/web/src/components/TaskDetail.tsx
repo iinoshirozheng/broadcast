@@ -99,6 +99,7 @@ import { postEmbeddedHostMessage } from "../embeddedHost.ts";
 import copyIdIcon from "../assets/figma-broadcast/copy-id.svg";
 import copyLinkIcon from "../assets/figma-broadcast/copy-link.svg";
 import { DescriptionDocument } from "./DescriptionDocument";
+import { TaskSpecPanel } from "./TaskSpecPanel";
 
 type TaskDetailError = string | readonly [string, string];
 
@@ -131,7 +132,7 @@ interface TaskDetailProps {
   ) => Promise<RelationMutationResult>;
   onOpenThread: (binding: CodexThreadBinding) => void;
   onOpenLegacyLocalThread: (threadId: string) => void;
-  onOpenInThread: (task: Task) => void;
+  onOpenInThread: (task: Task, draftSpec?: boolean) => void;
   onCopy: (text: string, announcement: string) => void;
   openingThread: boolean;
   onError: (message: TaskDetailError | null) => void;
@@ -1342,6 +1343,13 @@ export function TaskDetail({
                 </div>
               )}
             </article>
+
+            <TaskSpecPanel
+              task={currentTask}
+              updatedAgo={currentTask.spec ? relativeTime(currentTask.spec.updatedAt, locale) : null}
+              drafting={openingThread}
+              onDraft={() => onOpenInThread(currentTask, true)}
+            />
 
             <IssueSubIssues
               task={currentTask}

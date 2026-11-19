@@ -165,6 +165,57 @@ impl Board<'_> {
                     )
                     .await
             }
+            "issue spec" => {
+                let action = p.operand(0);
+                match action {
+                    "get" => {
+                        p.expect_operands(2)?;
+                        self.api
+                            .request("GET", &format!("{}/spec", task_path(p.operand(1))?), None)
+                            .await
+                    }
+                    "set" => {
+                        p.expect_operands(2)?;
+                        let mut body = Map::new();
+                        for section in ["proposal", "specs", "design", "tasks"] {
+                            let option = format!("{section}-file");
+                            if let Some(file) = p.option(&option) {
+                                let text = read_text(file).map_err(|error| {
+                                    file_read(format!("Cannot read --{option}: {file}"), error)
+                                })?;
+                                body.insert(section.to_owned(), Value::String(text));
+                            }
+                        }
+                        if body.is_empty() {
+                            return Err(usage(
+                                "issue spec set needs --proposal-file, --specs-file, --design-file, or --tasks-file",
+                            ));
+                        }
+                        self.api
+                            .request(
+                                "PATCH",
+                                &format!("{}/spec", task_path(p.operand(1))?),
+                                Some(Value::Object(body)),
+                            )
+                            .await
+                    }
+                    "check" => {
+                        p.expect_operands(3)?;
+                        self.api
+                            .request(
+                                "PUT",
+                                &format!(
+                                    "{}/spec/tasks/{}",
+                                    task_path(p.operand(1))?,
+                                    encode(p.operand(2))
+                                ),
+                                Some(json!({ "done": !p.has("undo") })),
+                            )
+                            .await
+                    }
+                    _ => Err(usage("issue spec action must be get, set, or check")),
+                }
+            }
             "issue tree" => {
                 p.expect_operands(1)?;
                 let direction = p.required("direction")?;

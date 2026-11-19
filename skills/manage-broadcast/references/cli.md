@@ -202,6 +202,18 @@ For `--type parent`, `ISSUE_ID` is the child and `PARENT_ISSUE_ID` is its parent
 
 For `blocks`, the anchor issue blocks the related issue. For `blocked_by`, the related issue blocks the anchor. `related` is symmetric. Self-relations, duplicates, and parent cycles are rejected. For compatibility, relation writes between different projects remain rejected for now; this is a temporary boundary, not the final hierarchy contract.
 
+## Issue spec
+
+```bash
+broadcast issue spec get ISSUE_ID [--json]
+broadcast issue spec set ISSUE_ID [--proposal-file FILE] [--specs-file FILE] [--design-file FILE] [--tasks-file FILE] [--json]
+broadcast issue spec check ISSUE_ID TASK_NUMBER [--undo] [--json]
+```
+
+The spec is stored in Broadcast as four markdown sections: `proposal`, `specs`, `design` and `tasks`. `get` returns `{ spec }`, or `{ spec: null }` when the issue has none. `set` writes only the sections it is given and keeps the others; it needs at least one file. `check` checks off the first task whose number is `TASK_NUMBER` (such as `1.2`), and `--undo` unchecks it; an unknown number fails with `SPEC_TASK_NOT_FOUND`.
+
+Spec writes do not change the issue `version` or add activity, so they take no `--if-version` or attribution options. `issue get` returns the parsed checklist as `spec.groups`. The board reads progress only from `tasks`: `## N. Group` headings and `- [ ] N.M Task` / `- [x] N.M Task` items.
+
 ## Issue comments
 
 Use the issue id to read or append comments. Comment updates and deletes require the latest comment `version` returned by `comment list`.

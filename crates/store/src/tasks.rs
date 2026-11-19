@@ -5,6 +5,7 @@ use broadcast_domain::records::{
     Actor, AgentSession, Attachment, ConversationRef, ConversationTarget, DevelopmentContext,
     FieldChange, Task, TaskChanges, TaskRelations, ThreadBinding, comment_conversation_title,
 };
+use broadcast_domain::spec::{self, TaskSpecSummary};
 use broadcast_domain::{ApiError, Result, sql};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
@@ -793,6 +794,7 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
     let mut comments: HashMap<String, Vec<CommentActivity>> = HashMap::new();
     let mut changes: HashMap<String, Vec<ChangeActivity>> = HashMap::new();
     let mut previews: HashMap<String, Attachment> = HashMap::new();
+    let mut specs: HashMap<String, TaskSpecSummary> = HashMap::new();
     for chunk in ids.chunks(CHUNK) {
         let placeholders = vec!["?"; chunk.len()].join(", ");
 
@@ -867,9 +869,24 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
                 .entry(attachment.task_id.clone())
                 .or_insert(attachment);
         }
+
+        let mut statement = connection.prepare(&format!(
+            "SELECT task_id, tasks, updated_at FROM task_specs WHERE task_id IN ({placeholders})"
+        ))?;
+        let mut rows = statement.query(params_from_iter(chunk))?;
+        while let Some(row) = rows.next()? {
+            specs.insert(
+                row.get("task_id")?,
+                TaskSpecSummary {
+                    updated_at: row.get("updated_at")?,
+                    groups: spec::parse_tasks(&row.get::<_, String>("tasks")?),
+                },
+            );
+        }
     }
     for task in &mut tasks {
         task.relations = relations.remove(&task.id).unwrap_or_default();
+        task.spec = specs.remove(&task.id);
         let task_comments = comments.remove(&task.id).unwrap_or_default();
         let task_changes = changes.remove(&task.id).unwrap_or_default();
         attach_activity(task, task_comments, task_changes, previews.remove(&task.id));

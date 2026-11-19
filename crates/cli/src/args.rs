@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::error::{Result, usage};
 
-const BOOLEAN_OPTIONS: [&str; 3] = ["json", "clear-binding-thread", "help"];
+const BOOLEAN_OPTIONS: [&str; 4] = ["json", "clear-binding-thread", "help", "undo"];
 const GLOBAL_OPTIONS: [&str; 1] = ["runtime-file"];
 const ATTRIBUTION: [&str; 3] = ["thread-id", "agent-platform", "session-id"];
 const BINDING: [&str; 6] = [
@@ -32,7 +32,7 @@ const ISSUE_FIELDS: [&str; 14] = [
     "recurrence-unit",
 ];
 
-pub const UNKNOWN_COMMAND: &str = "Expected one of: project list/create/map/readme, cloud login/status/logout, issue list/get/create/update/move/archive/restore/tree/relation, comment list/add/update/delete, attachment list/download/upload, context current, runner claude";
+pub const UNKNOWN_COMMAND: &str = "Expected one of: project list/create/map/readme, cloud login/status/logout, issue list/get/create/update/move/archive/restore/tree/relation/spec, comment list/add/update/delete, attachment list/download/upload, context current, runner claude";
 
 pub struct Parsed {
     pub resource: Option<String>,
@@ -171,6 +171,14 @@ pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
             with(&[&ATTRIBUTION, &["if-version", "json"]])
         }
         "issue tree" => with(&[&["direction", "depth", "json"]]),
+        "issue spec" => with(&[&[
+            "proposal-file",
+            "specs-file",
+            "design-file",
+            "tasks-file",
+            "undo",
+            "json",
+        ]]),
         "issue relation" => with(&[&["type", "issue"], &ATTRIBUTION, &["if-version", "json"]]),
         "comment list" => with(&[&["after", "json"]]),
         "comment add" => with(&[&["body", "body-file"], &ATTRIBUTION, &BINDING, &["json"]]),
@@ -201,7 +209,7 @@ Commands:
   project readme set [PROJECT_ID] (--content TEXT | --file FILE) [--if-version N]
   cloud login --url URL --actor-name NAME
   cloud status|logout
-  issue list|get|create|update|move|archive|restore|tree|relation
+  issue list|get|create|update|move|archive|restore|tree|relation|spec
   comment list ISSUE_ID [--after CURSOR]
   comment add ISSUE_ID (--body TEXT | --body-file FILE) [--thread-id ID]
   comment update COMMENT_ID --body TEXT --if-version N [--thread-id ID]
@@ -261,6 +269,14 @@ Actions:
   tree ISSUE_ID --direction descendants|ancestors --depth N [--json]
   relation add|remove ISSUE_ID --type parent|blocks|blocked_by|related
     --issue RELATED_ISSUE_ID [--thread-id ID] [--if-version N] [--json]
+  spec get ISSUE_ID [--json]
+    The issue's spec: proposal, specs, design and tasks (markdown, stored in Broadcast).
+  spec set ISSUE_ID [--proposal-file FILE] [--specs-file FILE] [--design-file FILE]
+    [--tasks-file FILE] [--json]
+    Write the given sections; the others are kept. tasks is a checklist of
+    `## Group` headings and `- [ ] 1.1 Title` items; the card shows its progress.
+  spec check ISSUE_ID TASK_NUMBER [--undo] [--json]
+    Check off (or with --undo, uncheck) the task numbered TASK_NUMBER, such as 1.2.
 
 All issue writes accept --agent-platform claude|pi|agy|grok --session-id ID
 instead of Codex --thread-id / CODEX_THREAD_ID. Both external options are required.

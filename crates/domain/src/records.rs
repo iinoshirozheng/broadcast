@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::js;
+use crate::spec::TaskSpecSummary;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Recurrence {
@@ -304,6 +305,7 @@ pub struct Task {
     pub conversation_refs: Vec<ConversationRef>,
     pub participants: Vec<Actor>,
     pub preview_image: Option<Attachment>,
+    pub spec: Option<TaskSpecSummary>,
     pub activity_key: String,
     pub activity_updated_at: String,
 }

@@ -7,6 +7,7 @@ import { useBroadcastI18n } from "../i18n";
 import { LinearIcon } from "./LinearIcon";
 import { DueDateIcon } from "./SemanticIcons";
 import { broadcastIconSource } from "./BroadcastIcon";
+import { specCounts } from "./TaskSpecProgress";
 
 type GanttZoom = "day" | "week" | "month";
 
@@ -113,9 +114,9 @@ function ganttDate(value: Date, locale: string, includeYear = false) {
   }).format(value);
 }
 
-function taskProgress(task: Task, presentation: TaskCardPresentation | undefined) {
-  const processing = presentation?.processing;
-  if (processing?.total) return Math.min(1, (processing.completed ?? 0) / processing.total);
+function taskProgress(task: Task) {
+  const spec = task.spec ? specCounts(task.spec) : null;
+  if (spec?.total) return spec.done / spec.total;
   if (task.status === "in_review" || task.status === "done") return 1;
   return 0;
 }
@@ -474,8 +475,7 @@ export function GanttView({
         );
       if (!groupTasks.length) continue;
       const progress =
-        groupTasks.reduce((sum, task) => sum + taskProgress(task, presentations[task.id]), 0) /
-        groupTasks.length;
+        groupTasks.reduce((sum, task) => sum + taskProgress(task), 0) / groupTasks.length;
       data.push({
         id: groupId,
         text: groupLabel,
@@ -499,7 +499,7 @@ export function GanttView({
 
       for (const task of groupTasks) {
         const isScheduled = Boolean(task.startDate && task.dueDate);
-        const itemProgress = taskProgress(task, presentations[task.id]);
+        const itemProgress = taskProgress(task);
         data.push({
           id: task.id,
           parent: groupId,

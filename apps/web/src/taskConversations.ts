@@ -25,8 +25,6 @@ export interface TaskConversationItem {
 
 export interface TaskProcessingPresentation {
   running: boolean;
-  completed: number | null;
-  total: number | null;
   startedAt: string | null;
 }
 
@@ -164,15 +162,7 @@ export function taskCardPresentation(
   aiThreads: AiChatThread[],
   unread: boolean,
   runningNativeThreadId: string | null = null,
-  runningNativeTodoProgress: { completed: number; total: number } | null = null,
-  taskNativeSession:
-    | {
-        completed: number | null;
-        total: number | null;
-        running: boolean;
-      }
-    | null
-    | undefined = undefined,
+  taskNativeRunning: boolean | undefined = undefined,
 ): TaskCardPresentation {
   const conversations = taskConversations(task, aiThreads);
   let runningAi: TaskConversationItem | undefined;
@@ -195,25 +185,11 @@ export function taskCardPresentation(
         )
       : undefined;
   const running = runningAi ?? runningNative;
-  const taskNativeTodoProgress =
-    taskNativeSession && taskNativeSession.completed !== null && taskNativeSession.total !== null
-      ? { completed: taskNativeSession.completed, total: taskNativeSession.total }
-      : null;
-  const latestTodo = runningAi
-    ? runningAi.latestTodo
-    : runningNative
-      ? (taskNativeTodoProgress ?? runningNativeTodoProgress ?? null)
-      : taskNativeSession !== undefined
-        ? taskNativeTodoProgress
-        : (conversations.find((conversation) => conversation.latestTodo)?.latestTodo ?? null);
   return {
     conversations,
     unread,
     processing: {
-      running:
-        task.status === "in_progress" && (Boolean(running) || taskNativeSession?.running === true),
-      completed: latestTodo?.completed ?? null,
-      total: latestTodo?.total ?? null,
+      running: task.status === "in_progress" && (Boolean(running) || taskNativeRunning === true),
       startedAt: runningAi?.currentRun?.startedAt ?? null,
     },
   };

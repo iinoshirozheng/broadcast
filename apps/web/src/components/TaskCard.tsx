@@ -20,6 +20,7 @@ import { DueDateIcon, PriorityIcon, ProjectIcon } from "./SemanticIcons";
 import { LabelPicker } from "./LabelPicker";
 import { TaskPropertyPicker } from "./TaskPropertyPicker";
 import { TaskConversationMenu } from "./TaskConversationMenu";
+import { TaskSpecProgress } from "./TaskSpecProgress";
 import completeIcon from "../assets/figma-broadcast/card-complete.svg";
 import processingAnimation from "../assets/figma-broadcast/loading-16.svg";
 
@@ -164,32 +165,6 @@ function TaskCardMedia({ src }: { src: string }) {
           updatePresentation();
         }}
       />
-    </div>
-  );
-}
-
-function ProcessingProgress({ presentation }: { presentation: TaskCardPresentation }) {
-  const { text } = useBroadcastI18n();
-  const { processing } = presentation;
-  const hasProgress =
-    processing.total !== null && processing.total > 0 && processing.completed !== null;
-  if (!hasProgress) return null;
-
-  const total = processing.total!;
-  const completed = Math.max(0, Math.min(processing.completed!, total));
-  const label = text(`处理进度 ${completed}/${total}`, `Processing progress ${completed}/${total}`);
-
-  return (
-    <div className="card-progress-row">
-      <div
-        className={`task-progress-segments${processing.running ? " is-running" : ""}`}
-        aria-label={label}
-        title={label}
-      >
-        {Array.from({ length: total }, (_, index) => (
-          <span className={index < completed ? "is-complete" : ""} key={index} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -576,6 +551,8 @@ export function TaskCard({
 
       {image && <TaskCardMedia key={image} src={image} />}
 
+      {task.spec && <TaskSpecProgress spec={task.spec} status={task.status} />}
+
       {showsProperties && (
         <div className="card-properties" aria-label={text("议题属性", "Issue properties")}>
           {projectName && (
@@ -646,13 +623,7 @@ export function TaskCard({
       )}
 
       {processingCard && (
-        <>
-          <ProcessingProgress presentation={presentation} />
-          <ProcessingStatusRow
-            presentation={presentation}
-            onOpenConversation={onOpenConversation}
-          />
-        </>
+        <ProcessingStatusRow presentation={presentation} onOpenConversation={onOpenConversation} />
       )}
       {showCreatedAt && (
         <time className="task-card-created-at" dateTime={task.createdAt}>

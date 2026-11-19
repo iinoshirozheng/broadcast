@@ -30,6 +30,7 @@ import type {
   TaskChangeActivity,
   BroadcastMetadata,
   TaskDraft,
+  TaskSpec,
   TaskStatus,
 } from "./types";
 
@@ -446,6 +447,14 @@ export async function listDeviceWorkspaces(signal?: AbortSignal): Promise<Record
     if (error instanceof ApiError && error.code === "LOCAL_COMPANION_REQUIRED") return {};
     throw error;
   }
+}
+
+export async function getTaskSpec(taskId: string, signal?: AbortSignal): Promise<TaskSpec | null> {
+  const data = await request<{ spec: TaskSpec | null }>(
+    `/api/tasks/${encodeURIComponent(taskId)}/spec`,
+    { signal },
+  );
+  return data.spec;
 }
 
 export async function getProjectReadme(

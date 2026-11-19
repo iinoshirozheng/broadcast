@@ -11,6 +11,7 @@ pub mod fields;
 pub mod input;
 pub mod js;
 pub mod records;
+pub mod spec;
 pub mod sql;
 
 pub use error::{ApiError, Error, Result};
