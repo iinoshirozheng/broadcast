@@ -14,7 +14,7 @@ fn codex_agent() -> Value {
 async fn broadcast_issue_creation_and_comments_use_the_codex_agent_identity() {
     let server = Server::start().await;
     let spoofed = [
-        ("x-broadcast-client", "broadcast"),
+        ("x-broadcast-client", "codex"),
         ("x-broadcast-user-id", "spoofed-user"),
         ("x-broadcast-user-name", "Spoofed User"),
         ("x-broadcast-user-avatar", "https://example.com/spoofed.png"),
@@ -106,7 +106,7 @@ async fn codex_hosted_user_mutations_persist_the_current_account_identity_and_av
     let (status, patched) = patch(&user, json!({ "assigneeTarget": "current-user" })).await;
     assert_eq!(status, 200);
     assert_eq!(patched["task"]["assignee"], test_user);
-    let codex = [("x-broadcast-client", "broadcast")];
+    let codex = [("x-broadcast-client", "codex")];
     let (status, patched) = patch(&codex, json!({ "title": "Updated through broadcast" })).await;
     assert_eq!(status, 200);
     assert_eq!(patched["task"]["assignee"], test_user);

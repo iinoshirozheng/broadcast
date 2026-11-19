@@ -186,10 +186,7 @@ impl Runner {
             )
             .header("accept", "application/json")
             .header("content-type", "application/json")
-            .header(
-                "x-broadcast-client",
-                format!("{}-runner", self.options.agent.name()),
-            );
+            .header("x-broadcast-client", self.options.agent.name());
         if let Some(body) = body {
             request = request.body(body.to_string());
         }

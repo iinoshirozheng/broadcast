@@ -18,9 +18,19 @@ type Object = Map<String, Value>;
 pub async fn execute(parsed: &Parsed, command: &str) -> Result<Object> {
     let board = Board {
         parsed,
-        api: Api::new(&target::base_url())?,
+        api: Api::new(&target::base_url(), acting_agent(parsed))?,
     };
     board.run(command).await
+}
+
+/// The agent the CLI writes as: Codex when the write is attributed to a Codex session
+/// (`--agent-platform codex`, or `CODEX_THREAD_ID` without `--agent-platform`), Claude otherwise.
+fn acting_agent(parsed: &Parsed) -> &'static str {
+    let codex = match parsed.option("agent-platform") {
+        Some(platform) => platform == "codex",
+        None => std::env::var("CODEX_THREAD_ID").is_ok_and(|id| !js::trim(&id).is_empty()),
+    };
+    if codex { "codex" } else { "claude" }
 }
 
 struct Board<'a> {

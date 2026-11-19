@@ -16,11 +16,13 @@ pub struct Reply {
 
 pub struct Api {
     base: String,
+    /// `X-Broadcast-Client`: the agent the board records as the actor.
+    agent: &'static str,
     http: reqwest::Client,
 }
 
 impl Api {
-    pub fn new(url: &str) -> Result<Self> {
+    pub fn new(url: &str, agent: &'static str) -> Result<Self> {
         let base = normalize_base_url(url)?;
         let http = reqwest::Client::builder()
             .no_proxy()
@@ -29,7 +31,7 @@ impl Api {
                 CliError::new("HTTP client is not available", "CLIENT_UNAVAILABLE", 3)
                     .details(error)
             })?;
-        Ok(Self { base, http })
+        Ok(Self { base, agent, http })
     }
 
     async fn send(
@@ -41,7 +43,7 @@ impl Api {
     ) -> Result<Reply> {
         let mut all = BTreeMap::from([
             ("accept", "application/json"),
-            ("x-broadcast-client", "broadcast"),
+            ("x-broadcast-client", self.agent),
         ]);
         all.extend(headers.iter().copied());
         let reply = match self.resolve(pathname) {

@@ -589,9 +589,6 @@ function MarkdownLink({
   const end = node?.position?.end.offset;
   const markdown =
     typeof start === "number" && typeof end === "number" ? value.slice(start, end) : undefined;
-  const isComposerReference = Boolean(
-    markdown && /^\[[\s\S]*\]\(broadcast:\/\/composer-reference\/[^)]+\)$/.test(markdown),
-  );
   return isValidElement(renderedLink) && renderedLink.type === "video" ? (
     renderedLink
   ) : (
@@ -601,9 +598,7 @@ function MarkdownLink({
         [className, isRenderedLink ? "issue-reference-link" : ""].filter(Boolean).join(" ") ||
         undefined
       }
-      data-broadcast-inline-media-markdown={
-        isRenderedLink || isComposerReference ? markdown : undefined
-      }
+      data-broadcast-inline-media-markdown={isRenderedLink ? markdown : undefined}
       href={href}
       target="_blank"
       rel="noreferrer"

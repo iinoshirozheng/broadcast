@@ -57,22 +57,6 @@ export interface IssueReferenceSegment {
   taskId: string | null;
 }
 
-export interface InlineComposerReferenceSegment {
-  id: string;
-  type: "skill-reference" | "agent-reference";
-  markdown: string;
-  referenceKey: string;
-  label: string;
-}
-
-export interface InlineUnsupportedComposerReferenceSegment {
-  id: string;
-  type: "unsupported-reference";
-  markdown: string;
-  referenceUri: string;
-  label: string;
-}
-
 interface MarkdownAstNode {
   type: string;
   position: {
@@ -92,9 +76,7 @@ export type InlineMediaSegment =
   | PersistedImageSegment
   | PendingAttachmentSegment
   | PersistedAttachmentSegment
-  | IssueReferenceSegment
-  | InlineComposerReferenceSegment
-  | InlineUnsupportedComposerReferenceSegment;
+  | IssueReferenceSegment;
 export type PendingInlineImage = InlineImageSegment;
 export type PendingInlineAttachment = PendingAttachmentSegment;
 export type InternalDocumentReference =
@@ -204,10 +186,6 @@ export function attachmentSegment(file: File): PendingAttachmentSegment {
   };
 }
 
-const COMPOSER_REFERENCE_URL =
-  /^broadcast:\/\/composer-reference\/v1\/(skill|agent)\/([A-Za-z0-9_-]+)$/;
-const COMPOSER_REFERENCE_NAMESPACE_URL =
-  /^broadcast:\/\/composer-reference\/([^/]+)\/([^/]+)\/([A-Za-z0-9_-]+)$/;
 const PENDING_IMAGE_COMPOSER_REFERENCE_URL =
   /^broadcast:\/\/composer-reference\/v1\/pending-image\/([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/;
 
@@ -242,45 +220,6 @@ function markdownNodeText(node: MarkdownAstNode): string | null {
     result += text;
   }
   return result;
-}
-
-function composerReferenceFromNode(
-  node: MarkdownAstNode,
-  source: string,
-):
-  | ((
-      | Omit<InlineComposerReferenceSegment, "id">
-      | Omit<InlineUnsupportedComposerReferenceSegment, "id">
-    ) & { start: number; end: number })
-  | null {
-  if (node.type !== "link" || !node.url) return null;
-  const namespaceMatch = COMPOSER_REFERENCE_NAMESPACE_URL.exec(node.url);
-  if (!namespaceMatch || !readComposerReferenceId(namespaceMatch[3], namespaceMatch[2]))
-    return null;
-  const label = markdownNodeText(node);
-  const markdown = source.slice(node.position.start.offset, node.position.end.offset);
-  if (!label || !markdown.startsWith("[") || !markdown.endsWith(`](${node.url})`)) return null;
-  const urlMatch = COMPOSER_REFERENCE_URL.exec(node.url);
-  if (!urlMatch) {
-    return {
-      type: "unsupported-reference",
-      start: node.position.start.offset,
-      end: node.position.end.offset,
-      markdown,
-      referenceUri: node.url,
-      label,
-    };
-  }
-  const kind = urlMatch[1] as "skill" | "agent";
-  const referenceKey = urlMatch[2];
-  return {
-    type: `${kind}-reference`,
-    start: node.position.start.offset,
-    end: node.position.end.offset,
-    markdown,
-    referenceKey,
-    label,
-  };
 }
 
 // Match rendered references, not URLs in code blocks, comments or unused definitions.
@@ -350,8 +289,6 @@ export function createInlineMediaSegments(
         file: File;
         dataUrl: string;
       }
-    | (Omit<InlineComposerReferenceSegment, "id"> & { start: number; end: number })
-    | (Omit<InlineUnsupportedComposerReferenceSegment, "id"> & { start: number; end: number })
   > = [];
   const root = inlineMediaMarkdownParser.parse(text);
   const getDefinition = definitions(root);
@@ -391,8 +328,6 @@ export function createInlineMediaSegments(
         });
       }
     }
-    let handledAttachment = false;
-    let handledIssueReference = false;
     if (node.type === "link" && node.url) {
       const reference = parseInternalDocumentUrl(node.url, baseUri);
       if (reference?.type === "attachment" && reference.endpoint === "download") {
@@ -411,7 +346,6 @@ export function createInlineMediaSegments(
             filename,
             url: node.url,
           });
-          handledAttachment = true;
         }
       }
       if (reference?.type === "issue") {
@@ -427,12 +361,8 @@ export function createInlineMediaSegments(
           projectId,
           taskId: task?.id ?? null,
         });
-        handledIssueReference = true;
       }
     }
-    const composerReference =
-      handledAttachment || handledIssueReference ? null : composerReferenceFromNode(node, text);
-    if (composerReference) items.push(composerReference);
     if (node.children) nodes.push(...node.children);
   }
 
@@ -470,22 +400,6 @@ export function createInlineMediaSegments(
         identifier: item.identifier,
         projectId: item.projectId,
         taskId: item.taskId,
-      });
-    } else if (item.type === "unsupported-reference") {
-      segments.push({
-        id: segmentId("unsupported"),
-        type: item.type,
-        markdown: item.markdown,
-        label: item.label,
-        referenceUri: item.referenceUri,
-      });
-    } else {
-      segments.push({
-        id: segmentId(item.type === "skill-reference" ? "skill" : "agent"),
-        type: item.type,
-        markdown: item.markdown,
-        label: item.label,
-        referenceKey: item.referenceKey,
       });
     }
     offset = item.end;
@@ -627,18 +541,8 @@ export function normalizeSegments(segments: InlineMediaSegment[]): InlineMediaSe
   return normalized;
 }
 
-export function isInlineReference(
-  segment: InlineMediaSegment,
-): segment is
-  | IssueReferenceSegment
-  | InlineComposerReferenceSegment
-  | InlineUnsupportedComposerReferenceSegment {
-  return (
-    segment.type === "issue-reference" ||
-    segment.type === "skill-reference" ||
-    segment.type === "agent-reference" ||
-    segment.type === "unsupported-reference"
-  );
+export function isInlineReference(segment: InlineMediaSegment): segment is IssueReferenceSegment {
+  return segment.type === "issue-reference";
 }
 
 export function inlineMediaClipboardText(

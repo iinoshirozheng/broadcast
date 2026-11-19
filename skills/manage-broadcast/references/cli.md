@@ -84,7 +84,7 @@ broadcast issue create \
 
 Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, and `canceled`. Priorities are `none`, `urgent`, `high`, `medium`, and `low`.
 
-Issues created through `broadcast` are assigned to Codex Agent by default. Other CLI writes preserve the existing assignee.
+`broadcast` writes as Claude Agent, or as Codex Agent when the write is attributed to a Codex session (`--agent-platform codex`, or `CODEX_THREAD_ID` without `--agent-platform`). Issues it creates are assigned to that agent, so a `todo` issue created this way is picked up by that agent's runner. Other CLI writes preserve the existing assignee.
 
 ## Update issues
 

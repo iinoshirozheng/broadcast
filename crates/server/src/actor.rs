@@ -14,12 +14,12 @@ fn invalid(message: &str) -> ApiError {
     ApiError::new(400, "INVALID_ACTOR", message)
 }
 
-/// The acting agent (`X-Broadcast-Client`) or user (`X-Broadcast-User-*`); local user by default.
+/// The acting agent (`X-Broadcast-Client: claude|codex`, sent by the CLI and the runners) or
+/// user (`X-Broadcast-User-*`); local user by default.
 pub fn from_headers(headers: &HeaderMap) -> Result<Actor, ApiError> {
     match header(headers, "x-broadcast-client").as_deref() {
-        Some("broadcast") => return Ok(Actor::codex_agent()),
-        Some("claude-runner") => return Ok(Actor::claude_agent()),
-        Some("codex-runner") => return Ok(Actor::codex_agent()),
+        Some("claude") => return Ok(Actor::claude_agent()),
+        Some("codex") => return Ok(Actor::codex_agent()),
         _ => {}
     }
     let raw_id = header(headers, "x-broadcast-user-id");

@@ -5120,11 +5120,6 @@ kbd {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 58%, transparent);
 }
 
-.inline-media-atom.is-range-selected > .inline-media-composer-reference {
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 62%, transparent);
-}
-
 .inline-media-image-atom.is-range-selected > .inline-media-image,
 .inline-media-attachment-atom.is-range-selected > .inline-media-video {
   border-radius: 8px;
@@ -5174,34 +5169,6 @@ kbd {
   border: 0;
   font-family: inherit;
   cursor: text;
-}
-
-.inline-media-composer-reference {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  gap: 4px;
-  padding: 1px 5px;
-  border: 0;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  color: color-mix(in srgb, var(--accent) 78%, var(--text-primary));
-  font: inherit;
-  line-height: inherit;
-  vertical-align: baseline;
-  cursor: text;
-}
-
-.inline-media-composer-reference > svg {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
-}
-
-.inline-media-composer-reference > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .inline-media-image {

@@ -55,9 +55,7 @@ import {
   segmentId,
   selfContainedClipboardSegments,
   serializeInlineMedia,
-  type InlineComposerReferenceSegment,
   type InlineMediaSegment,
-  type InlineUnsupportedComposerReferenceSegment,
   type IssueReferenceSegment,
   type PendingAttachmentSegment,
   type PendingInlineImage,
@@ -68,7 +66,7 @@ import { useBroadcastI18n } from "../i18n";
 import { STATUS_DETAILS } from "./BoardColumn";
 import { LinearIcon } from "./LinearIcon";
 import { MermaidDiagram } from "./MarkdownDocument";
-import { ConversationIcon, ProjectIcon, StatusIcon } from "./SemanticIcons";
+import { StatusIcon } from "./SemanticIcons";
 import { ComposerCompletionMenu, type ComposerCompletionGroup } from "./ComposerCompletionMenu";
 import "./InlineMediaComposer.css";
 
@@ -356,52 +354,6 @@ function IssueReferenceChip({
       </span>
       {task && <span className="issue-reference-title">{task.title}</span>}
     </span>
-  );
-}
-
-function ComposerReferenceChip({
-  segment,
-  disabled,
-  onRemove,
-}: {
-  segment: InlineComposerReferenceSegment | InlineUnsupportedComposerReferenceSegment;
-  disabled: boolean;
-  onRemove: () => void;
-}) {
-  const { text } = useBroadcastI18n();
-  const kind =
-    segment.type === "skill-reference"
-      ? text("Skill", "Skill")
-      : segment.type === "agent-reference"
-        ? text("Agent", "Agent")
-        : text("不支持的引用", "Unsupported reference");
-
-  return (
-    <button
-      type="button"
-      className={`inline-media-composer-reference is-${segment.type}`}
-      contentEditable={false}
-      data-inline-media-segment={segment.id}
-      data-broadcast-inline-media-markdown={segment.markdown}
-      disabled={disabled}
-      aria-label={text(
-        `${kind} ${segment.label}，按退格键或删除键移除`,
-        `${kind} ${segment.label}, press Backspace or Delete to remove`,
-      )}
-      onKeyDown={(event) => {
-        if (event.defaultPrevented) return;
-        if (event.key !== "Backspace" && event.key !== "Delete") return;
-        event.preventDefault();
-        onRemove();
-      }}
-    >
-      {segment.type === "skill-reference" ? (
-        <ProjectIcon color="currentColor" />
-      ) : (
-        <ConversationIcon color="currentColor" />
-      )}
-      <span>{segment.label}</span>
-    </button>
   );
 }
 
@@ -1003,11 +955,6 @@ function inlineMediaStateSignature(segments: readonly InlineMediaSegment[]): str
         ];
       case "issue-reference":
         return [`${segment.type}:${segment.id}:${segment.taskId ?? ""}:${segment.markdown}`];
-      case "skill-reference":
-      case "agent-reference":
-        return [`${segment.type}:${segment.id}:${segment.referenceKey}:${segment.markdown}`];
-      case "unsupported-reference":
-        return [`${segment.type}:${segment.id}:${segment.referenceUri}:${segment.markdown}`];
     }
   });
   return `${serializeInlineMedia([...segments])}\u0000${atomMetadata.join("\u0001")}`;
@@ -1802,15 +1749,13 @@ export const InlineMediaComposer = forwardRef<InlineMediaComposerHandle, InlineM
           <PersistedVideoBlock segment={segment} disabled={disabled} onRemove={remove} />
         ) : segment.type === "pending-attachment" || segment.type === "persisted-attachment" ? (
           <AttachmentBlock segment={segment} disabled={disabled} onRemove={remove} />
-        ) : segment.type === "issue-reference" ? (
+        ) : (
           <IssueReferenceChip
             segment={segment}
             task={referenceTasks.find((task) => task.id === segment.taskId) ?? null}
             disabled={disabled}
             onRemove={remove}
           />
-        ) : (
-          <ComposerReferenceChip segment={segment} disabled={disabled} onRemove={remove} />
         );
       // biome-ignore-end lint/correctness/useJsxKeyInIterable: createPortal below carries the key
       return [createPortal(content, host, segment.id)];
