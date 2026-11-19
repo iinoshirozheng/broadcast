@@ -1,14 +1,11 @@
 //! Requests to the Broadcast service and how its replies map to CLI results and errors.
 
 use std::collections::BTreeMap;
-use std::process::Stdio;
 
 use serde_json::{Map, Value};
-use tokio::io::AsyncWriteExt;
 use url::Url;
 
 use crate::error::{CliError, Result, usage};
-use crate::target::Target;
 
 pub struct Reply {
     pub status: u16,
@@ -19,22 +16,19 @@ pub struct Reply {
 
 pub struct Api {
     base: String,
-    /// `None` sends through `curl.exe` on the Windows side of WSL.
-    http: Option<reqwest::Client>,
+    http: reqwest::Client,
 }
 
 impl Api {
-    pub fn new(target: Target) -> Result<Self> {
-        let base = normalize_base_url(&target.url)?;
-        let http = if target.windows_transport {
-            None
-        } else {
-            let client = reqwest::Client::builder().no_proxy().build();
-            Some(client.map_err(|error| {
+    pub fn new(url: &str) -> Result<Self> {
+        let base = normalize_base_url(url)?;
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .map_err(|error| {
                 CliError::new("HTTP client is not available", "CLIENT_UNAVAILABLE", 3)
                     .details(error)
-            })?)
-        };
+            })?;
         Ok(Self { base, http })
     }
 
@@ -51,10 +45,7 @@ impl Api {
         ]);
         all.extend(headers.iter().copied());
         let reply = match self.resolve(pathname) {
-            Ok(url) => match &self.http {
-                Some(http) => fetch(http, method, url, &all, body).await,
-                None => fetch_through_windows(method, url, &all, body).await,
-            },
+            Ok(url) => fetch(&self.http, method, url, &all, body).await,
             Err(error) => Err(error),
         };
         let reply = reply.map_err(|details| {
@@ -187,94 +178,6 @@ fn error_chain(error: &dyn std::error::Error) -> String {
         source = cause.source();
     }
     message
-}
-
-/// WSL cannot reach the Windows loopback directly, so the request runs through `curl.exe`, which
-/// prints the status, content type and size after a marker on stderr.
-async fn fetch_through_windows(
-    method: &str,
-    url: Url,
-    headers: &BTreeMap<&str, &str>,
-    body: Option<Vec<u8>>,
-) -> std::result::Result<Reply, String> {
-    const MARKER: &str = "__BROADCAST_CURL_RESPONSE__";
-    let mut args = [
-        "--disable",
-        "--noproxy",
-        "*",
-        "--silent",
-        "--show-error",
-        "--request",
-        method,
-    ]
-    .map(str::to_owned)
-    .to_vec();
-    for (name, value) in headers {
-        args.extend(["--header".to_owned(), format!("{name}: {value}")]);
-    }
-    if body.is_some() {
-        args.extend(["--data-binary".to_owned(), "@-".to_owned()]);
-    }
-    args.extend([
-        "--write-out".to_owned(),
-        format!("%{{stderr}}{MARKER}%{{http_code}}\t%{{content_type}}\t%{{size_download}}"),
-        "--url".to_owned(),
-        url.to_string(),
-    ]);
-    let mut child = tokio::process::Command::new("curl.exe")
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| error.to_string())?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or("curl.exe stdin is not available")?;
-    let writer = tokio::spawn(async move {
-        if let Some(body) = body {
-            stdin.write_all(&body).await?;
-        }
-        stdin.shutdown().await
-    });
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|error| error.to_string())?;
-    writer
-        .await
-        .map_err(|error| error.to_string())?
-        .map_err(|error| error.to_string())?;
-    let error_text = String::from_utf8_lossy(&output.stderr);
-    if !output.status.success() {
-        let trimmed = broadcast_domain::js::trim(&error_text);
-        let code = output
-            .status
-            .code()
-            .map_or_else(|| "null".to_owned(), |code| code.to_string());
-        return Err(if trimmed.is_empty() {
-            format!("curl.exe exited with {code}")
-        } else {
-            trimmed.to_owned()
-        });
-    }
-    let Some(index) = error_text.rfind(MARKER) else {
-        return Err("curl.exe did not return HTTP response metadata".to_owned());
-    };
-    let mut metadata = error_text[index + MARKER.len()..].split('\t');
-    let status = broadcast_domain::js::string_to_number(metadata.next().unwrap_or(""));
-    if status.trunc() != status || !(100.0..=599.0).contains(&status) {
-        return Err("curl.exe returned invalid HTTP response metadata".to_owned());
-    }
-    let present = |value: Option<&str>| value.filter(|value| !value.is_empty()).map(str::to_owned);
-    let (content_type, content_length) = (present(metadata.next()), present(metadata.next()));
-    Ok(Reply {
-        status: status as u16,
-        content_type,
-        content_length,
-        body: output.stdout,
-    })
 }
 
 /// An empty body reads as `{}`.

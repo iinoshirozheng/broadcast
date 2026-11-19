@@ -277,13 +277,6 @@ pub fn project_label(body: &Value) -> Result<String> {
     required_string(body.get("label"), "label", 64)
 }
 
-/// `parseThreadId`.
-pub fn thread_id(value: Option<&Value>) -> Result<Option<String>> {
-    value
-        .map(|value| required_string(Some(value), "threadId", 256))
-        .transpose()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssigneeTarget {
     CurrentUser,

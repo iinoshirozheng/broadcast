@@ -19,6 +19,7 @@ pub fn from_headers(headers: &HeaderMap) -> Result<Actor, ApiError> {
     match header(headers, "x-broadcast-client").as_deref() {
         Some("broadcast") => return Ok(Actor::codex_agent()),
         Some("claude-runner") => return Ok(Actor::claude_agent()),
+        Some("codex-runner") => return Ok(Actor::codex_agent()),
         _ => {}
     }
     let raw_id = header(headers, "x-broadcast-user-id");

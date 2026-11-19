@@ -102,7 +102,7 @@ fn touch_task(
     attribution: &Attribution,
     timestamp: &str,
 ) -> Result<()> {
-    let columns = attribution_columns(task, attribution, true)?;
+    let columns = attribution_columns(attribution)?;
     update_columns(connection, &task.id, columns, timestamp)
 }
 

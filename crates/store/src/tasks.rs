@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use broadcast_domain::input::{Archived, Attribution, Move, TaskCreate, TaskFilters};
 use broadcast_domain::records::{
-    Actor, AgentSession, Attachment, ConversationRef, ConversationTarget, DevelopmentContext,
-    FieldChange, Task, TaskChanges, TaskRelations, ThreadBinding, comment_conversation_title,
+    Actor, AgentSession, Attachment, ConversationRef, DevelopmentContext, FieldChange, Task,
+    TaskChanges, TaskRelations, comment_conversation_title,
 };
 use broadcast_domain::spec::{self, TaskSpecSummary};
 use broadcast_domain::{ApiError, Result, sql};
@@ -13,14 +13,13 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::projects::project_not_found;
-use crate::rows::{self, ThreadColumns};
+use crate::rows;
 use crate::{Store, now};
 
 /// Bound parameters per enrichment query.
 pub(crate) const CHUNK: usize = 400;
 
 pub(crate) type Columns = Vec<(&'static str, SqlValue)>;
-pub(crate) type ThreadValues = [Option<String>; 5];
 
 pub struct DeletedTask {
     pub task: Task,
@@ -72,16 +71,6 @@ impl Store {
 
     pub fn get_task(&self, id: &str) -> Result<Option<Task>> {
         get_task(&self.connection(), id)
-    }
-
-    /// `hasAiChatThreadProjectConflict`: an AI conversation started from this issue belongs to another project.
-    pub fn has_ai_chat_project_conflict(&self, issue: &str, project_id: &str) -> Result<bool> {
-        Ok(self.connection().query_row(
-            "SELECT EXISTS (SELECT 1 FROM ai_chat_threads
-               WHERE (origin_issue_id = ?1 OR origin_issue_identifier = ?1) AND origin_project_id != ?2)",
-            params![issue, project_id],
-            |row| row.get(0),
-        )?)
     }
 
     /// `getTaskSource`: `None` when the task does not exist.
@@ -158,17 +147,6 @@ impl Store {
                 input.project_id
             ],
         )?;
-        let [
-            thread_id,
-            codex_project_id,
-            codex_project_kind,
-            codex_host_id,
-            workspace_path,
-        ] = stored_thread_binding(
-            &input.attribution.thread_binding,
-            input.attribution.thread_id.as_deref(),
-        )
-        .unwrap_or_default();
         let [git_branch, worktree_path, worktree_branch] =
             context_values(input.development_context.as_ref());
         let recurrence = input.recurrence.as_ref();
@@ -176,14 +154,12 @@ impl Store {
         transaction.execute(
             "INSERT INTO tasks (
                id, identifier, project_id, title, description, status, priority, labels,
-               sort_order, thread_id, thread_codex_project_id, thread_codex_project_kind,
-               thread_codex_host_id, thread_workspace_path,
-               creator_type, creator_id, creator_name, creator_avatar_url,
+               sort_order, creator_type, creator_id, creator_name, creator_avatar_url,
                assignee_type, assignee_id, assignee_name, assignee_avatar_url,
                git_branch, worktree_path, worktree_branch,
                start_date, due_date, recurrence_interval, recurrence_unit,
                archived_at, version, created_at, updated_at, agent_session
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        NULL, 1, ?, ?, ?)",
             params![
                 id,
@@ -195,11 +171,6 @@ impl Store {
                 input.priority,
                 serde_json::to_string(&input.labels)?,
                 sort_order,
-                thread_id,
-                codex_project_id,
-                codex_project_kind,
-                codex_host_id,
-                workspace_path,
                 actor.kind,
                 actor.id,
                 actor.name,
@@ -217,7 +188,9 @@ impl Store {
                 recurrence.map(|recurrence| recurrence.unit.as_str()),
                 timestamp,
                 timestamp,
-                agent_session.map(|session| serde_json::to_string(&session)).transpose()?,
+                agent_session
+                    .map(|session| serde_json::to_string(&session))
+                    .transpose()?,
             ],
         )?;
         transaction.commit()?;
@@ -251,7 +224,7 @@ impl Store {
             None => None,
         };
         let moved_to = target_project.filter(|target| *target != current.project_id);
-        if let Some(target) = &moved_to {
+        if moved_to.is_some() {
             let related: bool = transaction.query_row(
                 "SELECT EXISTS (SELECT 1 FROM task_relations WHERE source_task_id = ?1 OR target_task_id = ?1)",
                 [&current.id],
@@ -262,20 +235,6 @@ impl Store {
                     409,
                     "CROSS_PROJECT_RELATION",
                     "Remove issue relations before moving the issue to another project",
-                )
-                .into());
-            }
-            let linked: bool = transaction.query_row(
-                "SELECT EXISTS (SELECT 1 FROM ai_chat_threads
-                   WHERE (origin_issue_id = ?1 OR origin_issue_identifier = ?1) AND origin_project_id != ?2)",
-                params![current.id, target],
-                |row| row.get(0),
-            )?;
-            if linked {
-                return Err(ApiError::new(
-                    409,
-                    "AI_CHAT_PROJECT_MOVE_BLOCKED",
-                    "Delete issue-linked AI conversations before moving the issue to another project",
                 )
                 .into());
             }
@@ -298,11 +257,7 @@ impl Store {
             let sort_order = top_sort_order(&transaction, placement, status, Some(&current.id))?;
             columns.push(("sort_order", sort_order.into()));
         }
-        columns.extend(attribution_columns(
-            &current,
-            attribution,
-            changes.project_id.is_none(),
-        )?);
+        columns.extend(attribution_columns(attribution)?);
         let timestamp = now();
         update_columns(&transaction, &current.id, columns, &timestamp)?;
         if changes.description.is_some() {
@@ -364,7 +319,7 @@ impl Store {
             ("status", input.status.to_owned().into()),
             ("sort_order", sort_order.into()),
         ];
-        columns.extend(attribution_columns(&current, &input.attribution, true)?);
+        columns.extend(attribution_columns(&input.attribution)?);
         let timestamp = now();
         update_columns(&transaction, &current.id, columns, &timestamp)?;
         let activity = TaskChanges {
@@ -420,7 +375,7 @@ impl Store {
         let timestamp = now();
         let archived_at = archive.then(|| timestamp.clone());
         let mut columns: Columns = vec![("archived_at", archived_at.clone().into())];
-        columns.extend(attribution_columns(&current, attribution, true)?);
+        columns.extend(attribution_columns(attribution)?);
         update_columns(&transaction, &current.id, columns, &timestamp)?;
         let change = FieldChange {
             field: "archivedAt",
@@ -575,63 +530,9 @@ fn context_values(context: Option<&DevelopmentContext>) -> [Option<String>; 3] {
     }
 }
 
-pub(crate) fn thread_values(binding: &ThreadBinding) -> ThreadValues {
-    let identity = binding.identity.as_ref();
-    [
-        Some(binding.thread_id.clone()),
-        identity.map(|identity| identity.codex_project_id.clone()),
-        identity.map(|identity| identity.codex_project_kind.clone()),
-        identity.map(|identity| identity.codex_host_id.clone()),
-        identity.map(|identity| identity.workspace_path.clone()),
-    ]
-}
-
-/// `storedThreadBinding`: `None` leaves the thread columns untouched.
-pub(crate) fn stored_thread_binding(
-    binding: &Option<Option<ThreadBinding>>,
-    thread_id: Option<&str>,
-) -> Option<ThreadValues> {
-    match binding {
-        None => thread_id.map(|thread_id| [Some(thread_id.to_owned()), None, None, None, None]),
-        Some(None) => Some(ThreadValues::default()),
-        Some(Some(binding)) => Some(thread_values(binding)),
-    }
-}
-
-/// `storedThreadBindingForExisting`: the same thread id keeps its stored identity.
-pub(crate) fn stored_thread_binding_for_existing(
-    current: &Task,
-    attribution: &Attribution,
-) -> Option<ThreadValues> {
-    if attribution.thread_binding.is_none()
-        && let Some(binding) = &current.thread_binding
-        && attribution.thread_id.as_deref() == Some(binding.thread_id.as_str())
-    {
-        return Some(thread_values(binding));
-    }
-    stored_thread_binding(
-        &attribution.thread_binding,
-        attribution.thread_id.as_deref(),
-    )
-}
-
-/// Thread and agent-session columns written by an attributed mutation.
-pub(crate) fn attribution_columns(
-    current: &Task,
-    attribution: &Attribution,
-    with_thread: bool,
-) -> Result<Columns> {
+/// The agent-session column written by an attributed mutation.
+pub(crate) fn attribution_columns(attribution: &Attribution) -> Result<Columns> {
     let mut columns = Columns::new();
-    if with_thread && let Some(values) = stored_thread_binding_for_existing(current, attribution) {
-        let names = [
-            "thread_id",
-            "thread_codex_project_id",
-            "thread_codex_project_kind",
-            "thread_codex_host_id",
-            "thread_workspace_path",
-        ];
-        columns.extend(names.into_iter().zip(values.map(SqlValue::from)));
-    }
     if let Some(session) = &attribution.agent_session {
         columns.push((
             "agent_session",
@@ -774,7 +675,6 @@ pub(crate) fn record_activity(
 struct CommentActivity {
     id: String,
     body: Option<String>,
-    thread: ThreadColumns,
     agent_session: Option<AgentSession>,
     author: Actor,
     version: i64,
@@ -815,9 +715,8 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
         let mut statement = connection.prepare(&format!(
             "SELECT
                id, task_id,
-               CASE WHEN thread_id IS NULL AND agent_session IS NULL THEN NULL ELSE substr(body, 1, 512) END AS body,
-               thread_id, thread_codex_project_id, thread_codex_project_kind,
-               thread_codex_host_id, thread_workspace_path, agent_session,
+               CASE WHEN agent_session IS NULL THEN NULL ELSE substr(body, 1, 512) END AS body,
+               agent_session,
                author_type, author_id, author_name, author_avatar_url, version, updated_at
              FROM comments WHERE task_id IN ({placeholders}) ORDER BY task_id, id"
         ))?;
@@ -829,7 +728,6 @@ fn enrich(connection: &Connection, mut tasks: Vec<Task>) -> Result<Vec<Task>> {
                 .push(CommentActivity {
                     id: row.get("id")?,
                     body: row.get("body")?,
-                    thread: ThreadColumns::read(row)?,
                     agent_session: rows::optional_json(row, "agent_session")?,
                     author: rows::actor(row, "author")?,
                     version: row.get("version")?,
@@ -917,54 +815,24 @@ fn attach_activity(
     }
 
     let mut refs = Vec::new();
-    let task_ref = |target| ConversationRef {
-        target,
-        source: "task",
-        source_id: task.id.clone(),
-        title: task.title.clone(),
-        updated_at: task.updated_at.clone(),
-    };
     if let Some(agent_session) = &task.agent_session {
-        refs.push(task_ref(ConversationTarget::AgentSession {
+        refs.push(ConversationRef {
             agent_session: agent_session.clone(),
-        }));
-    }
-    if let Some(binding) = &task.thread_binding {
-        refs.push(task_ref(ConversationTarget::Thread(binding.clone())));
-    } else if let Some(thread_id) = &task.legacy_local_thread_id {
-        refs.push(task_ref(ConversationTarget::LegacyLocal {
-            thread_id: thread_id.clone(),
-            legacy_local: true,
-        }));
+            source: "task",
+            source_id: task.id.clone(),
+            title: task.title.clone(),
+            updated_at: task.updated_at.clone(),
+        });
     }
     for comment in &comments {
-        let comment_ref = |target| ConversationRef {
-            target,
-            source: "comment",
-            source_id: comment.id.clone(),
-            title: comment_conversation_title(comment.body.as_deref()),
-            updated_at: comment.updated_at.clone(),
-        };
         if let Some(agent_session) = &comment.agent_session {
-            refs.push(comment_ref(ConversationTarget::AgentSession {
+            refs.push(ConversationRef {
                 agent_session: agent_session.clone(),
-            }));
-        }
-        let thread = comment
-            .thread
-            .binding()
-            .map(ConversationTarget::Thread)
-            .or_else(|| {
-                comment
-                    .thread
-                    .legacy_local()
-                    .map(|thread_id| ConversationTarget::LegacyLocal {
-                        thread_id,
-                        legacy_local: true,
-                    })
+                source: "comment",
+                source_id: comment.id.clone(),
+                title: comment_conversation_title(comment.body.as_deref()),
+                updated_at: comment.updated_at.clone(),
             });
-        if let Some(thread) = thread {
-            refs.push(comment_ref(thread));
         }
     }
 

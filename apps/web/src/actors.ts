@@ -21,14 +21,19 @@ export interface MentionableAgent {
   handle: string;
 }
 
-// Agents a comment can summon with @handle; the Claude runner acts on "@claude".
+// Agents a comment can summon with @handle; each agent's runner acts on its own handle.
 export const MENTIONABLE_AGENTS: readonly MentionableAgent[] = [
   { actor: CLAUDE_AGENT_ACTOR, handle: "claude" },
+  { actor: CODEX_AGENT_ACTOR, handle: "codex" },
 ];
 
-// Claude Agent is "claude-agent" on a local board and "<user id>:claude-agent" on a cloud board.
+// An agent is "claude-agent" on a shared board and "<user id>:claude-agent" when it acts for one user.
+export function isAgentId(id: string, agent: ActorIdentity): boolean {
+  return id === agent.id || id.endsWith(`:${agent.id}`);
+}
+
 export function isClaudeAgentId(id: string): boolean {
-  return id === CLAUDE_AGENT_ACTOR.id || id.endsWith(`:${CLAUDE_AGENT_ACTOR.id}`);
+  return isAgentId(id, CLAUDE_AGENT_ACTOR);
 }
 
 export function actorKey(actor: ActorIdentity): string {

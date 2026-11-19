@@ -1,39 +1,25 @@
 # Privacy
 
-Broadcast is a local-first application. Its desktop launcher runs the
-Broadcast service on the local computer and does not send Broadcast content or
-usage telemetry to the project maintainers.
+Broadcast does not send board content or usage telemetry to the project
+maintainers, and it includes no advertising or analytics service.
 
-## Data stored on the computer
+## Data stored by the server
 
-On Windows, Broadcast stores its database, attachments, launcher runtime
-file, and independent Codex browser profile under:
+The Broadcast server stores its database and attachments in its data directory
+(`BROADCAST_DATA_DIR`, `.data` by default) on the machine that runs it. Anyone
+who can reach the server can read the board it serves.
 
-`%APPDATA%\Broadcast`
+## Agent runners
 
-Launcher logs are stored under:
+`broadcast runner claude` and `broadcast runner codex` run on the user's own
+computer. They send the delegated issue's title, description and comments to
+the local Claude Code or Codex CLI, which uses Anthropic or OpenAI services under
+the user's existing account and that provider's terms. The runner posts the
+agent's answer back to the board as a comment.
 
-`%LOCALAPPDATA%\Broadcast\Logs`
-
-The launcher also installs the bundled `manage-broadcast` Skill in the current
-user's `.agents\skills\manage-broadcast` directory.
-
-## Network activity
-
-- The desktop app uses a loopback-only HTTP service to connect the embedded
-  panel, the launcher, and `broadcast` on the same computer.
-- The updater checks this project's GitHub Releases endpoint for available
-  versions.
-- The official Codex application and Codex CLI use OpenAI services under the
-  user's existing OpenAI account and OpenAI's terms.
-- Cloud collaboration is optional. When a user configures it, Broadcast data is
-  sent to the deployment selected by that user.
-
-Broadcast does not include advertising or a project-maintainer analytics
-service.
+Broadcast never asks for, receives or stores agent credentials or API keys; the
+agent CLI keeps its own sign-in on the user's computer.
 
 ## Removing data
 
-Uninstalling the Windows application removes the installed program but keeps
-user data and the installed Skill. See
-[Windows uninstall](docs/windows-uninstall.md) for the optional manual cleanup.
+Stop the server and delete its data directory to remove the board's data.

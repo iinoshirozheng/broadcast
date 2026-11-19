@@ -1,4 +1,4 @@
-//! How attachment content is served by both the local server and the cloud worker.
+//! How attachment content is served.
 
 const INLINE_TYPES: &[&str] = &[
     "application/pdf",

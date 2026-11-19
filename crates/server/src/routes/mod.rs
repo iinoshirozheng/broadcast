@@ -1,12 +1,9 @@
 //! Route table. Handlers match methods themselves so the 405 body and `allow` header match the JS API.
 
-mod ai;
 mod attachments;
 mod client_storage;
 mod comments;
-mod device;
 mod jira;
-mod local;
 mod projects;
 mod readme;
 mod relations;
@@ -24,7 +21,7 @@ use serde_json::json;
 
 use crate::App;
 use crate::http::{Reply, json, method_not_allowed, reject_query};
-use crate::{static_files, trust};
+use crate::static_files;
 
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
@@ -32,12 +29,6 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/events", any(events))
         .route("/api/projects", any(projects::collection))
         .route("/api/projects/{id}", any(projects::item))
-        .route("/api/meta", any(device::meta))
-        .route("/api/device-workspaces", any(device::workspaces))
-        .route(
-            "/api/projects/{id}/development-contexts",
-            any(device::development_contexts),
-        )
         .route("/api/projects/{id}/labels", any(readme::labels))
         .route("/api/projects/{id}/readme", any(readme::readme))
         .route(
@@ -81,36 +72,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/attachments/{id}/download", any(attachments::content))
         .route("/api/client-storage", any(client_storage::client_storage))
         .route("/api/runners", any(runners::collection))
-        .route("/api/runners/claude", any(runners::claude))
-        .route("/api/local/host-runtime", any(local::host_runtime))
-        .route(
-            "/api/local/codex-thread-progress",
-            any(local::codex_thread_progress),
-        )
-        .route("/api/local/cloud-session", any(local::cloud_session))
-        .route(
-            "/api/local/project-mappings/{id}",
-            any(local::project_mapping),
-        )
+        .route("/api/runners/{agent}", any(runners::heartbeat))
         .route("/api/local/jira-connection", any(jira::connection))
         .route("/api/local/jira-connection/sync", any(jira::sync))
-        .route("/api/local/ai/catalog", any(ai::catalog))
-        .route("/api/local/ai/composer/candidates", any(ai::candidates))
-        .route("/api/local/ai/composer/rebind", any(ai::rebind))
-        .route("/api/local/ai/threads", any(ai::threads))
-        .route("/api/local/ai/threads/{id}", any(ai::thread))
-        .route(
-            "/api/local/ai/threads/{id}/summary",
-            any(ai::thread_summary),
-        )
-        .route("/api/local/ai/threads/{id}/events", any(ai::thread_events))
-        .route("/api/local/ai/threads/{id}/turns", any(ai::thread_turns))
-        .route(
-            "/api/local/ai/threads/{id}/compact",
-            any(ai::thread_compact),
-        )
-        .route("/api/local/ai/runs/{id}/interrupt", any(ai::interrupt))
-        .route("/api/local/projects/{id}/summary", any(ai::project_summary))
         .fallback(fallback)
         .with_state(app)
 }
@@ -119,13 +83,9 @@ async fn health(State(app): State<Arc<App>>, request: Request) -> Reply {
     if request.method() != "GET" {
         return method_not_allowed(&["GET"]);
     }
-    let Some(launcher) = &app.config.launcher else {
-        return Ok(json(200, &json!({ "status": "ok" })));
-    };
-    let proof = trust::proof(launcher, request.headers())?;
     Ok(json(
         200,
-        &json!({ "status": "ok", "product": "broadcast", "version": app.config.version, "proof": proof }),
+        &json!({ "status": "ok", "product": "broadcast", "version": app.config.version }),
     ))
 }
 

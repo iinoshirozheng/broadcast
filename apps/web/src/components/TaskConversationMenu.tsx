@@ -15,29 +15,9 @@ function conversationSource(
   conversation: TaskConversationItem,
   text: (chinese: string, english: string) => string,
 ) {
-  if (conversation.kind === "local-ai") return text("内置 AI", "Built-in AI");
-  if (conversation.kind === "agent-session") {
-    return conversation.source === "comment"
-      ? text("评论对话 · 复制恢复命令", "Comment conversation · Copy resume command")
-      : text("任务对话 · 复制恢复命令", "Task conversation · Copy resume command");
-  }
   return conversation.source === "comment"
-    ? text("评论对话", "Comment conversation")
-    : text("任务对话", "Task conversation");
-}
-
-function conversationStatus(
-  conversation: TaskConversationItem,
-  text: (chinese: string, english: string) => string,
-) {
-  if (conversation.currentRun?.status === "running") {
-    if (conversation.latestTodo?.total) {
-      return `${conversation.latestTodo.completed}/${conversation.latestTodo.total}`;
-    }
-    return text("正在处理", "Processing");
-  }
-  if (conversation.agentSession) return agentPlatformLabel(conversation.agentSession.platform);
-  return conversation.kind === "local-ai" ? text("已暂停", "Paused") : "Codex";
+    ? text("评论对话 · 复制恢复命令", "Comment conversation · Copy resume command")
+    : text("任务对话 · 复制恢复命令", "Task conversation · Copy resume command");
 }
 
 export function TaskConversationMenu({
@@ -168,14 +148,10 @@ export function TaskConversationMenu({
                 key={conversation.key}
                 type="button"
                 role="menuitem"
-                title={
-                  conversation.agentSession
-                    ? sessionResumeCommand(
-                        conversation.agentSession.platform,
-                        conversation.agentSession.sessionId,
-                      )
-                    : undefined
-                }
+                title={sessionResumeCommand(
+                  conversation.agentSession.platform,
+                  conversation.agentSession.sessionId,
+                )}
                 onClick={() => openConversation(conversation)}
               >
                 <span className="task-conversation-menu-icon">
@@ -185,10 +161,8 @@ export function TaskConversationMenu({
                   <strong>{conversation.title}</strong>
                   <small>{conversationSource(conversation, text)}</small>
                 </span>
-                <span
-                  className={`task-conversation-menu-status${conversation.currentRun?.status === "running" ? " is-running" : ""}`}
-                >
-                  {conversationStatus(conversation, text)}
+                <span className="task-conversation-menu-status">
+                  {agentPlatformLabel(conversation.agentSession.platform)}
                 </span>
               </button>
             ))}

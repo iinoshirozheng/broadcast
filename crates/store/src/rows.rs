@@ -3,7 +3,7 @@
 use broadcast_domain::constants::JIRA_PROJECT_ID;
 use broadcast_domain::records::{
     Actor, Attachment, Comment, DevelopmentContext, Project, ProjectReadmeAttachment, Recurrence,
-    Task, TaskActivity, TaskRelationSummary, TaskRelations, ThreadBinding, ThreadIdentity,
+    Task, TaskActivity, TaskRelationSummary, TaskRelations,
 };
 use rusqlite::Row;
 use rusqlite::types::Type;
@@ -42,51 +42,6 @@ pub(crate) fn actor(row: &Row<'_>, prefix: &str) -> Result<Actor> {
     })
 }
 
-/// The five thread columns shared by tasks and comments.
-#[derive(Debug, Clone)]
-pub(crate) struct ThreadColumns {
-    pub(crate) thread_id: Option<String>,
-    codex_project_id: Option<String>,
-    codex_project_kind: Option<String>,
-    codex_host_id: Option<String>,
-    workspace_path: Option<String>,
-}
-
-impl ThreadColumns {
-    pub(crate) fn read(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            thread_id: row.get("thread_id")?,
-            codex_project_id: row.get("thread_codex_project_id")?,
-            codex_project_kind: row.get("thread_codex_project_kind")?,
-            codex_host_id: row.get("thread_codex_host_id")?,
-            workspace_path: row.get("thread_workspace_path")?,
-        })
-    }
-
-    /// `threadBindingFromRow`: every column must be non-empty.
-    pub(crate) fn binding(&self) -> Option<ThreadBinding> {
-        let identity = ThreadIdentity {
-            codex_project_id: filled(self.codex_project_id.clone())?,
-            codex_project_kind: filled(self.codex_project_kind.clone())?,
-            codex_host_id: filled(self.codex_host_id.clone())?,
-            workspace_path: filled(self.workspace_path.clone())?,
-        };
-        Some(ThreadBinding {
-            thread_id: filled(self.thread_id.clone())?,
-            identity: Some(identity),
-        })
-    }
-
-    /// `legacyLocalThreadIdFromRow`: a thread id without any identity column.
-    pub(crate) fn legacy_local(&self) -> Option<String> {
-        let unbound = self.codex_project_id.is_none()
-            && self.codex_project_kind.is_none()
-            && self.codex_host_id.is_none()
-            && self.workspace_path.is_none();
-        filled(self.thread_id.clone()).filter(|_| unbound)
-    }
-}
-
 /// `taskFromRow`, with empty enrichment fields.
 pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
     let development_context = match (
@@ -108,7 +63,6 @@ pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
         (Some(interval), Some(unit)) => Some(Recurrence { interval, unit }),
         _ => None,
     };
-    let thread = ThreadColumns::read(row)?;
     let external_source: Option<String> = row.get("external_source")?;
     Ok(Task {
         id: row.get("id")?,
@@ -120,9 +74,6 @@ pub(crate) fn task(row: &Row<'_>) -> Result<Task> {
         priority: row.get("priority")?,
         labels: json(row, "labels")?,
         sort_order: row.get("sort_order")?,
-        thread_binding: thread.binding(),
-        legacy_local_thread_id: thread.legacy_local(),
-        thread_id: thread.thread_id,
         agent_session: optional_json(row, "agent_session")?,
         creator_type: row.get("creator_type")?,
         creator_id: row.get("creator_id")?,
@@ -188,14 +139,10 @@ pub(crate) fn attachment(row: &Row<'_>) -> Result<Attachment> {
 
 /// `commentFromRow`, without attachments.
 pub(crate) fn comment(row: &Row<'_>) -> Result<Comment> {
-    let thread = ThreadColumns::read(row)?;
     Ok(Comment {
         id: row.get("id")?,
         task_id: row.get("task_id")?,
         body: row.get("body")?,
-        thread_binding: thread.binding(),
-        legacy_local_thread_id: thread.legacy_local(),
-        thread_id: thread.thread_id,
         agent_session: optional_json(row, "agent_session")?,
         author_type: row.get("author_type")?,
         author_id: row.get("author_id")?,

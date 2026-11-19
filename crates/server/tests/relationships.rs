@@ -32,7 +32,7 @@ async fn relate(
     version: &Value,
 ) -> (u16, Value) {
     let path = format!("/api/tasks/{}/relations/{kind}/{}", id(task), id(related));
-    let body = json!({ "version": version, "threadId": "thread-relations" });
+    let body = json!({ "version": version, "agentSession": { "platform": "codex", "sessionId": "thread-relations" } });
     server.send(method, &path, body).await
 }
 
@@ -61,7 +61,10 @@ async fn issues_support_parent_sub_issue_blocking_and_related_issue_relationship
         added["task"]["version"],
         child["version"].as_i64().unwrap() + 1
     );
-    assert_eq!(added["task"]["threadId"], "thread-relations");
+    assert_eq!(
+        added["task"]["agentSession"]["sessionId"],
+        "thread-relations"
+    );
     assert_eq!(added["task"]["relations"]["parent"]["id"], id(&parent));
     assert_eq!(added["relatedTask"]["id"], id(&parent));
     let sub_issues = &latest(&server, &parent).await["relations"]["subIssues"];

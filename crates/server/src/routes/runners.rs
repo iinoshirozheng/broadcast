@@ -22,16 +22,22 @@ pub async fn collection(State(app): State<Arc<App>>, request: Request) -> Reply 
     Ok(json(200, &json!({ "runners": app.runners.online() })))
 }
 
-pub async fn claude(State(app): State<Arc<App>>, request: Request) -> Reply {
+/// `PUT /api/runners/claude` or `/api/runners/codex`: only that agent's runner keeps it online.
+pub async fn heartbeat(State(app): State<Arc<App>>, request: Request) -> Reply {
     if request.method() != "PUT" {
         return method_not_allowed(&["PUT"]);
     }
+    let expected = match request.uri().path().rsplit('/').next() {
+        Some("claude") => Actor::claude_agent(),
+        Some("codex") => Actor::codex_agent(),
+        _ => return Err(ApiError::new(404, "NOT_FOUND", "Unknown runner").into()),
+    };
     let agent = actor::from_headers(request.headers())?;
-    if agent.id != Actor::claude_agent().id {
+    if agent.id != expected.id {
         return Err(ApiError::new(
             403,
-            "CLAUDE_RUNNER_REQUIRED",
-            "Only the Claude runner sends this heartbeat",
+            "RUNNER_REQUIRED",
+            format!("Only the {} runner sends this heartbeat", expected.name),
         )
         .into());
     }

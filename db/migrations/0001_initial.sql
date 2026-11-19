@@ -23,11 +23,6 @@ CREATE TABLE IF NOT EXISTS tasks (
         priority TEXT NOT NULL CHECK (priority IN ('none', 'urgent', 'high', 'medium', 'low')),
         labels TEXT NOT NULL DEFAULT '[]',
         sort_order REAL NOT NULL,
-        thread_id TEXT,
-        thread_codex_project_id TEXT,
-        thread_codex_project_kind TEXT,
-        thread_codex_host_id TEXT,
-        thread_workspace_path TEXT,
         creator_type TEXT NOT NULL DEFAULT 'user',
         creator_id TEXT NOT NULL DEFAULT 'local-user',
         creator_name TEXT NOT NULL DEFAULT '本地用户',
@@ -58,11 +53,6 @@ CREATE TABLE IF NOT EXISTS comments (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
         body TEXT NOT NULL,
-        thread_id TEXT,
-        thread_codex_project_id TEXT,
-        thread_codex_project_kind TEXT,
-        thread_codex_host_id TEXT,
-        thread_workspace_path TEXT,
         author_type TEXT NOT NULL DEFAULT 'user',
         author_id TEXT NOT NULL,
         author_name TEXT NOT NULL,
@@ -127,51 +117,6 @@ CREATE TABLE IF NOT EXISTS project_summaries (
         error TEXT
       );
 
-CREATE TABLE IF NOT EXISTS ai_chat_threads (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('idle', 'running', 'failed')),
-        origin_project_id TEXT NOT NULL,
-        origin_project_name TEXT NOT NULL,
-        origin_workspace_path TEXT NOT NULL,
-        origin_codex_project_id TEXT,
-        origin_codex_project_kind TEXT,
-        origin_codex_host_id TEXT,
-        origin_issue_id TEXT,
-        origin_issue_identifier TEXT,
-        codex_thread_id TEXT,
-        model TEXT NOT NULL,
-        reasoning_effort TEXT NOT NULL,
-        sandbox TEXT NOT NULL CHECK (sandbox IN (
-          'read-only', 'workspace-write', 'danger-full-access'
-        )),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-CREATE TABLE IF NOT EXISTS ai_chat_runs (
-        id TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES ai_chat_threads(id) ON DELETE CASCADE,
-        status TEXT NOT NULL CHECK (status IN (
-          'running', 'completed', 'failed', 'interrupted'
-        )),
-        exit_code INTEGER,
-        error TEXT,
-        started_at TEXT NOT NULL,
-        finished_at TEXT
-      );
-
-CREATE TABLE IF NOT EXISTS ai_chat_events (
-        id TEXT PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES ai_chat_threads(id) ON DELETE CASCADE,
-        run_id TEXT REFERENCES ai_chat_runs(id) ON DELETE CASCADE,
-        type TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'activity', 'error')),
-        content TEXT NOT NULL,
-        data TEXT,
-        created_at TEXT NOT NULL
-      );
-
 CREATE TABLE IF NOT EXISTS task_relations (
         relation_type TEXT NOT NULL CHECK (relation_type IN ('parent', 'blocks', 'related')),
         source_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -194,19 +139,6 @@ CREATE INDEX IF NOT EXISTS task_activities_task_created
 
 CREATE INDEX IF NOT EXISTS attachments_task_created
         ON attachments(task_id, created_at, id);
-
-CREATE INDEX IF NOT EXISTS ai_chat_threads_updated
-        ON ai_chat_threads(updated_at DESC, id);
-
-CREATE INDEX IF NOT EXISTS ai_chat_runs_thread_started
-        ON ai_chat_runs(thread_id, started_at, id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ai_chat_runs_one_active
-        ON ai_chat_runs(thread_id)
-        WHERE status = 'running';
-
-CREATE INDEX IF NOT EXISTS ai_chat_events_thread_created
-        ON ai_chat_events(thread_id, created_at, id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS tasks_external_source_origin_id
       ON tasks(external_source, external_origin, external_id)

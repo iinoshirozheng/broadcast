@@ -11,9 +11,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::attachments::attachments_for_comment;
-use crate::tasks::{
-    CHUNK, ThreadValues, consume_attachment_body_fallback, require_task, stored_thread_binding,
-};
+use crate::tasks::{CHUNK, consume_attachment_body_fallback, require_task};
 use crate::{Store, next_revision, now, rows};
 
 /// `#requireTaskRecord`: the raw task id for an id or identifier.
@@ -92,10 +90,6 @@ fn with_attachments(connection: &Connection, mut comments: Vec<Comment>) -> Resu
     Ok(comments)
 }
 
-fn thread_columns(values: Option<ThreadValues>) -> [SqlValue; 5] {
-    values.unwrap_or_default().map(SqlValue::from)
-}
-
 impl Store {
     /// `listComments` / `listCommentsAfter`.
     pub fn list_comments(&self, task_id: &str, after: Option<i64>) -> Result<Vec<Comment>> {
@@ -131,11 +125,6 @@ impl Store {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let task = require_task(&transaction, task_id)?;
         let revision = next_revision(&transaction)?;
-        let [thread_id, project_id, project_kind, host_id, workspace_path] =
-            thread_columns(stored_thread_binding(
-                &attribution.thread_binding,
-                attribution.thread_id.as_deref(),
-            ));
         let session = attribution
             .agent_session
             .clone()
@@ -144,20 +133,13 @@ impl Store {
             .transpose()?;
         transaction.execute(
             "INSERT INTO comments (
-               id, task_id, body, thread_id, thread_codex_project_id, thread_codex_project_kind,
-               thread_codex_host_id, thread_workspace_path,
-               author_type, author_id, author_name, author_avatar_url,
+               id, task_id, body, author_type, author_id, author_name, author_avatar_url,
                version, created_at, updated_at, change_revision, agent_session
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
             params![
                 id,
                 task.id,
                 input.body,
-                thread_id,
-                project_id,
-                project_kind,
-                host_id,
-                workspace_path,
                 actor.kind,
                 actor.id,
                 actor.name,
@@ -176,16 +158,6 @@ impl Store {
         let attribution = &input.attribution;
         let mut assignments = String::from("body = ?, ");
         let mut values: Vec<SqlValue> = vec![input.body.clone().into()];
-        if let Some(stored) = stored_thread_binding(
-            &attribution.thread_binding,
-            attribution.thread_id.as_deref(),
-        ) {
-            assignments.push_str(
-                "thread_id = ?, thread_codex_project_id = ?, thread_codex_project_kind = ?, \
-                 thread_codex_host_id = ?, thread_workspace_path = ?, ",
-            );
-            values.extend(thread_columns(Some(stored)));
-        }
         if let Some(session) = &attribution.agent_session {
             assignments.push_str("agent_session = ?, ");
             values.push(

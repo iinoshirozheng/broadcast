@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::{Request, State};
 use broadcast_domain::constants::JIRA_PROJECT_ID;
 use broadcast_domain::fields::{self, StringRules};
-use broadcast_domain::{ApiError, Error, js};
+use broadcast_domain::{ApiError, js};
 use serde_json::json;
 
 use crate::App;
@@ -20,17 +20,6 @@ pub async fn connection(State(app): State<Arc<App>>, request: Request) -> Reply 
             &json!({ "connection": jira::status(&app).await? }),
         )),
         "PUT" => {
-            if app
-                .cloud
-                .read()
-                .await
-                .map_err(Error::from)?
-                .remote_url
-                .is_some()
-            {
-                let message = "Jira 连接当前仅支持本地数据模式，请先退出云端协作模式";
-                return Err(ApiError::new(409, "JIRA_LOCAL_MODE_REQUIRED", message).into());
-            }
             let body = read_json(request).await?;
             let object = fields::object(&body, &["baseUrl", "username", "password", "projects"])?;
             let base_url = fields::required_string(object.get("baseUrl"), "baseUrl", 2048)?;

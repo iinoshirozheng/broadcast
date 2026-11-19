@@ -1,11 +1,7 @@
-use broadcast_server::{Config, Server, TURN_OWNER_ARG, turn_owner};
+use broadcast_server::{Config, Server};
 use tokio::net::TcpListener;
 
 fn main() -> anyhow::Result<()> {
-    let mut args = std::env::args_os().skip(1);
-    if args.next().is_some_and(|arg| arg == TURN_OWNER_ARG) {
-        turn_owner(args);
-    }
     tokio::runtime::Runtime::new()?.block_on(serve())
 }
 

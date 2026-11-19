@@ -22,32 +22,26 @@ jobs:
     timeout-minutes: 5
     outputs:
       run_full: ${{ steps.scope.outputs.run_full }}
-      run_native: ${{ steps.native-scope.outputs.run_native }}
-      run_e2e: ${{ steps.native-scope.outputs.run_e2e }}
+      run_e2e: ${{ steps.e2e-scope.outputs.run_e2e }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
           fetch-depth: 2
-      - name: Select native packaging for the PR merge tree
-        id: native-scope
+      - name: Skip the e2e suite for docs-only PRs
+        id: e2e-scope
         if: github.event_name == 'pull_request'
         run: |
           node <<'NODE'
           const { execFileSync } = require('node:child_process');
           const { appendFileSync } = require('node:fs');
           const paths = execFileSync('git', ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD'], { encoding: 'utf8' }).split('\0').filter(Boolean);
-          const webOrDocsOnly = paths.every(path =>
-            path.startsWith('apps/web/src/') || path === 'apps/web/index.html' ||
-            (path.startsWith('apps/web/public/') && path !== 'apps/web/public/codex-app-icon.png') ||
-            path.startsWith('docs/') ||
-            /^(?:README(?:\.[^/]+)?\.md|AGENTS\.md|LICENSE(?:\.[^/]+)?)$/.test(path));
           const docsOnly = paths.every(path =>
             path.startsWith('docs/') ||
             /^(?:README(?:\.[^/]+)?\.md|AGENTS\.md|LICENSE(?:\.[^/]+)?)$/.test(path));
-          appendFileSync(process.env.GITHUB_OUTPUT, `run_native=${!webOrDocsOnly}\nrun_e2e=${!docsOnly}\n`);
-          console.log(webOrDocsOnly ? 'Web/docs-only PR: run the ordinary Check.' : 'Native/runtime/build inputs changed: run all launcher checks.');
+          appendFileSync(process.env.GITHUB_OUTPUT, `run_e2e=${!docsOnly}\n`);
+          console.log(docsOnly ? 'Docs-only PR: skip the e2e suite.' : 'Run the e2e suite.');
           NODE
       - name: Reuse successful PR Check for the exact tested merge tree
         id: scope
@@ -232,8 +226,7 @@ jobs:
       - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
           pixi-version: v0.76.1
-          environments: default cloud
-          activate-environment: default
+          activate-environment: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -303,129 +296,3 @@ jobs:
           path: .e2e/results/
           if-no-files-found: ignore
           retention-days: 14
-
-  macos-launcher:
-    name: macOS launcher
-    needs: main-check-scope
-    if: ${{ !cancelled() && (github.event_name != 'push' || needs['main-check-scope'].outputs.run_full != 'false') && (github.event_name != 'pull_request' || needs['main-check-scope'].outputs.run_native != 'false') }}
-    runs-on: macos-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.76.1
-          environments: macos-release
-          activate-environment: true
-          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: . -> target
-          shared-key: macos-universal
-          cache-bin: false
-      - run: pnpm install --frozen-lockfile
-      # Ad-hoc signing and a throwaway updater key: the same bundle, DMG and updater path as the
-      # release, without its Developer ID or notarization.
-      - name: Generate a throwaway updater signing key
-        run: pnpm tauri signer generate --ci --password "" --write-keys "$RUNNER_TEMP/updater.key"
-      - name: Build the ad-hoc signed universal App, DMG and updater archive
-        env:
-          APPLE_SIGNING_IDENTITY: "-"
-          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.temp }}/updater.key
-        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg --ci
-      - name: Build the server the packaged CLI is verified against
-        run: cargo build -p broadcast-server
-      - name: Verify the packaged broadcast CLI
-        run: cargo xtask verify-packaged-cli target/universal-apple-darwin/release/bundle/macos/Broadcast.app
-      - name: Verify the App, the DMG and the updater archive
-        run: >-
-          cargo xtask verify-macos
-          target/universal-apple-darwin/release/bundle/macos/Broadcast.app
-          target/universal-apple-darwin/release/bundle/dmg/Broadcast_*_universal.dmg
-          target/universal-apple-darwin/release/bundle/macos/Broadcast.app.tar.gz
-          --pubkey "$RUNNER_TEMP/updater.key.pub"
-
-  windows-launcher:
-    name: Windows x64 launcher
-    needs: main-check-scope
-    if: ${{ !cancelled() && (github.event_name != 'push' || needs['main-check-scope'].outputs.run_full != 'false') && (github.event_name != 'pull_request' || needs['main-check-scope'].outputs.run_native != 'false') }}
-    runs-on: windows-2025
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.76.1
-          environments: default cloud
-          activate-environment: default
-          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: . -> target
-          shared-key: windows-x64
-          cache-bin: false
-      - name: Run the server, CLI and cloud suites on Windows
-        run: pixi run test
-      - name: Build the unsigned NSIS installer
-        run: pnpm app:build:windows
-      - name: Preserve the unsigned NSIS installer
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: windows-x64-nsis-${{ github.sha }}
-          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-          if-no-files-found: error
-
-  linux-launcher:
-    name: Ubuntu 24.04 x64 launcher
-    needs: main-check-scope
-    if: ${{ !cancelled() && (github.event_name != 'push' || needs['main-check-scope'].outputs.run_full != 'false') && (github.event_name != 'pull_request' || needs['main-check-scope'].outputs.run_native != 'false') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
-        with:
-          pixi-version: v0.76.1
-          activate-environment: true
-          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: . -> target
-          shared-key: ubuntu-24.04-x64
-          cache-bin: false
-      - name: Install Ubuntu build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            patchelf \
-            wget
-      - run: pnpm install --frozen-lockfile
-      - name: Build the Ubuntu 24.04 x64 packages
-        run: pnpm app:build:linux:x64
-      - name: Verify the Ubuntu 24.04 x64 package contents
-        run: >-
-          cargo xtask verify-linux-packages
-          target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-          target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-      - name: Preserve the Ubuntu 24.04 x64 packages
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: linux-x64-deb-appimage-${{ github.sha }}
-          path: |
-            target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-            target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-          if-no-files-found: error

@@ -41,8 +41,6 @@ createRoot(document.getElementById("root")!).render(
     initialDraft={oldTodoDraft}
     labels={["回归证据"]}
     currentUser={currentUser}
-    developmentScan={{ workspacePath: null, contexts: [] }}
-    developmentScanLoading={false}
     onCreateLabel={async () => {}}
     onCancel={() => {}}
     onSave={async (draft) => publishResult(draft)}

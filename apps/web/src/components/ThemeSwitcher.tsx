@@ -16,7 +16,9 @@ const THEME_ICONS: Record<ThemePreference, ReactNode> = {
       <path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.58 3.58l1.06 1.06M11.36 11.36l1.06 1.06M3.58 12.42l1.06-1.06M11.36 4.64l1.06-1.06" />
     </g>
   ),
-  dark: <path strokeLinejoin="round" d="M13.25 9.6A5.5 5.5 0 0 1 6.4 2.75a5.5 5.5 0 1 0 6.85 6.85z" />,
+  dark: (
+    <path strokeLinejoin="round" d="M13.25 9.6A5.5 5.5 0 0 1 6.4 2.75a5.5 5.5 0 1 0 6.85 6.85z" />
+  ),
 };
 
 interface ThemeSwitcherProps {

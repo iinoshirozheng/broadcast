@@ -571,7 +571,6 @@ interface MarkdownDocumentContextValue {
   onImageClick?: (event: MouseEvent<HTMLImageElement>) => void;
   onLinkClick?: (event: MouseEvent<HTMLAnchorElement>, href?: string) => void;
   renderLink?: (href: string | undefined, children: ReactNode) => ReactNode | null;
-  renderLinkActions?: (href: string | undefined) => ReactNode;
 }
 
 const MarkdownDocumentContext = createContext<MarkdownDocumentContextValue | null>(null);
@@ -583,8 +582,7 @@ function MarkdownLink({
   className,
   ...props
 }: ComponentPropsWithoutRef<"a"> & ExtraProps) {
-  const { value, onLinkClick, renderLink, renderLinkActions } =
-    useContext(MarkdownDocumentContext)!;
+  const { value, onLinkClick, renderLink } = useContext(MarkdownDocumentContext)!;
   const renderedLink = renderLink?.(href, children);
   const isRenderedLink = renderedLink !== null && renderedLink !== undefined;
   const start = node?.position?.start.offset;
@@ -594,36 +592,25 @@ function MarkdownLink({
   const isComposerReference = Boolean(
     markdown && /^\[[\s\S]*\]\(broadcast:\/\/composer-reference\/[^)]+\)$/.test(markdown),
   );
-  const link =
-    isValidElement(renderedLink) && renderedLink.type === "video" ? (
-      renderedLink
-    ) : (
-      <a
-        {...props}
-        className={
-          [className, isRenderedLink ? "issue-reference-link" : ""].filter(Boolean).join(" ") ||
-          undefined
-        }
-        data-broadcast-inline-media-markdown={
-          isRenderedLink || isComposerReference ? markdown : undefined
-        }
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => onLinkClick?.(event, href)}
-      >
-        {isRenderedLink ? renderedLink : children}
-      </a>
-    );
-  const actions = renderLinkActions?.(href);
-  // Keep preview buttons outside the link: they must not open/download the file.
-  return actions ? (
-    <span className="document-attachment-preview">
-      {link}
-      {actions}
-    </span>
+  return isValidElement(renderedLink) && renderedLink.type === "video" ? (
+    renderedLink
   ) : (
-    link
+    <a
+      {...props}
+      className={
+        [className, isRenderedLink ? "issue-reference-link" : ""].filter(Boolean).join(" ") ||
+        undefined
+      }
+      data-broadcast-inline-media-markdown={
+        isRenderedLink || isComposerReference ? markdown : undefined
+      }
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => onLinkClick?.(event, href)}
+    >
+      {isRenderedLink ? renderedLink : children}
+    </a>
   );
 }
 
@@ -654,20 +641,16 @@ export function MarkdownDocument({
   onImageClick,
   onLinkClick,
   renderLink,
-  renderLinkActions,
 }: {
   value: string;
   onCopy?: ClipboardEventHandler<HTMLDivElement>;
   onImageClick?: (event: MouseEvent<HTMLImageElement>) => void;
   onLinkClick?: (event: MouseEvent<HTMLAnchorElement>, href?: string) => void;
   renderLink?: (href: string | undefined, children: ReactNode) => ReactNode | null;
-  renderLinkActions?: (href: string | undefined) => ReactNode;
 }) {
   return (
     <div className="issue-description-document" onCopy={onCopy}>
-      <MarkdownDocumentContext.Provider
-        value={{ value, onImageClick, onLinkClick, renderLink, renderLinkActions }}
-      >
+      <MarkdownDocumentContext.Provider value={{ value, onImageClick, onLinkClick, renderLink }}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkStripMarkdownComments, remarkBreaks]}
           urlTransform={(url) => defaultUrlTransform(resolvePersistedAttachmentUrl(url))}

@@ -40,8 +40,7 @@ pub async fn for_task(State(app): State<Arc<App>>, request: Request) -> Reply {
         return method_not_allowed(&["GET", "POST"]);
     }
     let actor = actor::from_headers(request.headers())?;
-    let mut create = input::comment_create(&read_json(request).await?)?;
-    create.attribution = app.host.resolve(create.attribution);
+    let create = input::comment_create(&read_json(request).await?)?;
     let (comment, task) = app
         .store(move |store| {
             let comment = store.create_comment(&task_id, &create, &actor)?;
@@ -63,8 +62,7 @@ pub async fn item(State(app): State<Arc<App>>, request: Request) -> Reply {
     )?;
     match request.method().as_str() {
         "PATCH" => {
-            let mut patch = input::comment_patch(&read_json(request).await?)?;
-            patch.attribution = app.host.resolve(patch.attribution);
+            let patch = input::comment_patch(&read_json(request).await?)?;
             let (comment, task) = app
                 .store(move |store| {
                     let comment = store.update_comment(&id, &patch)?;

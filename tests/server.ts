@@ -1,7 +1,6 @@
 // Local E2E harness: boots an isolated Broadcast server on 127.0.0.1.
 // - Data lives in a throwaway temp directory (never the developer's `.data`).
-// - The Codex executable is pointed at a nonexistent path and PATH is empty, so a test can
-//   never reach Codex or the network.
+// - PATH is empty, so a test can never spawn an external tool.
 // - Static web UI is served from apps/web/dist (build the web app first).
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -19,8 +18,6 @@ const server = spawn(binary, [], {
   env: {
     PATH: "",
     HOME: directory,
-    CODEX_HOME: directory,
-    CODEX_EXECUTABLE: path.join(directory, "disabled-codex"),
     BROADCAST_DATA_DIR: path.join(directory, "data"),
     BROADCAST_HOST: "127.0.0.1",
     BROADCAST_PORT: port,

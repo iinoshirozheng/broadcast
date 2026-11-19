@@ -1,10 +1,9 @@
-//! Domain rules shared by the local server and the cloud worker.
+//! Domain rules for the Broadcast server.
 //!
 //! Validation mirrors the JavaScript API exactly (status, code and message), so it works
 //! over `serde_json::Value`: an absent key is JavaScript `undefined`, `Value::Null` is `null`.
 
 pub mod attachment;
-pub mod cloud;
 pub mod constants;
 mod error;
 pub mod fields;

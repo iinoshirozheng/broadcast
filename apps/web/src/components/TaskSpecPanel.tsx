@@ -41,12 +41,10 @@ function TaskMark({ state }: { state: "done" | "active" | "todo" }) {
 export function TaskSpecPanel({
   task,
   updatedAgo,
-  drafting,
   onDraft,
 }: {
   task: Task;
   updatedAgo: string | null;
-  drafting: boolean;
   onDraft: () => void;
 }) {
   const { text } = useBroadcastI18n();
@@ -76,10 +74,8 @@ export function TaskSpecPanel({
             )}
           </p>
         </div>
-        <button type="button" disabled={drafting} onClick={onDraft}>
-          {drafting
-            ? text("正在打开…", "Opening…")
-            : text("让 agent 拆分", "Split with agent")}
+        <button type="button" onClick={onDraft}>
+          {text("复制拆分指令", "Copy split instruction")}
         </button>
       </section>
     );

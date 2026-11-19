@@ -1,6 +1,6 @@
 import type { AgentPlatform } from "./types";
 
-export function agentPlatformLabel(platform: AgentPlatform | "codex") {
+export function agentPlatformLabel(platform: AgentPlatform) {
   switch (platform) {
     case "codex":
       return "Codex";
@@ -17,7 +17,7 @@ export function agentPlatformLabel(platform: AgentPlatform | "codex") {
 
 // These are fixed CLI entry points, not user-configurable command templates.
 // Quote for POSIX shells (sh/bash/zsh); preserve the complete, original argument.
-export function sessionResumeCommand(platform: AgentPlatform | "codex", sessionId: string) {
+export function sessionResumeCommand(platform: AgentPlatform, sessionId: string) {
   const argument = /^[A-Za-z0-9_./:@+-]+$/.test(sessionId)
     ? sessionId
     : `'${sessionId.replace(/'/g, "'\"'\"'")}'`;

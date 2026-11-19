@@ -50,8 +50,7 @@ pub async fn relation(State(app): State<Arc<App>>, request: Request) -> Reply {
         _ => return method_not_allowed(&["POST", "DELETE"]),
     };
     let actor = actor::from_headers(request.headers())?;
-    let mut mutation = input::relation_mutation(&read_json(request).await?)?;
-    mutation.attribution = app.host.resolve(mutation.attribution);
+    let mutation = input::relation_mutation(&read_json(request).await?)?;
     let change = app
         .store(move |store| {
             if remove {

@@ -6,7 +6,6 @@ mod client;
 mod commands;
 mod error;
 mod runner;
-mod secret;
 mod target;
 
 use serde_json::{Map, Value};
@@ -66,8 +65,15 @@ async fn run(argv: &[String]) -> Result<Outcome> {
     }
     let allowed = args::allowed_options(&command).ok_or_else(|| usage(args::UNKNOWN_COMMAND))?;
     parsed.validate_options(&allowed)?;
-    if command == "runner claude" {
-        return runner::claude(&parsed).await.map(|()| Outcome::Interrupted);
+    let agent = match command.as_str() {
+        "runner claude" => Some(broadcast_agents::runner::Agent::Claude),
+        "runner codex" => Some(broadcast_agents::runner::Agent::Codex),
+        _ => None,
+    };
+    if let Some(agent) = agent {
+        return runner::run(&parsed, agent)
+            .await
+            .map(|()| Outcome::Interrupted);
     }
     commands::execute(&parsed, &command)
         .await

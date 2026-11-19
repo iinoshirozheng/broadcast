@@ -1,16 +1,14 @@
-//! Runs the `broadcast-server` binary on an ephemeral loopback port with its data, and its Codex
-//! home, in a temporary directory.
+//! Runs the `broadcast-server` binary on an ephemeral loopback port with its data in a temporary
+//! directory.
 
 #![allow(dead_code)] // Each test crate uses its own subset.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
 
 use axum::Router;
-use axum::http::Uri;
 use reqwest::{Client, Method, RequestBuilder, Response};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -37,8 +35,7 @@ impl Server {
         command
             .env("BROADCAST_DATA_DIR", dir.path())
             .env("BROADCAST_HOST", "127.0.0.1")
-            .env("BROADCAST_PORT", "0")
-            .env("CODEX_HOME", dir.path().join("codex-home"));
+            .env("BROADCAST_PORT", "0");
         Builder { command, dir }
     }
 
@@ -48,11 +45,6 @@ impl Server {
 
     pub fn dir(&self) -> &Path {
         self.dir.path()
-    }
-
-    /// See [`Builder::codex_home`].
-    pub fn codex_home(&self) -> PathBuf {
-        self.dir().join("codex-home")
     }
 
     pub fn url(&self, path: &str) -> String {
@@ -129,28 +121,6 @@ impl Builder {
         self.dir.path()
     }
 
-    /// The Codex home the server reads: `.codex-global-state.json` and
-    /// `process_manager/chat_processes.json` belong here.
-    pub fn codex_home(&self) -> PathBuf {
-        self.dir.path().join("codex-home")
-    }
-
-    /// Configures cloud mode against `remote_url` as Alice with the shared key
-    /// `two-person-shared-key`.
-    pub fn cloud(self, remote_url: &str) -> Self {
-        write_cloud_config(
-            self.dir(),
-            json!({
-                "version": 1,
-                "remoteUrl": remote_url,
-                "actorName": "Alice",
-                "sharedKey": "two-person-shared-key",
-                "projectMappings": {},
-            }),
-        );
-        self
-    }
-
     pub fn env(mut self, name: &str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         self.command.env(name, value);
         self
@@ -184,39 +154,6 @@ impl Builder {
             client,
             dir: self.dir,
         }
-    }
-}
-
-/// Writes the cloud settings the server reads from its data directory `dir`.
-pub fn write_cloud_config(dir: &Path, config: Value) {
-    std::fs::write(dir.join("cloud-companion.json"), config.to_string()).expect("cloud settings");
-}
-
-/// A loopback HTTP server standing in for the cloud board.
-pub struct Upstream {
-    pub url: String,
-    /// The path and query of every request it answered, in order.
-    pub requests: Arc<Mutex<Vec<String>>>,
-}
-
-impl Upstream {
-    /// Answers every request with `reply` as JSON.
-    pub async fn json(reply: Value) -> Self {
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        let recorded = Arc::clone(&requests);
-        let router = Router::new().fallback(move |uri: Uri| {
-            recorded.lock().unwrap().push(uri.to_string());
-            let reply = reply.clone();
-            async move { axum::Json(reply) }
-        });
-        Self {
-            url: serve(router).await,
-            requests,
-        }
-    }
-
-    pub fn calls(&self) -> Vec<String> {
-        self.requests.lock().unwrap().clone()
     }
 }
 

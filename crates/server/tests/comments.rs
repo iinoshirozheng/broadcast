@@ -11,8 +11,8 @@ async fn create_task(server: &Server, title: &str) -> String {
     reply["task"]["id"].as_str().unwrap().to_owned()
 }
 
-async fn thread_id(server: &Server, task: &str) -> Value {
-    server.get(&format!("/api/tasks/{task}")).await.1["task"]["threadId"].clone()
+async fn agent_session(server: &Server, task: &str) -> Value {
+    server.get(&format!("/api/tasks/{task}")).await.1["task"]["agentSession"].clone()
 }
 
 #[tokio::test]
@@ -28,14 +28,17 @@ async fn issue_comments_can_be_created_edited_listed_and_deleted() {
         .send(
             Method::POST,
             &comments,
-            json!({ "body": "First comment", "threadId": "thread-comment-create" }),
+            json!({ "body": "First comment", "agentSession": { "platform": "codex", "sessionId": "thread-comment-create" } }),
         )
         .await;
     assert_eq!(status, 201);
     let comment = &created["comment"];
     assert_eq!(comment["taskId"], task);
     assert_eq!(comment["body"], "First comment");
-    assert_eq!(comment["threadId"], "thread-comment-create");
+    assert_eq!(
+        comment["agentSession"]["sessionId"],
+        "thread-comment-create"
+    );
     assert_eq!(comment["attachments"], json!([]));
     assert_eq!(comment["authorType"], "user");
     assert_eq!(comment["authorId"], "local-user");
@@ -53,16 +56,19 @@ async fn issue_comments_can_be_created_edited_listed_and_deleted() {
             json!({
                 "version": comment["version"],
                 "body": "Edited comment",
-                "threadId": "thread-comment-update",
+                "agentSession": { "platform": "codex", "sessionId": "thread-comment-update" },
             }),
         )
         .await;
     assert_eq!(status, 200);
     let updated = &edited["comment"];
     assert_eq!(updated["body"], "Edited comment");
-    assert_eq!(updated["threadId"], "thread-comment-update");
+    assert_eq!(
+        updated["agentSession"]["sessionId"],
+        "thread-comment-update"
+    );
     assert_eq!(updated["version"], 2);
-    assert_eq!(thread_id(&server, &task).await, Value::Null);
+    assert_eq!(agent_session(&server, &task).await, Value::Null);
 
     let (status, stale) = server
         .send(
@@ -78,12 +84,12 @@ async fn issue_comments_can_be_created_edited_listed_and_deleted() {
         .send(
             Method::DELETE,
             &path,
-            json!({ "version": updated["version"], "threadId": "thread-comment-delete" }),
+            json!({ "version": updated["version"], "agentSession": { "platform": "codex", "sessionId": "thread-comment-delete" } }),
         )
         .await;
     assert_eq!(status, 204);
     assert_eq!(server.get(&comments).await.1["comments"], json!([]));
-    assert_eq!(thread_id(&server, &task).await, Value::Null);
+    assert_eq!(agent_session(&server, &task).await, Value::Null);
 }
 
 #[tokio::test]
@@ -94,7 +100,7 @@ async fn comments_support_attachments_and_deleting_a_comment_removes_its_files()
         .send(
             Method::POST,
             &format!("/api/tasks/{task}/comments"),
-            json!({ "body": "", "threadId": "thread-attachment" }),
+            json!({ "body": "", "agentSession": { "platform": "codex", "sessionId": "thread-attachment" } }),
         )
         .await;
     assert_eq!(status, 201);
@@ -130,7 +136,7 @@ async fn comments_support_attachments_and_deleting_a_comment_removes_its_files()
         .send(
             Method::DELETE,
             &path,
-            json!({ "version": comment["version"], "threadId": "thread-delete-comment" }),
+            json!({ "version": comment["version"], "agentSession": { "platform": "codex", "sessionId": "thread-delete-comment" } }),
         )
         .await;
     assert_eq!(status, 204);
@@ -140,5 +146,5 @@ async fn comments_support_attachments_and_deleting_a_comment_removes_its_files()
         attachment["id"].as_str().unwrap()
     );
     assert_eq!(server.get(&content).await.0, 404);
-    assert_eq!(thread_id(&server, &task).await, Value::Null);
+    assert_eq!(agent_session(&server, &task).await, Value::Null);
 }

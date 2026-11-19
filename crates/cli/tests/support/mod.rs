@@ -23,13 +23,9 @@ impl Board {
         let config = Config {
             data_dir: dir.path().join("data"),
             static_dir: dir.path().join("static"),
-            skill_path: dir.path().join("SKILL.md"),
-            codex_home: dir.path().join("codex-home"),
-            codex_executable: dir.path().join("codex").to_string_lossy().into_owned(),
             host: Ipv4Addr::LOCALHOST.into(),
             port: 0,
             trusted_origins: Default::default(),
-            launcher: None,
             version: "test".into(),
         };
         std::fs::create_dir(&config.data_dir).expect("data directory");

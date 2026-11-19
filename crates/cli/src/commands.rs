@@ -1,35 +1,24 @@
 //! Board commands. Each one checks its arguments in the order the contract reports errors, then
 //! makes its request; the reply object becomes the command's JSON result.
 
-use std::cmp::Reverse;
 use std::path::{Component, Path, PathBuf};
 
-use broadcast_domain::constants::{
-    DEFAULT_PROJECT_ID, TASK_STATUSES, is_task_priority, is_task_status,
-};
+use broadcast_domain::constants::{TASK_STATUSES, is_task_priority, is_task_status};
 use broadcast_domain::js::{self, encode_uri_component as encode};
 use serde_json::{Map, Value, json};
 use url::form_urlencoded;
 
 use crate::args::Parsed;
-use crate::client::{Api, js_string};
+use crate::client::Api;
 use crate::error::{CliError, Result, file_read, usage};
-use crate::secret;
-use crate::target::{self, Env};
+use crate::target;
 
 type Object = Map<String, Value>;
 
 pub async fn execute(parsed: &Parsed, command: &str) -> Result<Object> {
-    let env = Env::new(parsed.option("runtime-file"));
-    let companion = command.starts_with("cloud ") || command == "project map";
-    let target = if companion || env.var("BROADCAST_COMPANION_URL").is_some() {
-        target::companion_url(&env)?
-    } else {
-        target::broadcast_base_url(&env)?
-    };
     let board = Board {
         parsed,
-        api: Api::new(target)?,
+        api: Api::new(&target::base_url())?,
     };
     board.run(command).await
 }
@@ -61,41 +50,7 @@ impl Board<'_> {
                     .request("POST", "/api/projects", Some(body.into()))
                     .await
             }
-            "project map" => {
-                p.expect_operands(1)?;
-                let pathname = format!("/api/local/project-mappings/{}", encode(p.operand(0)));
-                let body =
-                    json!({ "workspacePath": resolve_input(p.required("workspace-path")?)? });
-                self.api.request("PUT", &pathname, Some(body)).await
-            }
             "project readme" => self.project_readme().await,
-            "cloud login" => {
-                p.expect_operands(0)?;
-                let url = p.required("url")?;
-                let actor_name = p.required("actor-name")?;
-                let remote_url = broadcast_domain::cloud::origin(url)
-                    .map_err(|message| CliError::new(message, "INVALID_CLOUD_URL", 2))?;
-                let shared_key = secret::read()?;
-                if shared_key.is_empty() {
-                    return Err(usage("Cloud shared key cannot be empty"));
-                }
-                let body = json!({ "remoteUrl": remote_url, "actorName": actor_name, "sharedKey": shared_key });
-                self.api
-                    .request("PUT", "/api/local/cloud-session", Some(body))
-                    .await
-            }
-            "cloud status" => {
-                p.expect_operands(0)?;
-                self.api
-                    .request("GET", "/api/local/cloud-session", None)
-                    .await
-            }
-            "cloud logout" => {
-                p.expect_operands(0)?;
-                self.api
-                    .request("DELETE", "/api/local/cloud-session", None)
-                    .await
-            }
             "issue list" => {
                 p.expect_operands(0)?;
                 if let Some(status) = p.option("status") {
@@ -134,13 +89,11 @@ impl Board<'_> {
                 let task_id = p.operand(0);
                 let status = p.required("status")?;
                 assert_status(status)?;
-                let (key, attribution) = self.attribution()?;
-                let binding = self.thread_binding()?;
+                let attribution = self.attribution()?;
                 let pathname = format!("{}/move", task_path(task_id)?);
                 let mut body = Object::new();
                 body.insert("status".into(), status.into());
-                body.insert(key.into(), attribution);
-                put(&mut body, "threadBinding", binding);
+                put(&mut body, "agentSession", attribution);
                 body.insert(
                     "version".into(),
                     self.version(task_id, p.option("if-version")).await?,
@@ -150,7 +103,7 @@ impl Board<'_> {
             "issue archive" | "issue restore" => {
                 p.expect_operands(1)?;
                 let task_id = p.operand(0);
-                let (key, attribution) = self.attribution()?;
+                let attribution = self.attribution()?;
                 let pathname = format!(
                     "{}/{}",
                     task_path(task_id)?,
@@ -161,7 +114,7 @@ impl Board<'_> {
                     .request(
                         "POST",
                         &pathname,
-                        Some(json!({ key: attribution, "version": version })),
+                        Some(attributed(json!({ "version": version }), attribution)),
                     )
                     .await
             }
@@ -255,7 +208,7 @@ impl Board<'_> {
                     ));
                 }
                 let related = p.required("issue")?;
-                let (key, attribution) = self.attribution()?;
+                let attribution = self.attribution()?;
                 let version = self.version(task_id, p.option("if-version")).await?;
                 let method = if action == "add" { "POST" } else { "DELETE" };
                 let pathname = format!(
@@ -267,7 +220,7 @@ impl Board<'_> {
                     .request(
                         method,
                         &pathname,
-                        Some(json!({ key: attribution, "version": version })),
+                        Some(attributed(json!({ "version": version }), attribution)),
                     )
                     .await
             }
@@ -294,11 +247,10 @@ impl Board<'_> {
                     })?,
                 };
                 let pathname = format!("{}/comments", task_path(p.operand(0))?);
-                let (key, attribution) = self.attribution()?;
+                let attribution = self.attribution()?;
                 let mut payload = Object::new();
                 payload.insert("body".into(), body.into());
-                payload.insert(key.into(), attribution);
-                put(&mut payload, "threadBinding", self.thread_binding()?);
+                put(&mut payload, "agentSession", attribution);
                 self.api
                     .request("POST", &pathname, Some(payload.into()))
                     .await
@@ -307,26 +259,29 @@ impl Board<'_> {
                 p.expect_operands(1)?;
                 let pathname = comment_path(p.operand(0))?;
                 let body = p.required("body")?;
-                let (key, attribution) = self.attribution()?;
+                let attribution = self.attribution()?;
                 let version = explicit_version(p.option("if-version"), false)?;
                 self.api
                     .request(
                         "PATCH",
                         &pathname,
-                        Some(json!({ "body": body, key: attribution, "version": version })),
+                        Some(attributed(
+                            json!({ "body": body, "version": version }),
+                            attribution,
+                        )),
                     )
                     .await
             }
             "comment delete" => {
                 p.expect_operands(1)?;
                 let pathname = comment_path(p.operand(0))?;
-                let (key, attribution) = self.attribution()?;
+                let attribution = self.attribution()?;
                 let version = explicit_version(p.option("if-version"), false)?;
                 self.api
                     .request(
                         "DELETE",
                         &pathname,
-                        Some(json!({ key: attribution, "version": version })),
+                        Some(attributed(json!({ "version": version }), attribution)),
                     )
                     .await
             }
@@ -349,10 +304,6 @@ impl Board<'_> {
             "attachment upload" => {
                 p.expect_operands(0)?;
                 self.upload_attachment().await
-            }
-            "context current" => {
-                p.expect_operands(0)?;
-                self.current_context(p.option("cwd")).await
             }
             _ => Err(usage(format!("Unsupported command: {command}"))),
         }
@@ -379,19 +330,10 @@ impl Board<'_> {
             }
             p.operands.first()
         };
-        let project_id = match raw_project_id.filter(|id| !id.is_empty()) {
-            Some(id) => id.clone(),
-            None => match self
-                .current_context(None)
-                .await?
-                .get("project")
-                .and_then(|project| project.get("id"))
-            {
-                None | Some(Value::Null) => DEFAULT_PROJECT_ID.to_owned(),
-                Some(id) => js_string(id),
-            },
-        };
-        let pathname = format!("/api/projects/{}/readme", encode(&project_id));
+        let project_id = raw_project_id
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| usage("project readme requires a project id"))?;
+        let pathname = format!("/api/projects/{}/readme", encode(project_id));
 
         if is_set {
             if p.has("content") && p.has("file") {
@@ -428,7 +370,7 @@ impl Board<'_> {
         assert_priority(priority)?;
         let development_context = self.development_context()?;
         let recurrence = self.recurrence()?;
-        let (key, attribution) = self.attribution()?;
+        let attribution = self.attribution()?;
         let mut body = Object::new();
         body.insert("projectId".into(), p.required("project")?.into());
         body.insert("title".into(), p.required("title")?.into());
@@ -436,7 +378,7 @@ impl Board<'_> {
         body.insert("status".into(), status.into());
         body.insert("priority".into(), priority.into());
         body.insert("labels".into(), labels(p.option("labels")));
-        body.insert(key.into(), attribution);
+        put(&mut body, "agentSession", attribution);
         put(&mut body, "developmentContext", development_context);
         put(&mut body, "startDate", p.option("start-date"));
         put(&mut body, "dueDate", p.option("due-date"));
@@ -456,7 +398,7 @@ impl Board<'_> {
         }
         let development_context = self.development_context()?;
         let recurrence = self.recurrence()?;
-        let (key, attribution) = self.attribution()?;
+        let attribution = self.attribution()?;
         let mut patch = Object::new();
         put(&mut patch, "projectId", p.option("project"));
         put(&mut patch, "title", p.option("title"));
@@ -474,10 +416,10 @@ impl Board<'_> {
         if p.has("description") || p.has("description-file") {
             patch.insert("description".into(), self.description()?.into());
         }
-        if patch.is_empty() && key != "agentSession" {
+        if patch.is_empty() && !p.has("agent-platform") {
             return Err(usage("issue update requires at least one field to update"));
         }
-        patch.insert(key.into(), attribution);
+        put(&mut patch, "agentSession", attribution);
         patch.insert(
             "version".into(),
             self.version(task_id, p.option("if-version")).await?,
@@ -557,137 +499,23 @@ impl Board<'_> {
         })))
     }
 
-    async fn current_context(&self, cwd: Option<&str>) -> Result<Object> {
-        let base = current_dir()?;
-        let cwd = resolve(&base, cwd.unwrap_or(""));
-        let response = self.api.request("GET", "/api/projects", None).await?;
-        let projects = match response.get("projects") {
-            Some(Value::Array(projects)) => projects.as_slice(),
-            _ => &[],
+    /// The agent conversation a write is attributed to: `--agent-platform` with `--session-id`,
+    /// or the Codex session in `CODEX_THREAD_ID`.
+    fn attribution(&self) -> Result<Option<Value>> {
+        let p = self.parsed;
+        let session = if p.has("agent-platform") || p.has("session-id") {
+            json!({ "platform": p.required("agent-platform")?, "sessionId": p.required("session-id")? })
+        } else {
+            match std::env::var("CODEX_THREAD_ID") {
+                Ok(id) if !js::trim(&id).is_empty() => {
+                    json!({ "platform": "codex", "sessionId": js::trim(&id) })
+                }
+                _ => return Ok(None),
+            }
         };
-        let mut matching: Vec<&Value> = projects
-            .iter()
-            .filter(|candidate| {
-                workspace(candidate).is_some_and(|path| cwd.starts_with(resolve(&base, path)))
-            })
-            .collect();
-        matching.sort_by_key(|candidate| Reverse(workspace(candidate).map_or(0, js::len)));
-        let project = matching
-            .first()
-            .copied()
-            .or_else(|| {
-                projects.iter().find(|candidate| {
-                    candidate.get("id").and_then(Value::as_str) == Some(DEFAULT_PROJECT_ID)
-                })
-            })
-            .or(projects.first())
-            .cloned()
-            .unwrap_or(Value::Null);
-        Ok(object(json!({ "cwd": display(&cwd), "project": project })))
-    }
-
-    /// Which conversation a write is attributed to: an external agent session, or a Codex thread.
-    fn attribution(&self) -> Result<(&'static str, Value)> {
-        let p = self.parsed;
-        if p.has("agent-platform") || p.has("session-id") {
-            if p.has("thread-id") {
-                return Err(usage(
-                    "Use --agent-platform with --session-id, or Codex --thread-id, not both",
-                ));
-            }
-            let candidate = json!({ "platform": p.required("agent-platform")?, "sessionId": p.required("session-id")? });
-            let session = broadcast_domain::input::agent_session(Some(&candidate))
-                .map_err(|error| usage(error.message))?;
-            let session = session.flatten().map(
-                |session| json!({ "platform": session.platform, "sessionId": session.session_id }),
-            );
-            return Ok(("agentSession", session.unwrap_or(Value::Null)));
-        }
-        let thread_id = p
-            .option("thread-id")
-            .map(str::to_owned)
-            .or_else(|| std::env::var("CODEX_THREAD_ID").ok());
-        let thread_id = thread_id.as_deref().map(js::trim).unwrap_or("");
-        if thread_id.is_empty() {
-            return Err(usage(
-                "Conversation attribution requires --agent-platform with --session-id, or Codex --thread-id or CODEX_THREAD_ID",
-            ));
-        }
-        if js::len(thread_id) > 256 {
-            return Err(usage(
-                "--thread-id and CODEX_THREAD_ID cannot exceed 256 characters",
-            ));
-        }
-        Ok(("threadId", thread_id.into()))
-    }
-
-    /// `None` leaves the binding alone; `Some(null)` clears it.
-    fn thread_binding(&self) -> Result<Option<Value>> {
-        let p = self.parsed;
-        let fields = [
-            "binding-thread-id",
-            "binding-codex-project-id",
-            "binding-codex-project-kind",
-            "binding-codex-host-id",
-            "binding-workspace-path",
-        ];
-        if p.flag("clear-binding-thread") {
-            if fields.iter().any(|field| p.has(field)) {
-                return Err(usage(
-                    "--clear-binding-thread cannot be combined with binding identity options",
-                ));
-            }
-            return Ok(Some(Value::Null));
-        }
-        if !fields.iter().any(|field| p.has(field)) {
-            return Ok(None);
-        }
-        let thread_id = js::trim(p.required("binding-thread-id")?);
-        if thread_id.is_empty() || js::len(thread_id) > 256 {
-            return Err(usage(
-                "--binding-thread-id must contain 1 to 256 characters",
-            ));
-        }
-        let identity = &fields[1..];
-        if !identity.iter().any(|field| p.has(field)) {
-            return Ok(Some(json!({ "threadId": thread_id })));
-        }
-        if !identity.iter().all(|field| p.has(field)) {
-            return Err(usage(
-                "Binding identity requires project id, kind, host id, and workspace path",
-            ));
-        }
-        let value = |name| p.option(name).unwrap_or("");
-        let project_id = js::trim(value("binding-codex-project-id"));
-        let kind = value("binding-codex-project-kind");
-        let host_id = js::trim(value("binding-codex-host-id"));
-        let workspace_path = value("binding-workspace-path");
-        if project_id.is_empty() || js::len(project_id) > 256 {
-            return Err(usage(
-                "--binding-codex-project-id must contain 1 to 256 characters",
-            ));
-        }
-        if kind != "local" && kind != "remote" {
-            return Err(usage(
-                "--binding-codex-project-kind must be local or remote",
-            ));
-        }
-        if host_id.is_empty() || js::len(host_id) > 256 || (kind == "local") != (host_id == "local")
-        {
-            return Err(usage(
-                "--binding-codex-host-id does not match the project kind",
-            ));
-        }
-        if !is_absolute(workspace_path) {
-            return Err(usage("--binding-workspace-path must be absolute"));
-        }
-        Ok(Some(json!({
-            "threadId": thread_id,
-            "codexProjectId": project_id,
-            "codexProjectKind": kind,
-            "codexHostId": host_id,
-            "workspacePath": workspace_path,
-        })))
+        broadcast_domain::input::agent_session(Some(&session))
+            .map_err(|error| usage(error.message))?;
+        Ok(Some(session))
     }
 
     fn development_context(&self) -> Result<Option<Value>> {
@@ -813,6 +641,13 @@ fn put(object: &mut Object, name: &str, value: Option<impl Into<Value>>) {
     }
 }
 
+/// `body` with `agentSession` added when the write is attributed.
+fn attributed(body: Value, attribution: Option<Value>) -> Value {
+    let mut body = object(body);
+    put(&mut body, "agentSession", attribution);
+    body.into()
+}
+
 fn object(value: Value) -> Object {
     match value {
         Value::Object(object) => object,
@@ -927,16 +762,6 @@ fn guess_content_type(filename: &str) -> &'static str {
     }
 }
 
-/// Absolute as a POSIX or a Windows path.
-fn is_absolute(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    matches!(bytes.first(), Some(b'/' | b'\\'))
-        || (bytes.len() > 2
-            && bytes[0].is_ascii_alphabetic()
-            && bytes[1] == b':'
-            && matches!(bytes[2], b'/' | b'\\'))
-}
-
 fn read_text(path: &str) -> std::io::Result<String> {
     std::fs::read(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -966,11 +791,4 @@ fn resolve_input(value: &str) -> Result<String> {
 
 fn display(path: &Path) -> String {
     path.to_string_lossy().into_owned()
-}
-
-fn workspace(project: &Value) -> Option<&str> {
-    project
-        .get("workspacePath")
-        .and_then(Value::as_str)
-        .filter(|path| !path.is_empty())
 }

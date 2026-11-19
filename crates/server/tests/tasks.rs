@@ -63,7 +63,7 @@ async fn project_and_task_crud_flow() {
                 "status": "todo",
                 "priority": "high",
                 "labels": ["frontend", "mvp"],
-                "threadId": "thread-123",
+                "agentSession": { "platform": "codex", "sessionId": "thread-123" },
                 "developmentContext": worktree,
                 "dueDate": "2026-07-24",
                 "recurrence": { "interval": 2, "unit": "week" },
@@ -77,7 +77,7 @@ async fn project_and_task_crud_flow() {
     assert_eq!(created["sortOrder"], 1000);
     assert_eq!(created["archivedAt"], Value::Null);
     assert_eq!(created["labels"], json!(["frontend", "mvp"]));
-    assert_eq!(created["threadId"], "thread-123");
+    assert_eq!(created["agentSession"]["sessionId"], "thread-123");
     assert_eq!(created["creatorType"], "user");
     assert_eq!(created["creatorId"], "local-user");
     assert_eq!(created["creatorName"], "本地用户");
@@ -113,14 +113,14 @@ async fn project_and_task_crud_flow() {
             "version": created["version"],
             "title": "Build polished task board",
             "priority": "urgent",
-            "threadId": "thread-456",
+            "agentSession": { "platform": "codex", "sessionId": "thread-456" },
             "developmentContext": branch,
         }),
     )
     .await;
     assert_eq!(updated["title"], "Build polished task board");
     assert_eq!(updated["priority"], "urgent");
-    assert_eq!(updated["threadId"], "thread-456");
+    assert_eq!(updated["agentSession"]["sessionId"], "thread-456");
     assert_eq!(updated["developmentContext"], branch);
     assert_eq!(updated["version"], 2);
 
@@ -128,11 +128,11 @@ async fn project_and_task_crud_flow() {
         &server,
         Method::POST,
         &format!("/api/tasks/{id}/archive"),
-        json!({ "version": updated["version"], "threadId": "thread-archive" }),
+        json!({ "version": updated["version"], "agentSession": { "platform": "codex", "sessionId": "thread-archive" } }),
     )
     .await;
     assert_eq!(archived["version"], 3);
-    assert_eq!(archived["threadId"], "thread-archive");
+    assert_eq!(archived["agentSession"]["sessionId"], "thread-archive");
     chrono::DateTime::parse_from_rfc3339(archived["archivedAt"].as_str().unwrap()).unwrap();
     assert!(
         listed(&server, "/api/tasks?projectId=website")
@@ -149,12 +149,12 @@ async fn project_and_task_crud_flow() {
         &server,
         Method::POST,
         &format!("/api/tasks/{id}/restore"),
-        json!({ "version": archived["version"], "threadId": "thread-restore" }),
+        json!({ "version": archived["version"], "agentSession": { "platform": "codex", "sessionId": "thread-restore" } }),
     )
     .await;
     assert_eq!(restored["archivedAt"], Value::Null);
     assert_eq!(restored["version"], 4);
-    assert_eq!(restored["threadId"], "thread-restore");
+    assert_eq!(restored["agentSession"]["sessionId"], "thread-restore");
     assert_eq!(listed(&server, "/api/tasks?projectId=website").await, [id]);
     assert_eq!(issue_count(&server, "website").await, 1);
 }
@@ -171,120 +171,14 @@ async fn moving_a_task_updates_its_status_and_sort_order() {
             "version": created["version"],
             "status": "in_progress",
             "sortOrder": 2500.5,
-            "threadId": "thread-move",
+            "agentSession": { "platform": "codex", "sessionId": "thread-move" },
         }),
     )
     .await;
     assert_eq!(moved["status"], "in_progress");
     assert_eq!(moved["sortOrder"], 2500.5);
-    assert_eq!(moved["threadId"], "thread-move");
+    assert_eq!(moved["agentSession"]["sessionId"], "thread-move");
     assert_eq!(moved["version"], 2);
-}
-
-#[tokio::test]
-async fn remote_task_bindings_keep_their_own_identity_and_can_be_cleared_independently() {
-    let server = Server::start().await;
-    let refs = |task: &Value, field: &str| -> Vec<Value> {
-        let refs = task["conversationRefs"].as_array().unwrap();
-        refs.iter()
-            .map(|reference| reference[field].clone())
-            .collect()
-    };
-
-    let legacy = create(
-        &server,
-        json!({ "title": "Legacy binding", "threadId": "legacy-thread" }),
-    )
-    .await;
-    assert_eq!(legacy["threadId"], "legacy-thread");
-    assert_eq!(legacy["threadBinding"], Value::Null);
-    assert_eq!(legacy["legacyLocalThreadId"], "legacy-thread");
-    assert_eq!(refs(&legacy, "threadId"), ["legacy-thread"]);
-    assert_eq!(refs(&legacy, "legacyLocal"), [true]);
-
-    let binding = json!({
-        "threadId": "remote-thread-a",
-        "codexProjectId": "remote-project-a",
-        "codexProjectKind": "remote",
-        "codexHostId": "ssh-a",
-        "workspacePath": "/same/remote/path",
-    });
-    let created = create(
-        &server,
-        json!({
-            "title": "Remote binding",
-            "threadId": binding["threadId"],
-            "threadBinding": binding,
-        }),
-    )
-    .await;
-    assert_eq!(created["threadBinding"], binding);
-    assert_eq!(refs(&created, "codexHostId"), ["ssh-a"]);
-
-    let id = created["id"].as_str().unwrap();
-    let move_to = format!("/api/tasks/{id}/move");
-    let continued = task(
-        &server,
-        Method::POST,
-        &move_to,
-        json!({
-            "version": created["version"],
-            "status": "in_progress",
-            "threadId": binding["threadId"],
-        }),
-    )
-    .await;
-    assert_eq!(continued["threadBinding"], binding);
-
-    let (_, reply) = server
-        .send(
-            Method::POST,
-            &format!("/api/tasks/{id}/comments"),
-            json!({ "body": "Controller note", "threadId": "controller-thread" }),
-        )
-        .await;
-    assert_eq!(reply["comment"]["threadBinding"], Value::Null);
-    assert_eq!(reply["comment"]["legacyLocalThreadId"], "controller-thread");
-
-    let blocked = task(
-        &server,
-        Method::POST,
-        &move_to,
-        json!({
-            "version": continued["version"],
-            "status": "blocked",
-            "threadId": "controller-thread",
-            "threadBinding": binding,
-        }),
-    )
-    .await;
-    assert_eq!(blocked["threadId"], binding["threadId"]);
-    assert_eq!(blocked["threadBinding"], binding);
-    assert_eq!(
-        refs(&blocked, "threadId"),
-        [binding["threadId"].clone(), json!("controller-thread")]
-    );
-    let legacy_local: Vec<_> = refs(&blocked, "legacyLocal")
-        .into_iter()
-        .map(|legacy| legacy.as_bool().unwrap_or(false))
-        .collect();
-    assert_eq!(legacy_local, [false, true]);
-
-    let restored = task(
-        &server,
-        Method::POST,
-        &move_to,
-        json!({
-            "version": blocked["version"],
-            "status": "todo",
-            "threadId": "controller-thread",
-            "threadBinding": null,
-        }),
-    )
-    .await;
-    assert_eq!(restored["threadId"], Value::Null);
-    assert_eq!(restored["threadBinding"], Value::Null);
-    assert_eq!(refs(&restored, "threadId"), ["controller-thread"]);
 }
 
 #[tokio::test]
@@ -333,7 +227,7 @@ async fn task_and_comment_mutations_keep_content_specific_conversation_attributi
     let server = Server::start().await;
     let created = create(
         &server,
-        json!({ "title": "Keep attribution", "threadId": "thread-original" }),
+        json!({ "title": "Keep attribution", "agentSession": { "platform": "codex", "sessionId": "thread-original" } }),
     )
     .await;
     let path = format!("/api/tasks/{}", created["id"].as_str().unwrap());
@@ -344,7 +238,7 @@ async fn task_and_comment_mutations_keep_content_specific_conversation_attributi
         json!({ "version": created["version"], "title": "Still attributed" }),
     )
     .await;
-    assert_eq!(updated["threadId"], "thread-original");
+    assert_eq!(updated["agentSession"]["sessionId"], "thread-original");
     let repeated = task(
         &server,
         Method::PATCH,
@@ -352,17 +246,17 @@ async fn task_and_comment_mutations_keep_content_specific_conversation_attributi
         json!({
             "version": updated["version"],
             "title": "Still attributed again",
-            "threadId": "thread-original",
+            "agentSession": { "platform": "codex", "sessionId": "thread-original" },
         }),
     )
     .await;
-    assert_eq!(repeated["threadId"], "thread-original");
+    assert_eq!(repeated["agentSession"]["sessionId"], "thread-original");
 
     let (_, reply) = server
         .send(
             Method::POST,
             &format!("{path}/comments"),
-            json!({ "body": "Attributed comment", "threadId": "thread-comment" }),
+            json!({ "body": "Attributed comment", "agentSession": { "platform": "codex", "sessionId": "thread-comment" } }),
         )
         .await;
     let comment = &reply["comment"];
@@ -373,9 +267,12 @@ async fn task_and_comment_mutations_keep_content_specific_conversation_attributi
             json!({ "version": comment["version"], "body": "Edited from the UI" }),
         )
         .await;
-    assert_eq!(edited["comment"]["threadId"], "thread-comment");
     assert_eq!(
-        server.get(&path).await.1["task"]["threadId"],
+        edited["comment"]["agentSession"]["sessionId"],
+        "thread-comment"
+    );
+    assert_eq!(
+        server.get(&path).await.1["task"]["agentSession"]["sessionId"],
         "thread-original"
     );
 }

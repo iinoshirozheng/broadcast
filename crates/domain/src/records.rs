@@ -20,30 +20,11 @@ pub struct AgentSession {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadIdentity {
-    pub codex_project_id: String,
-    pub codex_project_kind: String,
-    pub codex_host_id: String,
-    pub workspace_path: String,
-}
-
-/// A Codex thread; input may omit the identity, stored records always carry it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadBinding {
-    pub thread_id: String,
-    #[serde(flatten)]
-    pub identity: Option<ThreadIdentity>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum DevelopmentContext {
     Branch {
         branch: String,
     },
-    /// The cloud board never keeps a worktree path.
     Worktree {
         path: Option<String>,
         branch: Option<String>,
@@ -119,9 +100,6 @@ pub struct Comment {
     pub id: String,
     pub task_id: String,
     pub body: String,
-    pub thread_id: Option<String>,
-    pub thread_binding: Option<ThreadBinding>,
-    pub legacy_local_thread_id: Option<String>,
     pub agent_session: Option<AgentSession>,
     pub author_type: String,
     pub author_id: String,
@@ -244,23 +222,9 @@ pub struct TaskRelations {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(untagged, rename_all_fields = "camelCase")]
-pub enum ConversationTarget {
-    AgentSession {
-        agent_session: AgentSession,
-    },
-    Thread(ThreadBinding),
-    LegacyLocal {
-        thread_id: String,
-        legacy_local: bool,
-    },
-}
-
-#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationRef {
-    #[serde(flatten)]
-    pub target: ConversationTarget,
+    pub agent_session: AgentSession,
     pub source: &'static str,
     pub source_id: String,
     pub title: String,
@@ -280,9 +244,6 @@ pub struct Task {
     pub labels: Vec<String>,
     #[serde(serialize_with = "js::serialize_number")]
     pub sort_order: f64,
-    pub thread_id: Option<String>,
-    pub thread_binding: Option<ThreadBinding>,
-    pub legacy_local_thread_id: Option<String>,
     pub agent_session: Option<AgentSession>,
     pub creator_type: String,
     pub creator_id: String,
@@ -416,82 +377,4 @@ pub fn comment_conversation_title(body: Option<&str>) -> String {
     } else {
         compact
     }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatRun {
-    pub id: String,
-    pub thread_id: String,
-    pub status: String,
-    pub exit_code: Option<i64>,
-    pub error: Option<String>,
-    pub started_at: String,
-    pub finished_at: Option<String>,
-}
-
-/// Where a conversation runs: the board project, its workspace and, for a Codex
-/// project on another host, that host's identity.
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatOrigin {
-    pub project_id: String,
-    pub project_name: String,
-    pub workspace_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub codex_project_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub codex_project_kind: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub codex_host_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub issue_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub issue_identifier: Option<String>,
-}
-
-impl AiChatOrigin {
-    pub fn remote(&self) -> bool {
-        self.codex_project_kind.as_deref() == Some("remote")
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatTodo {
-    pub completed: usize,
-    pub total: usize,
-    pub event_id: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatThread {
-    pub id: String,
-    pub title: String,
-    pub status: String,
-    pub origin: AiChatOrigin,
-    pub codex_thread_id: Option<String>,
-    pub model: String,
-    pub reasoning_effort: String,
-    pub sandbox: String,
-    pub current_run: Option<AiChatRun>,
-    pub latest_todo: Option<AiChatTodo>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiChatEvent {
-    pub id: String,
-    pub thread_id: String,
-    pub run_id: Option<String>,
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub role: String,
-    pub content: String,
-    pub data: Option<Value>,
-    pub created_at: String,
 }

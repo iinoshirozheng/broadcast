@@ -4,17 +4,8 @@ use serde_json::{Map, Value};
 
 use crate::error::{Result, usage};
 
-const BOOLEAN_OPTIONS: [&str; 4] = ["json", "clear-binding-thread", "help", "undo"];
-const GLOBAL_OPTIONS: [&str; 1] = ["runtime-file"];
-const ATTRIBUTION: [&str; 3] = ["thread-id", "agent-platform", "session-id"];
-const BINDING: [&str; 6] = [
-    "binding-thread-id",
-    "binding-codex-project-id",
-    "binding-codex-project-kind",
-    "binding-codex-host-id",
-    "binding-workspace-path",
-    "clear-binding-thread",
-];
+const BOOLEAN_OPTIONS: [&str; 3] = ["json", "help", "undo"];
+const ATTRIBUTION: [&str; 2] = ["agent-platform", "session-id"];
 const ISSUE_FIELDS: [&str; 14] = [
     "project",
     "title",
@@ -32,7 +23,7 @@ const ISSUE_FIELDS: [&str; 14] = [
     "recurrence-unit",
 ];
 
-pub const UNKNOWN_COMMAND: &str = "Expected one of: project list/create/map/readme, cloud login/status/logout, issue list/get/create/update/move/archive/restore/tree/relation/spec, comment list/add/update/delete, attachment list/download/upload, context current, runner claude";
+pub const UNKNOWN_COMMAND: &str = "Expected one of: project list/create/readme, issue list/get/create/update/move/archive/restore/tree/relation/spec, comment list/add/update/delete, attachment list/download/upload, runner claude/codex";
 
 pub struct Parsed {
     pub resource: Option<String>,
@@ -95,7 +86,7 @@ impl Parsed {
 
     pub fn validate_options(&self, allowed: &[&str]) -> Result<()> {
         for name in broadcast_domain::js::object_keys(&self.options) {
-            if !allowed.contains(&name) && !GLOBAL_OPTIONS.contains(&name) {
+            if !allowed.contains(&name) {
                 return Err(usage(format!("Unknown option --{name}")));
             }
         }
@@ -158,15 +149,13 @@ pub fn parse(argv: &[String]) -> Result<Parsed> {
 pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
     let with = |parts: &[&[&'static str]]| Some(parts.concat());
     match command {
-        "project list" | "issue get" | "cloud status" | "cloud logout" => with(&[&["json"]]),
+        "project list" | "issue get" => with(&[&["json"]]),
         "project create" => with(&[&["id", "name", "workspace-path", "json"]]),
-        "project map" => with(&[&["workspace-path", "json"]]),
         "project readme" => with(&[&["content", "file", "if-version", "json"]]),
-        "cloud login" => with(&[&["url", "actor-name", "json"]]),
         "issue list" => with(&[&["project", "status", "archived", "json"]]),
         "issue create" => with(&[&ISSUE_FIELDS, &ATTRIBUTION, &["json"]]),
         "issue update" => with(&[&ISSUE_FIELDS, &ATTRIBUTION, &["if-version", "json"]]),
-        "issue move" => with(&[&["status"], &ATTRIBUTION, &BINDING, &["if-version", "json"]]),
+        "issue move" => with(&[&["status"], &ATTRIBUTION, &["if-version", "json"]]),
         "issue archive" | "issue restore" | "comment delete" => {
             with(&[&ATTRIBUTION, &["if-version", "json"]])
         }
@@ -181,15 +170,15 @@ pub fn allowed_options(command: &str) -> Option<Vec<&'static str>> {
         ]]),
         "issue relation" => with(&[&["type", "issue"], &ATTRIBUTION, &["if-version", "json"]]),
         "comment list" => with(&[&["after", "json"]]),
-        "comment add" => with(&[&["body", "body-file"], &ATTRIBUTION, &BINDING, &["json"]]),
+        "comment add" => with(&[&["body", "body-file"], &ATTRIBUTION, &["json"]]),
         "comment update" => with(&[&["body"], &ATTRIBUTION, &["if-version", "json"]]),
         "attachment list" => with(&[&["task", "comment", "after", "json"]]),
         "attachment download" => with(&[&["output", "json"]]),
         "attachment upload" => {
             with(&[&["file", "task", "comment", "content-type", "kind", "json"]])
         }
-        "context current" => with(&[&["cwd", "json"]]),
         "runner claude" => with(&[&["url", "cwd", "permission-mode", "interval"]]),
+        "runner codex" => with(&[&["url", "cwd", "sandbox", "interval"]]),
         _ => None,
     }
 }
@@ -201,38 +190,34 @@ pub fn help(scope: &str) -> Option<&'static str> {
             r#"Usage: broadcast RESOURCE ACTION [options]
 
 Commands:
-  context current [--cwd PATH] [--json]
   project list
   project create --name NAME [--id ID] [--workspace-path PATH]
-  project map PROJECT_ID --workspace-path PATH
-  project readme get [PROJECT_ID]
-  project readme set [PROJECT_ID] (--content TEXT | --file FILE) [--if-version N]
-  cloud login --url URL --actor-name NAME
-  cloud status|logout
+  project readme get PROJECT_ID
+  project readme set PROJECT_ID (--content TEXT | --file FILE) [--if-version N]
   issue list|get|create|update|move|archive|restore|tree|relation|spec
   comment list ISSUE_ID [--after CURSOR]
-  comment add ISSUE_ID (--body TEXT | --body-file FILE) [--thread-id ID]
-  comment update COMMENT_ID --body TEXT --if-version N [--thread-id ID]
-  comment delete COMMENT_ID --if-version N [--thread-id ID]
+  comment add ISSUE_ID (--body TEXT | --body-file FILE)
+  comment update COMMENT_ID --body TEXT --if-version N
+  comment delete COMMENT_ID --if-version N
   attachment list (--task ISSUE_ID | --comment COMMENT_ID) [--after CURSOR]
   attachment download ATTACHMENT_ID --output PATH
   attachment upload --file PATH (--task ISSUE_ID | --comment COMMENT_ID)
   runner claude [--url URL] [--cwd PATH] [--permission-mode MODE] [--interval SECONDS]
+  runner codex [--url URL] [--cwd PATH] [--sandbox MODE] [--interval SECONDS]
 
-Global options:
-  --runtime-file FILE  Use an explicit launcher runtime descriptor
-  --json               Make the JSON output contract explicit
-  --help               Show help for a supported command level
+Options:
+  --json  Make the JSON output contract explicit
+  --help  Show help for a supported command level
+
+The service is BROADCAST_URL, or http://127.0.0.1:47823 when it is not set.
 
 Examples:
   broadcast issue get LOCAL-275 --json
   broadcast comment list LOCAL-275 --json
 
-Conversation attribution for issue/comment writes:
-  --agent-platform claude|pi|agy|grok --session-id ID
-  Or keep Codex --thread-id ID / CODEX_THREAD_ID.
-  External options must be supplied together and ignore CODEX_THREAD_ID.
-  --binding-* options remain separate native Codex bindings.
+Agent conversation attribution for issue/comment writes:
+  --agent-platform claude|codex|pi|agy|grok --session-id ID
+  Without them, CODEX_THREAD_ID is recorded as a codex session when it is set.
 
 Run broadcast issue --help for all issue arguments."#
         }
@@ -245,7 +230,6 @@ Actions:
   create --project PROJECT_ID --title TITLE
     [--description TEXT | --description-file FILE]
     [--status STATUS] [--priority PRIORITY] [--labels a,b]
-    [--thread-id ID]
     [--git-branch BRANCH | --worktree-path PATH [--worktree-branch BRANCH]]
     [--start-date YYYY-MM-DD] [--due-date YYYY-MM-DD]
     [--recurrence-interval N --recurrence-unit day|week|month|year] [--json]
@@ -253,22 +237,16 @@ Actions:
     [--project PROJECT_ID] [--title TITLE]
     [--description TEXT | --description-file FILE]
     [--status STATUS] [--priority PRIORITY] [--labels a,b]
-    [--thread-id ID]
     [--git-branch BRANCH | --worktree-path PATH [--worktree-branch BRANCH]]
     [--start-date YYYY-MM-DD] [--due-date YYYY-MM-DD]
     [--recurrence-interval N --recurrence-unit day|week|month|year]
     [--if-version N] [--json]
-  move ISSUE_ID --status STATUS [--thread-id ID]
-    [--binding-thread-id ID
-      [--binding-codex-project-id ID --binding-codex-project-kind local|remote
-       --binding-codex-host-id ID --binding-workspace-path PATH]
-     | --clear-binding-thread]
-    [--if-version N] [--json]
-  archive ISSUE_ID [--thread-id ID] [--if-version N] [--json]
-  restore ISSUE_ID [--thread-id ID] [--if-version N] [--json]
+  move ISSUE_ID --status STATUS [--if-version N] [--json]
+  archive ISSUE_ID [--if-version N] [--json]
+  restore ISSUE_ID [--if-version N] [--json]
   tree ISSUE_ID --direction descendants|ancestors --depth N [--json]
   relation add|remove ISSUE_ID --type parent|blocks|blocked_by|related
-    --issue RELATED_ISSUE_ID [--thread-id ID] [--if-version N] [--json]
+    --issue RELATED_ISSUE_ID [--if-version N] [--json]
   spec get ISSUE_ID [--json]
     The issue's spec: proposal, specs, design and tasks (markdown, stored in Broadcast).
   spec set ISSUE_ID [--proposal-file FILE] [--specs-file FILE] [--design-file FILE]
@@ -278,10 +256,9 @@ Actions:
   spec check ISSUE_ID TASK_NUMBER [--undo] [--json]
     Check off (or with --undo, uncheck) the task numbered TASK_NUMBER, such as 1.2.
 
-All issue writes accept --agent-platform claude|pi|agy|grok --session-id ID
-instead of Codex --thread-id / CODEX_THREAD_ID. Both external options are required.
-External metadata does not replace --binding-* native Codex identity.
-Update also accepts only external session metadata plus --if-version.
+All issue writes accept --agent-platform claude|codex|pi|agy|grok --session-id ID;
+both options are required together. Without them, CODEX_THREAD_ID is recorded as a
+codex session when it is set. Update also accepts only session metadata plus --if-version.
 
 Statuses: backlog, todo, in_progress, in_review, blocked, done, canceled
 Priorities: none, urgent, high, medium, low
@@ -291,25 +268,20 @@ Example:
         }
         "comment add" => {
             r#"Usage: broadcast comment add ISSUE_ID (--body TEXT | --body-file FILE)
-  [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID]
-  [--binding-thread-id ID
-    [--binding-codex-project-id ID --binding-codex-project-kind local|remote
-     --binding-codex-host-id ID --binding-workspace-path PATH]
-   | --clear-binding-thread] [--json]
+  [--agent-platform claude|codex|pi|agy|grok --session-id ID] [--json]
 
-External attribution requires both options; Pi accepts a full session path or ID.
-CODEX_THREAD_ID is used only when no external attribution is supplied.
-Binding options remain independent, native Codex identity."#
+Attribution requires both options; Pi accepts a full session path or ID.
+Without them, CODEX_THREAD_ID is recorded as a codex session when it is set."#
         }
         "comment update" => {
             r#"Usage: broadcast comment update COMMENT_ID --body TEXT --if-version N
-  [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID] [--json]
+  [--agent-platform claude|codex|pi|agy|grok --session-id ID] [--json]
 
-External attribution requires both options; otherwise Codex uses CODEX_THREAD_ID."#
+Attribution requires both options; otherwise CODEX_THREAD_ID is used when it is set."#
         }
         "comment delete" => {
             r#"Usage: broadcast comment delete COMMENT_ID --if-version N
-  [--thread-id ID | --agent-platform claude|pi|agy|grok --session-id ID] [--json]
+  [--agent-platform claude|codex|pi|agy|grok --session-id ID] [--json]
 
 Deleting a comment removes its saved session metadata with it."#
         }

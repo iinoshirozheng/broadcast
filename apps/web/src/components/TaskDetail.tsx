@@ -41,9 +41,7 @@ import type {
   AgentPlatform,
   Attachment,
   Comment,
-  CodexThreadBinding,
   DevelopmentContext,
-  DevelopmentScan,
   IssueRelationOrigin,
   IssueRelationType,
   Recurrence,
@@ -56,7 +54,7 @@ import type {
 } from "../types";
 import { AGENT_ACTORS, MENTIONABLE_AGENTS, actorKey, assigneeTargetForActor } from "../actors";
 import { ActorAvatar } from "./ActorAvatar";
-import { ClaudeRunnerNotice } from "./ClaudeRunnerNotice";
+import { RunnerNotice } from "./RunnerNotice";
 import { STATUS_DETAILS } from "./BoardColumn";
 import { LabelPicker } from "./LabelPicker";
 import { LinearIcon } from "./LinearIcon";
@@ -64,7 +62,6 @@ import {
   AttachmentIcon,
   BlockingRelationIcon,
   BranchIcon,
-  CodexResumeIcon,
   ConversationIcon,
   DeleteIcon,
   DueDateIcon,
@@ -95,7 +92,6 @@ import {
 } from "./IssueRelations";
 import { TaskPropertyPicker } from "./TaskPropertyPicker";
 import { buildIssueUrl } from "../issueRoute";
-import { postEmbeddedHostMessage } from "../embeddedHost.ts";
 import copyIdIcon from "../assets/figma-broadcast/copy-id.svg";
 import copyLinkIcon from "../assets/figma-broadcast/copy-link.svg";
 import { DescriptionDocument } from "./DescriptionDocument";
@@ -109,8 +105,6 @@ interface TaskDetailProps {
   referenceTasks: Task[];
   currentUser: ActorIdentity;
   availableLabels: string[];
-  developmentScan: DevelopmentScan;
-  developmentScanLoading: boolean;
   commentsRevision: number;
   attachmentsRevision: number;
   onCreateLabel: (label: string) => Promise<void>;
@@ -130,11 +124,8 @@ interface TaskDetailProps {
     relatedTaskId: string,
     origin?: IssueRelationOrigin,
   ) => Promise<RelationMutationResult>;
-  onOpenThread: (binding: CodexThreadBinding) => void;
-  onOpenLegacyLocalThread: (threadId: string) => void;
-  onOpenInThread: (task: Task, draftSpec?: boolean) => void;
+  onCopyAgentPrompt: (task: Task, draftSpec?: boolean) => void;
   onCopy: (text: string, announcement: string) => void;
-  openingThread: boolean;
   onError: (message: TaskDetailError | null) => void;
 }
 
@@ -183,18 +174,6 @@ function resizeTextarea(element: HTMLTextAreaElement | null) {
 }
 
 async function downloadAttachmentFile(attachment: Attachment) {
-  const host = new URL(document.baseURI).searchParams.get("host");
-  if (host === "codex" && window.parent !== window) {
-    postEmbeddedHostMessage({
-      type: "broadcast:open-attachment",
-      payload: {
-        attachmentId: attachment.id,
-        filename: attachment.filename,
-      },
-    });
-    return;
-  }
-
   const response = await fetch(resolveBroadcastUrl(attachmentDownloadUrl(attachment)));
   if (!response.ok) {
     throw new ApiError(response.status, await response.json().catch(() => ({})));
@@ -353,53 +332,32 @@ function ActivityChangeIcon({
 function ConversationLink({
   threadId,
   agentPlatform,
-  onOpen,
   onCopy,
 }: {
   threadId: string;
-  agentPlatform?: AgentPlatform;
-  onOpen?: () => void;
+  agentPlatform: AgentPlatform;
   onCopy: (text: string, announcement: string) => void;
 }) {
   const { text } = useBroadcastI18n();
-  const platform = agentPlatform ?? "codex";
-  const label = agentPlatformLabel(platform);
-  const command = sessionResumeCommand(platform, threadId);
+  const label = agentPlatformLabel(agentPlatform);
+  const command = sessionResumeCommand(agentPlatform, threadId);
   return (
     <div className="issue-conversation-actions">
-      {agentPlatform ? (
-        <span className="issue-conversation-link" title={`${label}: ${threadId}`}>
-          <ConversationIcon color="currentColor" size={16} />
-          <strong>{label}</strong>
-          <span className="issue-conversation-session-id">{threadId}</span>
-        </span>
-      ) : (
-        <button
-          className="issue-conversation-link"
-          type="button"
-          title={text("查看对话", "View conversation")}
-          onClick={onOpen}
-        >
-          <ConversationIcon color="currentColor" size={16} />
-          <strong>{text("查看对话", "View conversation")}</strong>
-        </button>
-      )}
+      <span className="issue-conversation-link" title={`${label}: ${threadId}`}>
+        <ConversationIcon color="currentColor" size={16} />
+        <strong>{label}</strong>
+        <span className="issue-conversation-session-id">{threadId}</span>
+      </span>
       <button
         className="issue-conversation-copy"
         type="button"
         title={`${text("复制恢复命令（POSIX shell）", "Copy resume command (POSIX shell)")}: ${command}`}
-        aria-label={
-          agentPlatform ? text(`复制 ${label} 恢复命令`, `Copy ${label} resume command`) : undefined
-        }
+        aria-label={text(`复制 ${label} 恢复命令`, `Copy ${label} resume command`)}
         onClick={() =>
           onCopy(command, text(`${label} 恢复命令已复制。`, `${label} resume command copied.`))
         }
       >
-        {agentPlatform ? (
-          <img src={copyIdIcon} width={16} height={16} alt="" />
-        ) : (
-          <CodexResumeIcon />
-        )}
+        <img src={copyIdIcon} width={16} height={16} alt="" />
         <span>{text("复制终端命令", "Copy terminal command")}</span>
       </button>
     </div>
@@ -412,8 +370,6 @@ export function TaskDetail({
   referenceTasks,
   currentUser,
   availableLabels,
-  developmentScan,
-  developmentScanLoading,
   commentsRevision,
   attachmentsRevision,
   onCreateLabel,
@@ -423,11 +379,8 @@ export function TaskDetail({
   onOpenTask,
   onAddRelation,
   onRemoveRelation,
-  onOpenThread,
-  onOpenLegacyLocalThread,
-  onOpenInThread,
+  onCopyAgentPrompt,
   onCopy,
-  openingThread,
   onError,
 }: TaskDetailProps) {
   const { language, locale, text } = useBroadcastI18n();
@@ -659,43 +612,11 @@ export function TaskDetail({
     }
   }
 
-  function openDatePicker(field: "startDate" | "dueDate", event: MouseEvent<HTMLLabelElement>) {
+  function openDatePicker(event: MouseEvent<HTMLLabelElement>) {
     const input = event.currentTarget.querySelector("input");
     if (!input || input.disabled) return;
     event.preventDefault();
-    if (
-      new URL(document.baseURI).searchParams.get("host") !== "codex" ||
-      window.parent === window
-    ) {
-      input.showPicker();
-      return;
-    }
-
-    const requestId = crypto.randomUUID();
-    const rect = input.getBoundingClientRect();
-    function receiveDate(event: MessageEvent) {
-      if (event.source !== window.parent || event.data?.type !== "broadcast:date-picker-response")
-        return;
-      const payload = event.data.payload;
-      if (payload?.requestId !== requestId || typeof payload.value !== "string") return;
-      window.removeEventListener("message", receiveDate);
-      const value = payload.value || null;
-      void saveTask(
-        field === "startDate"
-          ? { startDate: value }
-          : { dueDate: value, ...(value ? {} : { recurrence: null }) },
-        field,
-      );
-    }
-    window.addEventListener("message", receiveDate);
-    postEmbeddedHostMessage({
-      type: "broadcast:date-picker-request",
-      payload: {
-        requestId,
-        value: input.value,
-        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      },
-    });
+    input.showPicker();
   }
 
   async function applyRelationMutation(
@@ -1072,15 +993,7 @@ export function TaskDetail({
     [],
   );
 
-  const developmentOptions = [...developmentScan.contexts];
-  if (
-    currentTask.developmentContext &&
-    !developmentOptions.some(
-      (context) => contextValue(context) === contextValue(currentTask.developmentContext),
-    )
-  ) {
-    developmentOptions.unshift(currentTask.developmentContext);
-  }
+  const developmentOptions = currentTask.developmentContext ? [currentTask.developmentContext] : [];
   const displayAssignee =
     currentTask.assignee.type === currentUser.type && currentTask.assignee.id === currentUser.id
       ? currentUser
@@ -1168,10 +1081,6 @@ export function TaskDetail({
                       segments={descriptionSegments}
                       mentionTasks={tasks}
                       referenceTasks={referenceTasks}
-                      completionContext={{
-                        projectId: currentTask.projectId,
-                        surface: "issue-description",
-                      }}
                       placeholder={text("添加描述…", "Add description…")}
                       ariaLabel={text("议题描述", "Issue description")}
                       disabled={savingProperty === "description"}
@@ -1298,16 +1207,13 @@ export function TaskDetail({
                         attachments={descriptionAttachments}
                         enableImagePreview
                         onOpenAttachment={handleAttachmentDownload}
-                        onCopyAttachmentPath={onCopy}
                       />
                     ) : (
                       text("添加描述…", "Add description…")
                     )}
                   </div>
                 )}
-                {(currentTask.agentSession ||
-                  currentTask.threadBinding ||
-                  currentTask.legacyLocalThreadId) && (
+                {currentTask.agentSession && (
                   <div
                     className="issue-conversation-list"
                     aria-label={text("处理此议题的对话", "Conversations for this issue")}
@@ -1316,19 +1222,6 @@ export function TaskDetail({
                       <ConversationLink
                         agentPlatform={currentTask.agentSession.platform}
                         threadId={currentTask.agentSession.sessionId}
-                        onCopy={onCopy}
-                      />
-                    )}
-                    {(currentTask.threadBinding || currentTask.legacyLocalThreadId) && (
-                      <ConversationLink
-                        threadId={
-                          currentTask.threadBinding?.threadId ?? currentTask.legacyLocalThreadId!
-                        }
-                        onOpen={() =>
-                          currentTask.threadBinding
-                            ? onOpenThread(currentTask.threadBinding)
-                            : onOpenLegacyLocalThread(currentTask.legacyLocalThreadId!)
-                        }
                         onCopy={onCopy}
                       />
                     )}
@@ -1346,9 +1239,10 @@ export function TaskDetail({
 
             <TaskSpecPanel
               task={currentTask}
-              updatedAgo={currentTask.spec ? relativeTime(currentTask.spec.updatedAt, locale) : null}
-              drafting={openingThread}
-              onDraft={() => onOpenInThread(currentTask, true)}
+              updatedAgo={
+                currentTask.spec ? relativeTime(currentTask.spec.updatedAt, locale) : null
+              }
+              onDraft={() => onCopyAgentPrompt(currentTask, true)}
             />
 
             <IssueSubIssues
@@ -1562,10 +1456,6 @@ export function TaskDetail({
                                 segments={editingSegments}
                                 mentionTasks={tasks}
                                 referenceTasks={referenceTasks}
-                                completionContext={{
-                                  projectId: currentTask.projectId,
-                                  surface: "comment",
-                                }}
                                 placeholder={text("编辑评论", "Edit comment")}
                                 ariaLabel={text("编辑评论", "Edit comment")}
                                 disabled={savingCommentId === comment.id}
@@ -1644,32 +1534,16 @@ export function TaskDetail({
                                   attachments={comment.attachments}
                                   enableImagePreview
                                   onOpenAttachment={handleAttachmentDownload}
-                                  onCopyAttachmentPath={onCopy}
                                 />
                               </div>
                             )
                           )}
-                          {(comment.agentSession ||
-                            comment.threadBinding ||
-                            comment.legacyLocalThreadId) && (
+                          {comment.agentSession && (
                             <div className="comment-conversation-link">
                               {comment.agentSession && (
                                 <ConversationLink
                                   agentPlatform={comment.agentSession.platform}
                                   threadId={comment.agentSession.sessionId}
-                                  onCopy={onCopy}
-                                />
-                              )}
-                              {(comment.threadBinding || comment.legacyLocalThreadId) && (
-                                <ConversationLink
-                                  threadId={
-                                    comment.threadBinding?.threadId ?? comment.legacyLocalThreadId!
-                                  }
-                                  onOpen={() =>
-                                    comment.threadBinding
-                                      ? onOpenThread(comment.threadBinding)
-                                      : onOpenLegacyLocalThread(comment.legacyLocalThreadId!)
-                                  }
                                   onCopy={onCopy}
                                 />
                               )}
@@ -1690,7 +1564,7 @@ export function TaskDetail({
                 </div>
               )}
 
-              {!commentsLoading && <ClaudeRunnerNotice task={currentTask} comments={comments} />}
+              {!commentsLoading && <RunnerNotice task={currentTask} comments={comments} />}
 
               <form
                 className="comment-composer"
@@ -1711,10 +1585,6 @@ export function TaskDetail({
                   mentionTasks={tasks}
                   mentionAgents={MENTIONABLE_AGENTS}
                   referenceTasks={referenceTasks}
-                  completionContext={{
-                    projectId: currentTask.projectId,
-                    surface: "comment",
-                  }}
                   placeholder={text("留下评论…", "Leave a comment…")}
                   ariaLabel={text("留下评论", "Leave a comment")}
                   allowAttachments
@@ -1786,15 +1656,10 @@ export function TaskDetail({
               <button
                 className="detail-open-thread-action"
                 type="button"
-                disabled={openingThread}
-                onClick={() => onOpenInThread(currentTask)}
+                onClick={() => onCopyAgentPrompt(currentTask)}
               >
                 <NewConversationIcon color="currentColor" />
-                <span>
-                  {openingThread
-                    ? text("正在打开…", "Opening…")
-                    : text("在新对话打开", "Open in new conversation")}
-                </span>
+                <span>{text("复制 Agent 指令", "Copy agent instruction")}</span>
               </button>
               {currentTask.externalUrl && (
                 <a
@@ -1950,9 +1815,7 @@ export function TaskDetail({
                 options={[
                   {
                     value: "",
-                    label: developmentScanLoading
-                      ? text("正在扫描 Git…", "Scanning Git…")
-                      : text("未绑定", "Not linked"),
+                    label: text("未绑定", "Not linked"),
                     icon: <BranchIcon color="currentColor" size={14} />,
                   },
                   ...developmentOptions.map((context) => ({
@@ -1967,7 +1830,7 @@ export function TaskDetail({
                   })),
                 ]}
                 open={propertyMenu === "development"}
-                disabled={developmentScanLoading || savingProperty === "developmentContext"}
+                disabled={savingProperty === "developmentContext"}
                 className="detail-property-picker"
                 popoverClassName="development-context-popover"
                 triggerClassName="detail-property-trigger"
@@ -1990,7 +1853,7 @@ export function TaskDetail({
             </div>
             <label
               className="detail-property-row detail-date-property-row"
-              onClick={(event) => openDatePicker("startDate", event)}
+              onClick={(event) => openDatePicker(event)}
             >
               <span className="detail-property-icon" aria-hidden="true">
                 <DueDateIcon color="currentColor" size={14} />
@@ -2012,7 +1875,7 @@ export function TaskDetail({
             </label>
             <label
               className="detail-property-row detail-date-property-row"
-              onClick={(event) => openDatePicker("dueDate", event)}
+              onClick={(event) => openDatePicker(event)}
             >
               <span className="detail-property-icon" aria-hidden="true">
                 <DueDateIcon color="currentColor" size={14} />

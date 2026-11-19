@@ -54,7 +54,7 @@ async fn issue_relationship_changes_are_broadcast_in_realtime() {
         first["id"].as_str().unwrap(),
         second["id"].as_str().unwrap()
     );
-    let body = json!({ "version": first["version"], "threadId": "thread-realtime-relation" });
+    let body = json!({ "version": first["version"], "agentSession": { "platform": "codex", "sessionId": "thread-realtime-relation" } });
     assert_eq!(server.send(Method::POST, &path, body).await.0, 200);
 
     let event = next_event(&mut events, "task.relation.updated").await;

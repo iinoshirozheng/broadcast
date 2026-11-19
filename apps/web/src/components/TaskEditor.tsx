@@ -11,7 +11,6 @@ import {
   TASK_STATUSES,
   type ActorIdentity,
   type DevelopmentContext,
-  type DevelopmentScan,
   type Recurrence,
   type Task,
   type TaskDraft,
@@ -25,7 +24,6 @@ import { IssuePickerContent } from "./IssueRelations";
 import { LinearIcon } from "./LinearIcon";
 import {
   AttachmentIcon,
-  BranchIcon,
   DueDateIcon,
   MoreIcon,
   PlusIcon,
@@ -100,8 +98,6 @@ interface TaskEditorProps {
   initialDraft: NewTaskEditorDraft | null;
   labels: string[];
   currentUser: ActorIdentity;
-  developmentScan: DevelopmentScan;
-  developmentScanLoading: boolean;
   onCreateLabel: (label: string) => Promise<void>;
   onCancel: (draft: NewTaskEditorDraft | null) => void;
   onSave: (
@@ -136,19 +132,6 @@ function displayDate(value: string, locale: string): string {
   );
 }
 
-function contextValue(context: DevelopmentContext | null): string {
-  return context ? JSON.stringify(context) : "";
-}
-
-function contextLabel(
-  context: DevelopmentContext,
-  text: (chinese: string, english: string) => string,
-): string {
-  if (context.type === "branch") return context.branch;
-  const folder = context.path.split(/[\\/]/).filter(Boolean).at(-1) ?? context.path;
-  return `${context.branch ?? text("分离 HEAD", "detached")} · ${folder}`;
-}
-
 export function TaskEditor({
   projectId,
   projectOptions,
@@ -159,8 +142,6 @@ export function TaskEditor({
   initialDraft,
   labels: availableLabels,
   currentUser,
-  developmentScan,
-  developmentScanLoading,
   onCreateLabel,
   onCancel,
   onSave,
@@ -216,17 +197,6 @@ export function TaskEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<TaskEditorError | null>(null);
   const [attachmentError, setAttachmentError] = useState<TaskEditorError | null>(null);
-
-  const developmentOptions = useMemo(() => {
-    const options = [...developmentScan.contexts];
-    if (
-      developmentContext &&
-      !options.some((option) => contextValue(option) === contextValue(developmentContext))
-    ) {
-      options.unshift(developmentContext);
-    }
-    return options;
-  }, [developmentContext, developmentScan.contexts]);
 
   const taskById = useMemo(
     () => new Map(tasks.map((candidate) => [candidate.id, candidate])),
@@ -559,7 +529,6 @@ export function TaskEditor({
             segments={descriptionSegments}
             mentionTasks={tasks}
             referenceTasks={referenceTasks}
-            completionContext={projectId ? { projectId, surface: "issue-description" } : undefined}
             placeholder={text("添加描述…", "Add description…")}
             ariaLabel={text("描述", "Description")}
             disabled={saving}
@@ -652,39 +621,6 @@ export function TaskEditor({
               onOpenChange={(open) => setMenu(open ? "labels" : null)}
               onChange={setSelectedLabels}
               onCreateLabel={onCreateLabel}
-            />
-
-            <TaskPropertyPicker
-              value={contextValue(developmentContext)}
-              options={[
-                {
-                  value: "",
-                  label: developmentScanLoading
-                    ? text("正在扫描 Git…", "Scanning Git…")
-                    : text("分支 / Worktree", "Branch / worktree"),
-                  icon: <BranchIcon color="currentColor" size={14} />,
-                },
-                ...developmentOptions.map((context) => ({
-                  value: contextValue(context),
-                  label: contextLabel(context, text),
-                  icon:
-                    context.type === "branch" ? (
-                      <BranchIcon color="currentColor" size={14} />
-                    ) : (
-                      <LinearIcon name="folder" />
-                    ),
-                })),
-              ]}
-              open={menu === "development"}
-              disabled={developmentScanLoading}
-              popoverClassName="development-context-popover"
-              triggerClassName="property-control property-development"
-              ariaLabel={text("代码分支或 Worktree", "Code branch or worktree")}
-              title={developmentScan.workspacePath ?? undefined}
-              onOpenChange={(open) => setMenu(open ? "development" : null)}
-              onChange={(value) =>
-                setDevelopmentContext(value ? (JSON.parse(value) as DevelopmentContext) : null)
-              }
             />
 
             {dueDate && (

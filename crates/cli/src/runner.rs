@@ -1,21 +1,22 @@
-//! `broadcast runner claude`: work board issues with `claude -p` until interrupted.
+//! `broadcast runner claude|codex`: work board issues with `claude -p` or `codex exec` until
+//! interrupted.
 
 use std::time::Duration;
 
-use broadcast_agents::claude;
+use broadcast_agents::runner::{self, Agent};
 use url::Url;
 
 use crate::args::Parsed;
 use crate::error::{CliError, Result, usage};
-use crate::target::{self, Env};
+use crate::target;
 
 /// Returns once a shutdown signal stops the runner.
-pub async fn claude(parsed: &Parsed) -> Result<()> {
+pub async fn run(parsed: &Parsed, agent: Agent) -> Result<()> {
     parsed.expect_operands(0)?;
-    // Without --url, the board the other commands use: BROADCAST_URL or the running app's.
+    // Without --url, the board the other commands use.
     let url = match parsed.option("url") {
         Some(url) => url.to_owned(),
-        None => target::broadcast_base_url(&Env::new(None))?.url,
+        None => target::base_url(),
     };
     let url = Url::parse(&url).map_err(|_| usage("Runner URL must be a valid URL"))?;
     let cwd = match parsed.option("cwd") {
@@ -23,10 +24,11 @@ pub async fn claude(parsed: &Parsed) -> Result<()> {
         None => std::env::current_dir()
             .map_err(|error| CliError::new(error.to_string(), "INTERNAL_ERROR", 1))?,
     };
-    let permission_mode = parsed
-        .option("permission-mode")
-        .unwrap_or("acceptEdits")
-        .to_owned();
+    let permission_mode = match agent {
+        Agent::Claude => parsed.option("permission-mode").unwrap_or("acceptEdits"),
+        Agent::Codex => parsed.option("sandbox").unwrap_or("workspace-write"),
+    }
+    .to_owned();
     let interval = match parsed.option("interval") {
         Some(raw) => raw
             .parse()
@@ -36,15 +38,16 @@ pub async fn claude(parsed: &Parsed) -> Result<()> {
     };
     let interval =
         interval.ok_or_else(|| usage("--interval must be a non-negative number of seconds"))?;
-    let options = claude::Options {
+    let options = runner::Options {
+        agent,
         url,
         cwd,
         permission_mode,
         interval,
     };
-    // The runner future (and with it a running `claude`) is dropped once the select ends.
+    // The runner future (and with it a running agent) is dropped once the select ends.
     tokio::select! {
-        result = claude::run(options) => result.map_err(|error| CliError::new(format!("{error:#}"), "INTERNAL_ERROR", 1)),
+        result = runner::run(options) => result.map_err(|error| CliError::new(format!("{error:#}"), "INTERNAL_ERROR", 1)),
         () = shutdown_signal() => Ok(()),
     }
 }

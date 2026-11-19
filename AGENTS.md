@@ -22,7 +22,7 @@ Use this workflow when the user asks to process Broadcast work.
 - Never assign `backlog` items. Leave an item unclaimed when its description or latest comment explicitly requires waiting.
 - Read the full issue description, attachments, and all comments before routing or changing it.
 - GitHub Issue and PR synchronization is not a default step. Read or synchronize GitHub Issue/PR data only when the user explicitly requests it.
-- Use the packaged or injected `broadcast` and the exact active Broadcast runtime. Do not fall back to a global CLI, a guessed port, or another data source.
+- Use the `broadcast` CLI against the exact active Broadcast server (`BROADCAST_URL`). Do not fall back to a guessed port or another data source.
 
 ## 2. Route for efficiency
 
@@ -40,8 +40,8 @@ Use this workflow when the user asks to process Broadcast work.
 - Parallelize independent code paths. Do not parallelize access to a shared mutable runtime.
 - Do not use a fixed total number of execution lanes or worktrees. Create one execution group for each independent conflict domain. Ten eligible issues may become several parallel groups or one coherent group, depending on overlap.
 - Classify Web or product logic, native or platform work, and research or external contribution work for routing only. These categories are not concurrency limits; multiple independent groups within a category may run in parallel.
-- Determine concurrency from shared files, feature state, the Codex App process, Launcher runtime, CDP, browser review state, CI capacity, and release resources. More issues alone do not justify more worktrees, and a category label does not justify serialization.
-- Run only one Launcher, Codex injection, native host, updater, signing, or release task against the local App environment at a time. If isolated runtime descriptors, ports, CDP profiles, and user-data directories are available, separate instances may run in parallel.
+- Determine concurrency from shared files, feature state, the shared Broadcast server and its data, browser review state, CI capacity, and release resources. More issues alone do not justify more worktrees, and a category label does not justify serialization.
+- Run only one task at a time against the shared Broadcast server, its data directory, or a release. A worktree may run its own server on a separate port and data directory in parallel.
 - Keep external contributor PR maintenance in its own lane. Preserve contributor history and do not let unrelated internal work rewrite its branch.
 - Group small changes that share a feature chain into one conversation, worktree, and PR. Amortize branch setup, CI, review, UI confirmation, merge, and cleanup instead of paying that fixed cost per issue.
 - Queue work that shares a runtime or conflict domain. A visible queue is better than parallel work that later requires repeated restarts, conflict resolution, or CI reruns.
@@ -62,12 +62,12 @@ Make the smallest root-cause change. Do not add unrelated refactors, abstraction
 
 - During **Estimate**, classify the work as small, medium, or high risk and state the intended direct verification before implementation.
 - Classify complexity by operation-path breadth, number of affected components and data layers, persistence or process effects, platform reach, external dependencies, shared state, blast radius, and required evidence. Do not classify or stop work by elapsed time.
-- Treat a single component or direct data path without persistence, process, or platform effects as small. Treat multiple components or an API and persistence chain as medium. Treat process management, Launcher or injection, updater, migration, destructive operations, cross-platform behavior, or external boundaries as high risk.
+- Treat a single component or direct data path without persistence, process, or platform effects as small. Treat multiple components or an API and persistence chain as medium. Treat process management, agent runners, migration, destructive operations, cross-platform behavior, or external boundaries as high risk.
 - The default verification budget is the user-reported failing path plus one successful main path. Stop when both pass.
 - Use **Expand** only when direct verification fails, evidence disproves the estimated root cause, the user reports another concrete case, or the changed boundary creates a real additional risk. Do not expand into a general matrix by default.
 - Stop expanding when the reported failure path and one successful main path pass, the root cause remains supported by evidence, and no required boundary check or review has found a real defect.
 - Run focused checks that match the changed layer. Do not run a full App build, cross-platform packaging, or a broad test suite for documentation, copy, CSS, or isolated Web changes unless that exact path requires it.
-- Do not repeat environment discovery in every task. Reuse a verified toolchain, project ID, packaged `broadcast`, and stable coordinator-owned runtime until evidence shows that one changed.
+- Do not repeat environment discovery in every task. Reuse a verified toolchain, project ID, `broadcast` CLI, and stable coordinator-owned server until evidence shows that one changed.
 
 ## 4. Preserve external contributions
 
@@ -83,16 +83,15 @@ Make the smallest root-cause change. Do not add unrelated refactors, abstraction
 - Keep the issue `in_progress` during implementation.
 - Verify the direct user path. For changes on a UI surface, use the real browser/App surface. Capture visual evidence when the result has visual impact; this evidence supports review and does not by itself require a separate user UI confirmation.
 - Report changed files, commit, exact head SHA, direct verification, PR, CI state, review complexity decision, review result, and remaining limitations in the issue.
-- Show ongoing status in the Broadcast opened through the injected Codex App.
+- Show ongoing status on the Broadcast board.
 - Execution conversations do not merge, release, mark `done`, or claim user acceptance.
 - The same execution conversation owns its group from issue reading and implementation through direct verification, PR, complexity decision, required review, CI diagnosis, and rework. Do not hand off between these stages without a real blocker.
 
 ### Shared runtime isolation
 
-- The installed or injected Broadcast runtime used for issue reads and writes is coordinator-owned. An execution conversation must not stop it, replace its descriptor, overwrite the installed App, or reuse its CDP profile for worktree validation.
-- Independent implementation may continue in parallel while shared App verification is queued. Concentrate real Codex, Launcher, Chrome, updater, signing, and release operations in a coordinator-owned integration lane instead of blocking unrelated code work.
-- A worktree Launcher must use an isolated runtime descriptor, port, CDP port, and user-data directory when the product supports them.
-- If the product cannot isolate worktree Launcher state, serialize Launcher verification. Do not run two tasks that can replace the same active runtime descriptor.
+- The Broadcast server used for issue reads and writes is coordinator-owned. An execution conversation must not stop it, replace it, or write to its data directory for worktree validation.
+- Independent implementation may continue in parallel while shared verification is queued. Concentrate release operations in a coordinator-owned integration lane instead of blocking unrelated code work.
+- A worktree validates against its own server with a separate `BROADCAST_PORT` and `BROADCAST_DATA_DIR`.
 - Stop only processes that were started by the same task and were resolved by exact PID and executable path.
 
 ### Progress and context economy
@@ -128,7 +127,7 @@ Make the smallest root-cause change. Do not add unrelated refactors, abstraction
 Use this review classification:
 
 - **Agent review**: documentation, README, copy, CSS, a local font/spacing/color change, a small direct UI behavior change, or a narrow logic fix with no process, persistence, migration, concurrency, security, or cross-project effect.
-- **GPT-6 Pro review**: Launcher lifecycle, native host or Codex injection, process management, updater or release behavior, persistent-data migration, destructive file handling, complex concurrency, cross-project state, external boundary changes, or a broad external contributor PR.
+- **GPT-6 Pro review**: agent runner lifecycle, process management, release or deployment behavior, persistent-data migration, destructive file handling, complex concurrency, cross-project state, external boundary changes, or a broad external contributor PR.
 - File count and UI file location do not determine review level. Use blast radius and failure cost.
 - Skipping GPT-6 Pro for a low-risk change is the expected path, not an exception that needs extra justification.
 - Before starting GPT-6 Pro, obtain the user's confirmation from the working demo, then use a stable PR head based on the current merge wave. Submit only the public PR URL, exact head SHA, and the instruction to review implementation correctness and real bugs without over-design or over-defense.
@@ -142,14 +141,14 @@ Use this review classification:
 - After main advances, update only PRs that are actually conflicting, not mergeable, or affected by overlapping behavior. Do not mechanically merge main into every open branch.
 - Local validation should be focused. Let PR CI provide the broad repository check. Do not duplicate a successful full CI run with the same full local packaging unless the direct task path requires the local artifact.
 - Avoid duplicate branch `push` and `pull_request` CI for the same SHA. Workflow owners should use branch filters and concurrency cancellation so superseded or duplicate runs do not consume both macOS and Windows builders.
-- Use path-aware CI when available: Web-only, documentation, CSS, and copy changes use the fast lane; platform packaging runs only for Launcher, bundle, platform, updater, release, or final integration changes.
+- Use path-aware CI when available: Web-only, documentation, CSS, and copy changes use the fast lane; full builds run only for release or final integration changes.
 - CI may run as soon as each PR reaches a stable exact head. After the working demo is confirmed by the user, run independent required GPT-6 Pro reviews in parallel. Do not serialize them through the coordinating conversation.
 - Present each task's working demo as soon as that task completes implementation and direct verification. Do not hold completed demos until the whole batch is ready. Other tasks continue in parallel while the user checks it. Related changes may share one preview only when they become ready together or must be integrated to work; this must not delay an already usable demo.
 
 ## 8. Acceptance and issue status
 
 - Reviewer approval means ready for user inspection, not user acceptance.
-- When work meets the user confirmation gate, put the complete directly verified function into the Broadcast-launched Codex App and ask the user to confirm that the function and final visual style work before starting any required GPT-6 Pro review.
+- When work meets the user confirmation gate, put the complete directly verified function on a running Broadcast board and ask the user to confirm that the function and final visual style work before starting any required GPT-6 Pro review.
 - Do not merge work that meets the UI confirmation gate until the user confirms its style. After visual-only feedback is applied and directly verified, the change can proceed without repeating GPT-6 Pro review.
 - UI-surface work that does not meet the confirmation gate can proceed after the coordinator verifies the real path, visual impact, scope, and required review without a separate user UI pause.
 - After implementation and required review pass, move the issue to `in_review`.
@@ -173,12 +172,10 @@ Use this review classification:
 - Release only when the user requests it or explicitly includes release in the task.
 - Merge all included product PRs first. Use a minimal version PR for the required version fields; do not alter release infrastructure without a separate requirement.
 - Use a short tag such as `v1.0.7`. Release notes contain product changes only.
-- Keep the DMG as the first release asset.
-- Record live build, signing, notarization, upload, and publication progress in the Broadcast.
-- Verify the tag target, release target, workflow result, asset order, and updater metadata.
+- Record live build and publication progress in the Broadcast.
+- Verify the tag target, release target, and workflow result.
 - Merging code does not authorize closing a linked GitHub Issue. Keep it open after merge and report that the implementation is merged and awaiting release.
 - Close a linked GitHub Issue only after a new version containing the change is published and verified. Reply with the merged PR and released version before closing, then record the closure in the local issue.
-- Do not overwrite the App in `/Applications`; leave the installed version available for update-check verification.
 
 ## 11. Batch completion
 
@@ -189,7 +186,7 @@ A requested batch is complete only when:
 - explicit waiting items are reported;
 - included PRs are reviewed and merged into `main`;
 - changed issues are in `in_review`, not `done`;
-- the injected Codex App shows the latest status;
+- the Broadcast board shows the latest status;
 - merged worktrees and feature branches are cleaned up;
 - task conversations remain available; and
 - any requested release is published and verified.

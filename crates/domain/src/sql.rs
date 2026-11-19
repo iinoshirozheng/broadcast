@@ -1,4 +1,4 @@
-//! SQL shared by the local store (SQLite) and the cloud worker (D1).
+//! SQL shared by the store and the server.
 
 /// `taskRelationsQuery`: both edge directions of every selected task.
 pub fn task_relations_query(placeholders: &str) -> String {

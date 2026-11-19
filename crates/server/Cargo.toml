@@ -6,49 +6,31 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-# The AI chat suite also builds `fake-codex`.
-default-run = "broadcast-server"
 
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
 base64.workspace = true
-broadcast-codex.workspace = true
 broadcast-domain.workspace = true
 broadcast-store.workspace = true
 chrono.workspace = true
-dunce.workspace = true
 form_urlencoded.workspace = true
 futures-util.workspace = true
-hmac.workspace = true
 if-addrs.workspace = true
-regex.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tempfile.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 tokio-tungstenite.workspace = true
-toml.workspace = true
 tower.workspace = true
-unicode-normalization.workspace = true
 url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true
-
-# The Codex CLI the AI chat suite runs the server against.
-[[bin]]
-name = "fake-codex"
-path = "tests/support/fake_codex.rs"
-test = false
-doc = false
-
-[target.'cfg(unix)'.dependencies]
-nix.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -2,16 +2,13 @@
 
 # Broadcast
 
-一个本地优先的议题面板，可在浏览器中运行，也可通过独立 CDP 启动器或其注入脚本嵌入 Codex。同一套 HTTP API 为 React UI 和随附 Codex Skill 使用的 `broadcast` CLI 提供支持。
+一个让人和 Agent 一起分工的议题面板，在浏览器中运行。同一套 HTTP API 为 React UI、随附 Skill 使用的 `broadcast` CLI，以及在你本机用 Claude Code 或 Codex 处理委派议题的 runner 提供支持。
 
 ![Broadcast 产品截图](docs/assets/broadcast.png)
 
 ## 系统要求
 
 - [pixi](https://pixi.prefix.dev) 0.76 或更高版本。`pixi.toml` 固定了 Rust 1.100、Node.js 26 和 pnpm 12，`pixi run` 首次运行时会自动安装。不需要 rustup、nvm 或全局 npm 包。
-- 构建 macOS App 和 DMG：Xcode Command Line Tools。
-- 构建 Windows NSIS：Microsoft Store 版 Codex App，以及带 C++ 工作负载和 Windows SDK 的 Visual Studio Build Tools。
-- 构建 Ubuntu 24.04 软件包：[Linux App](#linux-appubuntu-2404-x64-软件包) 一节列出的 WebKitGTK 构建依赖。
 
 ## 本地运行
 
@@ -49,97 +46,29 @@ target/debug/broadcast issue create \
   --labels product,mvp
 ```
 
-运行 `pixi run cargo install --locked --path crates/cli`，即可在 shell 路径（`~/.cargo/bin`）中使用 `broadcast`。没有运行时描述文件时，CLI 连接 `http://127.0.0.1:47823`。设置 `BROADCAST_URL`，可让 CLI 指向另一个本地或局域网服务。云端部署通过**回环 companion**（本机 loopback 配套服务，不是「伴侣」）使用 `broadcast cloud login` 配置。
+运行 `pixi run cargo install --locked --path crates/cli`，即可在 shell 路径（`~/.cargo/bin`）中使用 `broadcast`。CLI 连接 `http://127.0.0.1:47823`；设置 `BROADCAST_URL` 可指向另一个服务。
 
-## 安装 Codex Skill
+## 安装 Skill
 
-将 `skills/manage-broadcast` 复制或符号链接到 Codex Skill 目录，然后启动一个新的 Codex 任务：
+将 `skills/manage-broadcast` 复制或符号链接到 Agent 的 Skill 目录（Claude Code 为 `~/.claude/skills`，Codex 为 `~/.agents/skills`），然后开启新对话：
 
 ```bash
 ln -s /absolute/path/to/broadcast/skills/manage-broadcast \
-  ~/.agents/skills/manage-broadcast
+  ~/.claude/skills/manage-broadcast
 ```
 
-桌面 App 会让该目录与内置 Skill 保持同步。该 Skill 会指导 Codex 检查议题，将其移到 `in_progress`，使用乐观版本控制，验证工作，然后将其移到 `in_review`；只有在用户明确确认接受或要求将议题标记为完成后，才会将议题移到 `done`。
+该 Skill 会指导 Agent 检查议题，将其移到 `in_progress`，使用乐观版本控制，验证工作，然后将其移到 `in_review`；只有在用户明确确认接受或要求将议题标记为完成后，才会将议题移到 `done`。议题详情的「复制 Agent 指令」按钮会复制一段在该议题上启动此流程的指令。
 
-## 嵌入 Codex
+## 委派给 Agent
 
-桌面 App 负责把 Broadcast 嵌入 Codex：它在进程内运行 Broadcast 服务，启动或复用带 CDP 端口的 Codex，然后注入侧边栏入口；注入脚本编译在启动器中，不再有单独的注入命令。
-
-### macOS App：无需终端即可打开和注入
-
-如需进行 Tauri 开发，请运行：
+把议题指派给 Claude Agent 或 Codex Agent 并设为 `todo`，或在评论中提及 `@claude` 或 `@codex`，本机的 runner 就会接手：
 
 ```bash
-pixi run install-js
-pixi run pnpm app:dev
+broadcast runner claude --cwd /absolute/path/to/repository
+broadcast runner codex --cwd /absolute/path/to/repository
 ```
 
-如需构建本地 universal App 和 DMG，请在 `macos-release` 环境中运行构建，该环境额外提供 `x86_64-apple-darwin` 标准库：
-
-```bash
-pixi run install-js
-pixi run -e macos-release pnpm app:build
-```
-
-从 Finder 打开 `target/universal-apple-darwin/release/bundle/macos/Broadcast.app`。DMG 位于 `target/universal-apple-darwin/release/bundle/dmg/`。如果只需安装稳定版，请从 [GitHub Releases](https://github.com/iinoshirozheng/broadcast/releases/latest) 下载当前 DMG。
-
-该 App 在进程内运行 Broadcast 服务，并包含构建后的 Web UI、Skill，以及 `broadcast` CLI 和它的包装器。它会启动服务，复用已打开且有可用 CDP 渲染器的 Codex；普通 Codex 没有 CDP 时，它会在该实例的原生浏览面板中打开 Broadcast；没有打开 Codex 时，它会启动官方 Codex App。有可用 CDP 时，它会等待渲染器并注入侧边栏入口，然后在不显示终端窗口的情况下打开面板。该 App 可以复制到本检出目录之外；目标 Mac 只需安装官方 Codex App，不需要此仓库、Node.js 或单独的 Codex CLI 安装。Broadcast 数据存储在 `~/Library/Application Support/Broadcast`，启动器输出写入 `~/Library/Logs/Broadcast/broadcast-launcher.log`。
-
-本地构建使用 ad-hoc 代码签名进行直接验证。公开的 macOS 下载仍需要 Developer ID 签名和 Apple 公证。
-
-### Linux App：Ubuntu 24.04 x64 软件包
-
-Linux 桌面版第一版仅支持 Ubuntu 24.04 LTS x64。请先安装官方 ChatGPT 桌面版 `.deb`，并确认运行 `chatgpt` 可以打开它。然后从 [GitHub Releases](https://github.com/iinoshirozheng/broadcast/releases/latest) 下载 Broadcast `.deb` 或 `.AppImage`。请将以下命令中的 `<file>` 替换为下载的文件名。
-
-安装 `.deb` 软件包：
-
-```bash
-sudo apt install ./<file>.deb
-```
-
-或者运行 AppImage：
-
-```bash
-chmod +x ./<file>.AppImage
-./<file>.AppImage
-```
-
-如需在 Ubuntu 24.04 x64 上构建这两种软件包，请先安装 WebKitGTK 构建依赖，然后运行构建：
-
-```bash
-sudo apt-get install -y build-essential curl file libayatana-appindicator3-dev \
-  librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev patchelf wget
-pixi run install-js
-pixi run pnpm app:build:linux:x64
-```
-
-第一版不支持 ARM64、Fedora、RPM 软件包或其他 Linux 发行版。
-
-### Windows App：托盘启动器与内置 Broadcast
-
-先从 Microsoft Store 安装官方 Codex App。在 Windows x64 上运行以下命令构建当前用户级 NSIS 安装包：
-
-```powershell
-pixi run install-js
-pixi run pnpm app:build:windows
-```
-
-安装包位于 `target/x86_64-pc-windows-msvc/release/bundle/nsis/`。它包含在进程内运行 Broadcast 服务的托盘启动器、构建后的 Web UI、Skill，以及 `broadcast.cmd` 和 `broadcast` CLI。Broadcast 数据存储在 `%APPDATA%\Broadcast`，日志存储在 `%LOCALAPPDATA%\Broadcast\Logs`，Skill 会复制到 `%USERPROFILE%\.agents\skills\manage-broadcast`。
-
-Windows CI 产物目前有意保持未签名，也不支持自动更新。分发前请阅读[代码签名策略](docs/code-signing-policy.md)。保留数据的行为见 [Windows 卸载说明](docs/windows-uninstall.md)。
-
-Codex 26.715.52143 的渲染器 CSP 会阻止任意 HTTP iframe。因此，启动器会启用 CDP CSP 绕过，重新加载该渲染器一次，安装文档启动脚本，并等待 Broadcast OOPIF 实际加载。同一台机器上的其他进程访问 CDP 时不需要身份验证，因此启动器运行时只能运行受信任的本地代码。
-
-Windows 上如果自行启动的 Codex 没有任务面板，通常是该实例没有 CDP 调试端口。仓库在
-[`tools/windows/`](tools/windows/README.md) 下提供只读面板诊断脚本，以及托管窗口
-激活与诊断的说明。
-
-该脚本会在 Codex 侧边栏添加 Broadcast 入口，并在 Codex 的整个主工作区渲染 iframe，包括上下文标题栏区域，因此 Broadcast 自己的页眉不会留下空白条。这个完整的矩形页眉位于 Electron 可拖动层之上，并标记为 `no-drag`；由于 Broadcast 活动时会隐藏原生上下文操作，它自己的操作可以使用正常的边缘内边距，不会产生人为的右侧空隙。原生侧边栏保持挂载，此前页面的选中状态和上下文页眉会暂时隐藏；选择另一个 Codex 页面会恢复它们。
-
-“在对话中打开”会在可用时选择对应的原生 Codex 项目，并打开一个未发送的原生 composer，其中包含 `e-broadcast` 指令和议题的真实标识符。已安装的 Skill 会根据该指令隐式选中，因此 composer 不会添加 `$manage-broadcast` 提及。只有在会话实际处理该议题后，才会记录该会话的归属关系：`broadcast` 读取 Codex 的 `CODEX_THREAD_ID`，并在议题或评论变更上记录该 ID。记录的 ID 可通过 Codex 的原生路由桥接点击。每个议题可以绑定一个 Git 分支或一个 worktree；选项从所选 Codex 项目的仓库扫描，而不是手动输入。该集成使用 Codex 现有的项目、composer 和路由标记；它不会修改 React、替换 `fetch`、加载私有 chunk 或编辑 Codex 数据文件。
-
-要使用不同的 UI 来源，请在用户脚本运行前设置 `window.__BROADCAST_URL__`。
+runner 会认领议题，用 Agent CLI 自己的登录在该目录运行 `claude -p` 或 `codex exec`，把回答发为评论，然后将议题移到 `in_review`（Agent 失败时移到 `blocked`）。之后再次提及会接续同一个会话。Broadcast 永远不会收到你的 Agent 凭据。议题等待的 runner 不在线时，议题详情会显示提示。
 
 ## 配置
 
@@ -152,15 +81,7 @@ Windows 上如果自行启动的 Codex 没有任务面板，通常是该实例�
 
 服务器会输出本地 URL 和可用的局域网 URL。同一受信任网络中的协作者可以打开其中一个局域网 URL，并使用同一个 Broadcast 服务。任务、评论和附件变化通过服务器发送事件广播到所有打开的客户端；客户端重连后会执行完整刷新，因此不会遗漏断开连接期间发生的变化。使用 `broadcast` 的协作者可以通过 `BROADCAST_URL=http://<host-ip>:47823` 指向共享服务。
 
-局域网模式没有账户身份验证：受信任本地网络中任何能访问该 URL 的人都可以读取和写入 Broadcast。公网和云端部署需要经过身份验证的部署边界。
-
-## 通过 Cloudflare 共享
-
-对于两名受信任的协作者，Broadcast 可以在 Cloudflare 上运行，使用 Worker Static Assets 和 API 路由，以 D1 作为权威业务数据库，并使用私有 R2 bucket 存储附件。该部署使用带共享密码的 HTTPS Basic 身份验证，并在全局修订号变化后刷新已打开的面板。
-
-每台设备保留自己的项目检出映射，并继续使用**本地 companion**（本机配套服务 / 环回代理）提供 Codex、Git/worktree、Skill 和 MCP 能力。请勿将 companion 译为「伴侣」，也不要把普通 Broadcast HTTP 接口称为「伴侣 API」。云端模式绝不会回退到本地 SQLite 数据库，也不会同时写入本地数据库。
-
-请参阅[云端协作](docs/cloud-collaboration.md)，了解所有者部署、现有 GitHub 安装设置、密码轮换、本地路径映射和一次性本地数据迁移流程。
+局域网模式没有账户身份验证：受信任本地网络中任何能访问该 URL 的人都可以读取和写入面板。没有经过身份验证的边界时，请勿将它暴露到公网。
 
 ## 验证
 
@@ -168,7 +89,7 @@ Windows 上如果自行启动的 Codex 没有任务面板，通常是该实例�
 pixi run check
 ```
 
-该命令会运行 Clippy（本机与 wasm）、TypeScript 检查和 Biome，然后构建服务器、CLI、Web UI 和云端 Worker，并运行 Rust 服务器与 CLI 集成测试，再针对这些构建运行组件、注入和云端测试套件。`pixi run test-e2e` 运行 Playwright 测试，`pixi run fmt` 格式化 Rust 和 JavaScript。
+该命令会运行 Clippy、TypeScript 检查和 Biome，然后构建服务器、CLI 和 Web UI，并运行 Rust 测试，再针对这些构建运行 Web 测试套件。`pixi run test-e2e` 运行 Playwright 测试，`pixi run fmt` 格式化 Rust 和 JavaScript。
 
 ## 议题 Markdown
 

@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBroadcastI18n } from "../i18n";
-import { ConversationIcon, ProjectIcon, WorkspaceWritePermissionIcon } from "./SemanticIcons";
+import { ConversationIcon, ProjectIcon } from "./SemanticIcons";
 
 export interface ComposerCompletionOption {
   id: string;
   label: string;
   description: string | null;
-  icon: "action" | "conversation" | "project";
+  icon: "conversation" | "project";
   selectableIndex: number;
 }
 
@@ -23,9 +23,6 @@ interface ComposerCompletionMenuProps {
   getAnchorRect: () => DOMRect;
   groups: ComposerCompletionGroup[];
   activeIndex: number;
-  loading: boolean;
-  error: string | null;
-  emptyDiagnostics: string[];
   onActiveIndexChange: (index: number) => void;
   onSelect: (index: number) => void;
   onClose: () => void;
@@ -37,9 +34,6 @@ export function ComposerCompletionMenu({
   getAnchorRect,
   groups,
   activeIndex,
-  loading,
-  error,
-  emptyDiagnostics,
   onActiveIndexChange,
   onSelect,
   onClose,
@@ -107,15 +101,12 @@ export function ComposerCompletionMenu({
     return () => document.removeEventListener("pointerdown", closeFromOutside);
   }, [anchor, onClose]);
 
-  const hasOptions = groups.some((group) => group.options.length > 0);
-
   return createPortal(
     <div
       ref={menuRef}
       className="ai-chat-skill-menu issue-mention-menu composer-completion-menu"
       role="listbox"
       aria-label={text("Composer 补全", "Composer completions")}
-      aria-busy={loading}
       style={{ position: "fixed", left: position.left, top: position.top }}
       onPointerDown={(event) => event.preventDefault()}
     >
@@ -142,8 +133,6 @@ export function ComposerCompletionMenu({
                 >
                   {option.icon === "conversation" ? (
                     <ConversationIcon color="currentColor" />
-                  ) : option.icon === "action" ? (
-                    <WorkspaceWritePermissionIcon color="currentColor" size={16} />
                   ) : (
                     <ProjectIcon color="currentColor" />
                   )}
@@ -155,33 +144,6 @@ export function ComposerCompletionMenu({
               ))}
             </section>
           ),
-      )}
-      {loading && (
-        <p className="composer-completion-state" role="status">
-          {text("正在读取补全…", "Loading completions…")}
-        </p>
-      )}
-      {!loading && error && (
-        <p className="composer-completion-state is-error" role="alert">
-          {error}
-        </p>
-      )}
-      {!loading && !error && !hasOptions && (
-        <div className="composer-completion-empty" role="status">
-          <p className="composer-completion-state">
-            {text("没有匹配的可选项", "No matching completions")}
-          </p>
-          {emptyDiagnostics.length > 0 && (
-            <ul
-              className="composer-completion-diagnostics"
-              aria-label={text("来源状态", "Source status")}
-            >
-              {emptyDiagnostics.map((diagnostic) => (
-                <li key={diagnostic}>{diagnostic}</li>
-              ))}
-            </ul>
-          )}
-        </div>
       )}
     </div>,
     portalTarget,

@@ -41,8 +41,7 @@ interface TaskContextMenuProps {
   onLabelsChange: (task: Task, labels: string[]) => void;
   onDuplicate: (task: Task) => void;
   onCopy: (text: string, announcement: string) => void;
-  openInThreadDisabled?: boolean;
-  onOpenInThread: (task: Task) => void;
+  onCopyAgentPrompt: (task: Task) => void;
   onArchive: (task: Task) => void;
 }
 
@@ -121,8 +120,7 @@ export function TaskContextMenu({
   onLabelsChange,
   onDuplicate,
   onCopy,
-  openInThreadDisabled = false,
-  onOpenInThread,
+  onCopyAgentPrompt,
   onArchive,
 }: TaskContextMenuProps) {
   const { language, text } = useBroadcastI18n();
@@ -472,11 +470,10 @@ export function TaskContextMenu({
           )}
         </MenuItem>
         <MenuItem
-          label={text("在新对话打开", "Open in new conversation")}
+          label={text("复制 Agent 指令", "Copy agent instruction")}
           icon={<NewConversationIcon color="currentColor" size={16} />}
-          disabled={openInThreadDisabled}
           onPointerEnter={closeSubmenu}
-          onClick={() => closeThen(() => onOpenInThread(task))}
+          onClick={() => closeThen(() => onCopyAgentPrompt(task))}
         />
       </div>
 

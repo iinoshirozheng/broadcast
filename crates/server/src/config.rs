@@ -13,23 +13,10 @@ const TRUSTED_ORIGINS_ENV: &str = "BROADCAST_TRUSTED_ORIGINS";
 pub struct Config {
     pub data_dir: PathBuf,
     pub static_dir: PathBuf,
-    pub skill_path: PathBuf,
-    pub codex_home: PathBuf,
-    pub codex_executable: String,
     pub host: IpAddr,
     pub port: u16,
     pub trusted_origins: HashSet<String>,
-    /// Set when the desktop launcher owns this server.
-    pub launcher: Option<Launcher>,
     pub version: String,
-}
-
-/// Launcher mode: every route except `/health` lives under `/<token>`, and the
-/// launcher verifies the server by HMAC proofs keyed with `secret`.
-#[derive(Debug, Clone)]
-pub struct Launcher {
-    pub token: String,
-    pub secret: String,
 }
 
 impl Config {
@@ -42,65 +29,18 @@ impl Config {
                 .unwrap_or(default.into());
             absolute(&value).with_context(|| format!("cannot resolve {value}"))
         };
-        let codex_home = match variable("CODEX_HOME").filter(|value| !value.is_empty()) {
-            Some(home) => PathBuf::from(home),
-            None => std::env::home_dir()
-                .context("cannot resolve the home directory")?
-                .join(".codex"),
-        };
         Ok(Self {
             data_dir: path("BROADCAST_DATA_DIR", ".data")?,
             static_dir: path("BROADCAST_STATIC_DIR", "apps/web/dist")?,
-            skill_path: path("BROADCAST_SKILL_PATH", "skills/manage-broadcast/SKILL.md")?,
-            codex_home,
-            codex_executable: broadcast_codex::executable(
-                variable("CODEX_EXECUTABLE").as_deref(),
-                None,
-            ),
             host: host(variable("BROADCAST_HOST").as_deref().unwrap_or("0.0.0.0"))?,
             port: port(variable("BROADCAST_PORT").as_deref().unwrap_or("47823"))?,
             trusted_origins: trusted_origins(variable(TRUSTED_ORIGINS_ENV).as_deref())?,
-            launcher: launcher(
-                variable("BROADCAST_INSTANCE_TOKEN")
-                    .unwrap_or_default()
-                    .trim(),
-                variable("BROADCAST_INSTANCE_SECRET")
-                    .unwrap_or_default()
-                    .trim(),
-            )?,
             version: variable("BROADCAST_VERSION")
                 .unwrap_or("development".into())
                 .trim()
                 .to_owned(),
         })
     }
-}
-
-fn launcher(token: &str, secret: &str) -> anyhow::Result<Option<Launcher>> {
-    if token.is_empty() {
-        return Ok(None);
-    }
-    let identifier = |value: &str, hex_only: bool, range: std::ops::RangeInclusive<usize>| {
-        range.contains(&value.len())
-            && value.bytes().all(|byte| {
-                byte == b'-'
-                    || if hex_only {
-                        byte.is_ascii_hexdigit()
-                    } else {
-                        byte.is_ascii_alphanumeric()
-                    }
-            })
-    };
-    if !identifier(token, false, 16..=128) {
-        bail!("BROADCAST_INSTANCE_TOKEN must be an identifier");
-    }
-    if !identifier(secret, true, 32..=128) {
-        bail!("BROADCAST_INSTANCE_SECRET must be set in launcher mode");
-    }
-    Ok(Some(Launcher {
-        token: token.to_owned(),
-        secret: secret.to_owned(),
-    }))
 }
 
 /// `resolvePort`; 0 binds an ephemeral port.

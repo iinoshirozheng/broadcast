@@ -110,7 +110,10 @@ export function AppSidebar<P extends SidebarProject>({
         </nav>
       )}
 
-      <nav className="app-sidebar-section app-sidebar-projects" aria-label={text("项目", "Projects")}>
+      <nav
+        className="app-sidebar-section app-sidebar-projects"
+        aria-label={text("项目", "Projects")}
+      >
         <div className="app-sidebar-heading">{text("项目", "Projects")}</div>
         <button
           className={`app-sidebar-item${allProjectsSelected ? " active" : ""}`}

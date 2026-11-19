@@ -1,6 +1,6 @@
 [workspace]
 name = "broadcast"
-description = "Local-first issue board embedded in Codex"
+description = "Issue board where people and their agents share the work"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64", "win-64"]
 
@@ -9,15 +9,8 @@ rust = "1.100.*"
 nodejs = "26.*"
 pnpm = "12.*"
 
-[activation.env]
-# The toolchain is conda's rust. Tauri CLI checks `--target` against `rustup target list`, which
-# describes an installed rustup's toolchain instead (a CI runner's lacks x86_64-apple-darwin):
-# name a toolchain rustup does not have so that check is skipped.
-RUSTUP_TOOLCHAIN = "pixi"
-
 # conda's rust links through its own gcc and glibc 2.28 sysroot, but the cc crate compiles C
-# (aws-lc, SQLite) with the system `cc`, and the desktop links the distribution's WebKitGTK:
-# link with the system toolchain too.
+# (aws-lc, SQLite) with the system `cc`: link with the system toolchain too.
 [target.linux-64.activation.env]
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "cc"
 
@@ -27,7 +20,7 @@ rust-analyzer = "*"
 cargo-nextest = "*"
 
 [tasks]
-# The web app and the JavaScript tooling (Vite, Biome, wrangler, Miniflare, e2e).
+# The web app and the JavaScript tooling (Vite, Biome, e2e).
 install-js = { cmd = "pnpm install --frozen-lockfile", inputs = ["package.json", "apps/web/package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"], outputs = ["node_modules/.modules.yaml"] }
 build-native = "cargo build -p broadcast-server -p broadcast-cli"
 build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
@@ -35,38 +28,13 @@ build-web = { cmd = "pnpm build:web", depends-on = ["install-js"] }
 start = { cmd = "cargo run --release -p broadcast-server", depends-on = ["build-web"] }
 # The Rust server on 127.0.0.1:47823 and the Vite dev server.
 dev = { cmd = "pnpm dev", depends-on = ["install-js"] }
-# The Rust suites build their own binaries; the TypeScript suites run against target/debug and
-# apps/cloud/build.
-test = { cmd = "cargo test --no-fail-fast && pnpm test", depends-on = ["build-native", "build-web", { task = "build-cloud", environment = "cloud" }] }
+# The Rust suites build their own binaries; the TypeScript suites run against target/debug.
+test = { cmd = "cargo test --no-fail-fast && pnpm test", depends-on = ["build-native", "build-web"] }
 # Playwright against the Rust server and the built web app (`.e2e/results/` on failure).
 test-e2e = { cmd = "pnpm test:e2e", depends-on = ["build-native", "build-web"] }
-lint = { cmd = "cargo clippy --all-targets -- -D warnings && pnpm typecheck && pnpm lint", depends-on = ["install-js", { task = "lint-cloud", environment = "cloud" }] }
+lint = { cmd = "cargo clippy --all-targets -- -D warnings && pnpm typecheck && pnpm lint", depends-on = ["install-js"] }
 fmt = { cmd = "cargo fmt --all && pnpm format", depends-on = ["install-js"] }
 check = { depends-on = ["lint", "test"] }
 
-[feature.macos-release]
-platforms = ["osx-arm64"]
-
-[feature.macos-release.dependencies]
-rust-std-x86_64-apple-darwin = "1.100.*"
-
-[feature.cloud.dependencies]
-rust-std-wasm32-unknown-unknown = "1.100.*"
-# Must equal the `wasm-bindgen` crate version in Cargo.lock.
-wasm-bindgen-cli = "0.2.130.*"
-binaryen = "*"
-
-[feature.cloud.activation.env]
-WASM_BINDGEN_BIN = "wasm-bindgen"
-WASM_OPT_BIN = "wasm-opt"
-
-[feature.cloud.tasks]
-# worker-build is not on conda-forge; it must match the `worker` crate version.
-install-worker-build = "cargo install worker-build@0.8.7 --locked --root $CONDA_PREFIX"
-build-cloud = { cmd = "worker-build --release", cwd = "apps/cloud", depends-on = ["install-worker-build"] }
-lint-cloud = "cargo clippy -p broadcast-cloud --target wasm32-unknown-unknown -- -D warnings"
-
 [environments]
 default = { features = ["dev"], solve-group = "main" }
-macos-release = { features = ["macos-release"], solve-group = "main" }
-cloud = { features = ["cloud"], solve-group = "main" }
