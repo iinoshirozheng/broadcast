@@ -1,9 +1,0 @@
-packages:
-  - apps/web
-
-allowBuilds:
-  esbuild: true
-  workerd: true
-
-overrides:
-  undici: 7.29.0

@@ -1,5 +1,0 @@
-# Format-only commits, skipped by `git blame` (git config blame.ignoreRevsFile .git-blame-ignore-revs) and GitHub.
-# style: format the JavaScript, TypeScript, CSS and JSON with Biome
-079f9cc5b304099a8152b127cd7a304af308d6c6
-# style: format the Rust workspace with rustfmt
-de6324c8e65327dfda01888891e2f4e2641825fa
