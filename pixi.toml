@@ -1,0 +1,17 @@
+[workspace]
+authors = ["Ray <56520732+iinoshirozheng@users.noreply.github.com>"]
+channels = ["conda-forge"]
+name = "broadcast"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+go = "1.26.*"
+pnpm = "10.28.*"
+nodejs = "22.*"
+
+[activation.env]
+# conda-forge's go pins GOTOOLCHAIN=local; let go.mod select the upstream Go release.
+GOTOOLCHAIN = "auto"
